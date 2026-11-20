@@ -94,6 +94,12 @@ void main() {
     (v) => v.toJson(),
   );
   roundTrip(
+    'AdminEdge (Private Edge)',
+    '{"id":"site-1","tenantId":"acme","revoked":false,"createdAt":"2026-11-20T09:00:00Z"}',
+    AdminEdge.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
     'AdminDevice',
     '{"id":"d1","userId":"u1","name":"Pixel","platform":"android","revoked":false,"createdAt":"2026-11-20T09:00:00Z"}',
     AdminDevice.fromJson,

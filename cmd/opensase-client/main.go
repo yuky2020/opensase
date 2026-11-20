@@ -278,7 +278,11 @@ func routeCommands(ctx context.Context, dev, ipv4, ipv6 string, mtu int, bypass 
 	for _, h := range bypass {
 		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", h)
 		if err != nil {
-			return nil, fmt.Errorf("resolve bypass host %s: %w", h, err)
+			// Not fatal: the Edge must work while the Control Plane is unreachable (ADR-0014).
+			// The session is already up, so the Edge host resolved; an unresolvable Control
+			// Plane host just gets no bypass route, and reaches it through the tunnel later.
+			slog.WarnContext(ctx, "bypass host does not resolve; no bypass route", "host", h, "err", err)
+			continue
 		}
 		for _, ip := range ips {
 			if ip4 := ip.To4(); ip4 != nil {

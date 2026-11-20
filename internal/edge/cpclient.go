@@ -117,7 +117,9 @@ type trust struct {
 	keys map[string]ed25519.PublicKey
 }
 
-func parseBundle(b api.PKIBundle, root *x509.Certificate) (*trust, error) {
+// parseBundle keeps the tenant CAs that chain to root; tenant != "" (a single-tenant Private
+// Edge, ADR-0014) keeps only that tenant's CA, so other tenants' certificates do not verify.
+func parseBundle(b api.PKIBundle, root *x509.Certificate, tenant string) (*trust, error) {
 	certs, err := pki.ParseCertsPEM([]byte(b.CAPEM))
 	if err != nil {
 		return nil, err
@@ -129,7 +131,7 @@ func parseBundle(b api.PKIBundle, root *x509.Certificate) (*trust, error) {
 		if c.Equal(root) {
 			continue
 		}
-		if _, err := pki.TenantOfCA(c); err != nil || c.CheckSignatureFrom(root) != nil {
+		if tid, err := pki.TenantOfCA(c); err != nil || (tenant != "" && tid != tenant) || c.CheckSignatureFrom(root) != nil {
 			continue
 		}
 		t.pool.AddCert(c)

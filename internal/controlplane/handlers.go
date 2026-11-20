@@ -76,6 +76,11 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "initial snapshot", err)
 		return
 	}
+	edges, err := s.edgesFor(r.Context(), dev.TenantID, false)
+	if err != nil {
+		s.internalErr(w, r, "edges", err)
+		return
+	}
 	s.log.InfoContext(r.Context(), "device enrolled", "tenant", dev.TenantID, "user", dev.UserID, "device", dev.ID, "platform", dev.Platform)
 	writeJSON(w, http.StatusOK, api.EnrollResponse{
 		TenantID:       dev.TenantID,
@@ -85,7 +90,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		// Root (anchors the Control Plane and Edge server certs) followed by the tenant CA, so
 		// that clients verifying the device cert against CAPEM alone succeed.
 		CAPEM:        string(append(s.cfg.Authority.Root.CertPEM(), tenantCAPEM...)),
-		Edges:        s.cfg.Edges,
+		Edges:        edges,
 		SnapshotKeys: s.signingKeys(),
 		ControlURL:   s.cfg.ControlURL,
 	})
@@ -363,7 +368,15 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// A Private Edge (ADR-0014) gets only the devices and connectors of its tenant.
 func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
+	p, _ := peerFrom(r.Context())
+	edge, err := s.cfg.Store.GetEdge(r.Context(), p.id.EdgeID)
+	if err != nil {
+		s.internalErr(w, r, "edge", err)
+		return
+	}
+	scoped := func(tenantID string) bool { return edge.TenantID == "" || edge.TenantID == tenantID }
 	act, err := s.cfg.Store.ActiveSnapshots(r.Context())
 	if err != nil {
 		s.internalErr(w, r, "active snapshots", err)
@@ -376,9 +389,15 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := api.EdgePeers{Devices: make([]api.EdgeDevice, 0, len(act)), Connectors: make([]api.EdgeConnector, 0, len(cs))}
 	for _, c := range cs {
+		if !scoped(c.TenantID) {
+			continue
+		}
 		out.Connectors = append(out.Connectors, api.EdgeConnector{ConnectorID: c.ID, TenantID: c.TenantID, Group: c.Group})
 	}
 	for _, a := range act {
+		if !scoped(a.Device.TenantID) {
+			continue
+		}
 		var env policy.Envelope
 		if err := json.Unmarshal(a.Snapshot.Envelope, &env); err != nil {
 			s.internalErr(w, r, "decode envelope", err)

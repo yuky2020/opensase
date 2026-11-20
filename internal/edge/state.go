@@ -160,8 +160,9 @@ func (s *snoop) sweep(now time.Time, alive func(netip.Addr) bool) {
 
 // flowLog buffers Edge flow records for upload to the Control Plane.
 type flowLog struct {
-	mu   sync.Mutex
-	recs []api.FlowRecord
+	mu    sync.Mutex
+	recs  []api.FlowRecord
+	local *localFlowLog // optional local JSONL copy (Config.FlowLogPath, ADR-0014)
 }
 
 const (
@@ -170,6 +171,7 @@ const (
 )
 
 func (l *flowLog) add(recs ...api.FlowRecord) {
+	l.local.add(recs)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	room := maxFlowBuffer - len(l.recs)

@@ -71,11 +71,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 type EdgeSessions = api.EdgeSessions
 
 // AdminEdge is the admin view of a registered edge (see the CONTRACT-CHANGE-REQUEST in Handler).
-type AdminEdge struct {
-	ID        string    `json:"id"`
-	Revoked   bool      `json:"revoked"`
-	CreatedAt time.Time `json:"createdAt,omitzero"`
-}
+type AdminEdge = api.AdminEdge
 
 func (s *Server) handleEdgeSessions(w http.ResponseWriter, r *http.Request) {
 	p, _ := peerFrom(r.Context())
@@ -87,19 +83,25 @@ func (s *Server) handleEdgeSessions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusRequestEntityTooLarge, "too many IDs")
 		return
 	}
+	edge, err := s.cfg.Store.GetEdge(r.Context(), p.id.EdgeID)
+	if err != nil {
+		s.internalErr(w, r, "edge", err)
+		return
+	}
 	if err := s.cfg.Store.ReportEdgeSessions(r.Context(), p.id.EdgeID, b.DeviceIDs, s.now(), edgeSessionTTL); err != nil {
 		s.internalErr(w, r, "edge sessions", err)
 		return
 	}
-	if err := s.cfg.Store.TouchConnectors(r.Context(), b.ConnectorIDs, s.now()); err != nil {
+	if err := s.cfg.Store.TouchConnectors(r.Context(), edge.TenantID, b.ConnectorIDs, s.now()); err != nil {
 		s.internalErr(w, r, "connector last seen", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// edgeDevice returns the device an edge acts for, only if it is not revoked and the edge
-// reported a live session for it recently.
+// edgeDevice returns the device an edge acts for, only if it is not revoked, belongs to the
+// edge's tenant when the edge is a Private Edge, and the edge reported a live session for it
+// recently.
 func (s *Server) edgeDevice(r *http.Request, edgeID, deviceID string) (store.Device, bool, error) {
 	d, err := s.cfg.Store.GetDevice(r.Context(), deviceID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -111,6 +113,14 @@ func (s *Server) edgeDevice(r *http.Request, edgeID, deviceID string) (store.Dev
 	if d.Revoked {
 		return d, false, nil
 	}
+	// A Private Edge acts only for devices of its own tenant (ADR-0014).
+	e, err := s.cfg.Store.GetEdge(r.Context(), edgeID)
+	if err != nil {
+		return d, false, err
+	}
+	if e.TenantID != "" && e.TenantID != d.TenantID {
+		return d, false, nil
+	}
 	ok, err := s.cfg.Store.EdgeHasSession(r.Context(), edgeID, deviceID, s.now().Add(-edgeSessionTTL))
 	return d, ok, err
 }
@@ -120,13 +130,17 @@ func (s *Server) handleCreateEdge(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &e) {
 		return
 	}
-	if !pki.ValidID(e.ID) || e.Revoked {
-		writeErr(w, http.StatusBadRequest, "id must be a valid identifier")
+	if !pki.ValidID(e.ID) || e.Revoked || (e.TenantID != "" && !pki.ValidID(e.TenantID)) {
+		writeErr(w, http.StatusBadRequest, "id (and tenantId, if set) must be valid identifiers")
 		return
 	}
-	err := s.cfg.Store.CreateEdge(r.Context(), e.ID)
+	err := s.cfg.Store.CreateEdge(r.Context(), e.ID, e.TenantID)
 	if errors.Is(err, store.ErrConflict) {
 		writeErr(w, http.StatusConflict, "edge exists (revoked edge IDs cannot be reused)")
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "unknown tenant")
 		return
 	}
 	if err != nil {
@@ -134,8 +148,8 @@ func (s *Server) handleCreateEdge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.notify.notify(notifyEdges)
-	s.log.InfoContext(r.Context(), "edge registered", "edge", e.ID)
-	writeJSON(w, http.StatusCreated, AdminEdge{ID: e.ID})
+	s.log.InfoContext(r.Context(), "edge registered", "edge", e.ID, "tenant", e.TenantID)
+	writeJSON(w, http.StatusCreated, AdminEdge{ID: e.ID, TenantID: e.TenantID})
 }
 
 func (s *Server) handleListEdges(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +160,7 @@ func (s *Server) handleListEdges(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]AdminEdge, 0, len(es))
 	for _, e := range es {
-		out = append(out, AdminEdge{ID: e.ID, Revoked: e.Revoked, CreatedAt: e.CreatedAt})
+		out = append(out, AdminEdge{ID: e.ID, TenantID: e.TenantID, Revoked: e.Revoked, CreatedAt: e.CreatedAt})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

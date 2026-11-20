@@ -980,6 +980,24 @@ abstract class AppLocalizations {
   /// **'Register the Edge ID before starting the Edge with its certificate.'**
   String get edgesCreateHelp;
 
+  /// No description provided for @edgesFieldTenant.
+  ///
+  /// In en, this message translates to:
+  /// **'Tenant (Private Edge)'**
+  String get edgesFieldTenant;
+
+  /// No description provided for @edgesFieldTenantHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional. Binds the Edge to one tenant; leave empty for a public multi-tenant Edge.'**
+  String get edgesFieldTenantHelp;
+
+  /// No description provided for @edgesPublic.
+  ///
+  /// In en, this message translates to:
+  /// **'public'**
+  String get edgesPublic;
+
   /// No description provided for @flowsVerdict.
   ///
   /// In en, this message translates to:

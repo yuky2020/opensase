@@ -67,10 +67,12 @@ services:
     # Only the Edge directory: root.crt, edge.crt, edge.key, edge-wg.key.
     volumes:
       - ./pki/edge:/pki:ro
+      # Private Edge state cache and local flow log (ADR-0014), owned by EDGE_UID.
+      - ./edge-state:/var/lib/opensase-edge
     depends_on:
       controlplane:
         condition: service_healthy
-    command: ["-control-url", "https://controlplane:9443", "-pki", "/pki", "-listen", ":8443", "-wg-port", "51820", "-wg-endpoint", "${EDGE_HOST:-edge}:51820", "-upstream-dns", "${UPSTREAM_DNS:-1.1.1.1:53}", "-ztna-listen", "0.0.0.0:15001", "-broker-listen", ":8444"]
+    command: ["-control-url", "https://controlplane:9443", "-pki", "/pki", "-listen", ":8443", "-wg-port", "51820", "-wg-endpoint", "${EDGE_HOST:-edge}:51820", "-upstream-dns", "${UPSTREAM_DNS:-1.1.1.1:53}", "-ztna-listen", "0.0.0.0:15001", "-broker-listen", ":8444", "-state-dir", "/var/lib/opensase-edge", "-flow-log", "/var/lib/opensase-edge/flows.jsonl"]
 
   # Connector (ADR-0013): outbound only, on the default network (Control Plane, Edge) and
   # on corp, the "data-centre LAN" that the Edge and the Control Plane cannot reach.

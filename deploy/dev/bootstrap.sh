@@ -21,8 +21,8 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 # provisioning.key holds the key alone for the client container (compose secret).
 touch .env provisioning.key connector.key
 chmod 600 .env provisioning.key connector.key
-mkdir -p connector-state
-chmod 700 connector-state
+mkdir -p connector-state edge-state
+chmod 700 connector-state edge-state
 if ! grep -q '^OPENSASE_ADMIN_TOKEN=' .env; then
   log "generating admin token"
   printf 'OPENSASE_ADMIN_TOKEN=%s\n' "$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')" >>.env

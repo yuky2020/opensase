@@ -211,10 +211,16 @@ class EdgesScreen extends ConsumerWidget {
       description: l.edgesCreateHelp,
       fields: [
         FieldSpec('id', l.fieldId, hint: 'edge-eu-south-1', validator: (s) => validId(s) ? null : l.fieldInvalidId),
+        FieldSpec(
+          'tenant',
+          l.edgesFieldTenant,
+          helper: l.edgesFieldTenantHelp,
+          validator: (s) => s.isEmpty || validId(s) ? null : l.fieldInvalidId,
+        ),
       ],
     );
     if (v == null || !context.mounted) return;
-    await runAction(context, ref, () => ref.read(apiProvider).createEdge(v['id']!));
+    await runAction(context, ref, () => ref.read(apiProvider).createEdge(v['id']!, tenantId: v['tenant'] ?? ''));
     ref.invalidate(edgesProvider);
   }
 
@@ -250,6 +256,7 @@ class EdgesScreen extends ConsumerWidget {
             : ScrollTable(
                 columns: [
                   DataColumn(label: Text(l.fieldId)),
+                  DataColumn(label: Text(l.edgesFieldTenant)),
                   DataColumn(label: Text(l.fieldCreated)),
                   DataColumn(label: Text(l.fieldStatus)),
                   const DataColumn(label: SizedBox.shrink()),
@@ -259,6 +266,7 @@ class EdgesScreen extends ConsumerWidget {
                     DataRow(
                       cells: [
                         DataCell(SelectableText(e.id)),
+                        DataCell(Text(e.tenantId.isEmpty ? l.edgesPublic : e.tenantId)),
                         DataCell(Text(formatTime(context, e.createdAt))),
                         DataCell(revokedChip(context, e.revoked)),
                         DataCell(

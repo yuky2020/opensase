@@ -156,20 +156,25 @@ func (s *Server) handleConnectorRenew(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.RenewResponse{CertificatePEM: string(chain), CAPEM: s.caBundle(ca)})
 }
 
-// brokerEdges returns the configured Edges that have a BrokerAddr and are registered and not
-// revoked: the Edges a connector must keep a broker connection to.
-func (s *Server) brokerEdges(ctx context.Context) ([]api.EdgeInfo, error) {
+// edgesFor returns the configured Edges a device or connector of tenantID may use: public
+// Edges and the Private Edges of tenantID (ADR-0014), never a revoked or other tenant's Edge.
+// broker = true (connectors) also requires a BrokerAddr and a registered Edge.
+func (s *Server) edgesFor(ctx context.Context, tenantID string, broker bool) ([]api.EdgeInfo, error) {
 	reg, err := s.cfg.Store.ListEdges(ctx)
 	if err != nil {
 		return nil, err
 	}
-	live := make(map[string]bool, len(reg))
+	byID := make(map[string]store.Edge, len(reg))
 	for _, e := range reg {
-		live[e.ID] = !e.Revoked
+		byID[e.ID] = e
 	}
 	out := []api.EdgeInfo{}
 	for _, e := range s.cfg.Edges {
-		if e.BrokerAddr != "" && live[e.ID] {
+		r, registered := byID[e.ID]
+		switch {
+		case registered && (r.Revoked || (r.TenantID != "" && r.TenantID != tenantID)):
+		case broker && (e.BrokerAddr == "" || !registered):
+		default:
 			out = append(out, e)
 		}
 	}
@@ -198,7 +203,7 @@ func (s *Server) connectorConfig(ctx context.Context, c store.Connector) (api.Co
 	if err != nil {
 		return api.ConnectorConfig{}, err
 	}
-	edges, err := s.brokerEdges(ctx)
+	edges, err := s.edgesFor(ctx, c.TenantID, true)
 	if err != nil {
 		return api.ConnectorConfig{}, err
 	}

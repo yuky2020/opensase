@@ -13,6 +13,9 @@
 #      through the Connector from the corp network, which the Edge cannot reach; a port
 #      outside the app fails; after `opensasectl connector revoke` access fails within ~20s.
 #      Destructive: the connector stays revoked (re-run bootstrap.sh to add a new one).
+#   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
+#      restarts from its state cache, the client reconnects, policy is still enforced, and
+#      flows land in the Edge's local flow log.
 set -eu
 cd "$(dirname "$0")"
 [ -f .env ] || { echo "e2e: run ./bootstrap.sh first" >&2; exit 1; }
@@ -224,6 +227,57 @@ done
 # Informational: the client firewall may already block these before they reach the Edge.
 [ "$has_builtin" = yes ] && echo "info: Edge builtin-deny / builtin-dns-bypass records present" || echo "info: no Edge builtin-* records (blocked on the device first?)"
 ctl flows -tenant "$TENANT" -limit 15 || true
+
+# 9. Private Edge offline operation (ADR-0014). Last: it stops the Control Plane.
+log "offline: stopping the control plane and restarting the edge from its state cache"
+docker compose stop controlplane >/dev/null 2>&1
+since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+docker compose restart edge >/dev/null 2>&1
+i=0
+until docker compose logs --since "$since" edge 2>/dev/null | grep -q '"msg":"edge ready"'; do
+  i=$((i + 1))
+  [ "$i" -ge 30 ] && break
+  sleep 1
+done
+if docker compose logs --since "$since" edge 2>/dev/null | grep -q 'enforcing cached state'; then
+  ok "edge started from its state cache with the control plane down"
+else
+  ko "edge did not start from its state cache"
+  docker compose logs --tail 20 edge >&2
+fi
+# The restarted Edge has no WireGuard peers: restart the client to set up a new session
+# (otherwise it notices the stale handshake within its 3-minute liveness timeout).
+docker compose --profile e2e restart client >/dev/null 2>&1
+i=0
+until cexec ip -4 addr show "$TUN" 2>/dev/null | grep -q 'inet 100\.'; do
+  i=$((i + 1))
+  [ "$i" -ge 60 ] && break
+  sleep 1
+done
+cexec sh -c 'grep -q "^nameserver 100.64.0.1" /etc/resolv.conf || echo "nameserver 100.64.0.1" >/etc/resolv.conf' || true
+code=""
+for _ in 1 2 3 4 5 6; do
+  code="$(cexec curl -sS -m 15 -o /dev/null -w '%{http_code}' https://example.com 2>/dev/null)" && break
+  sleep 3
+done
+case "$code" in
+  2??|3??) ok "offline: curl https://example.com -> HTTP $code via the cached edge" ;;
+  *) ko "offline: HTTPS through the edge failed: $code"; docker compose --profile e2e logs --tail 30 client edge >&2 ;;
+esac
+if cexec nc -z -w 5 smtp.gmail.com 25 >/dev/null 2>&1; then ko "offline: TCP 25 connected (policy lost)"; else ok "offline: TCP 25 still blocked"; fi
+i=0
+until [ -s edge-state/flows.jsonl ] && grep -q '"where":"edge"' edge-state/flows.jsonl; do
+  i=$((i + 1))
+  [ "$i" -ge 20 ] && break
+  sleep 2
+done
+if [ -s edge-state/flows.jsonl ] && grep -q '"where":"edge"' edge-state/flows.jsonl; then
+  ok "edge local flow log has records ($(wc -l <edge-state/flows.jsonl) lines)"
+else
+  ko "edge local flow log empty"
+fi
+log "offline: restarting the control plane"
+docker compose up -d --wait controlplane >/dev/null 2>&1 || docker compose up -d controlplane >/dev/null 2>&1
 
 echo
 if [ "$FAIL" -eq 0 ]; then

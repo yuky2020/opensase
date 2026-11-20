@@ -17,3 +17,4 @@ Status values: Proposed, Accepted, Superseded. Each ADR gets its own file `NNNN-
 | 0011 | MVP scope cut | Proposed | ZTNA only (Phase 0 + 1) |
 | 0012 | Android Client first | **Accepted** | Flutter app + Go core, on-device firewall, cloud decisions |
 | 0013 | ZTNA private access via Connector | **Accepted** | Synthetic DNS + Edge broker + outbound connector over inverted HTTP/2 |
+| 0014 | Private Edge | **Accepted** (2026-11-20) | Edge bound to one tenant by the Control Plane, local state cache for offline start, local flow log |

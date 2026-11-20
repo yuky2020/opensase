@@ -63,13 +63,13 @@ func TestEdgesAndSessions(t *testing.T) {
 	seed(t, s)
 	enrollDevice(t, s, "d1")
 	enrollDevice(t, s, "d2")
-	if err := s.CreateEdge(ctx, "edge-1"); err != nil {
+	if err := s.CreateEdge(ctx, "edge-1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateEdge(ctx, "edge-1"); !errors.Is(err, ErrConflict) {
+	if err := s.CreateEdge(ctx, "edge-1", ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("dup edge: %v", err)
 	}
-	if err := s.CreateEdge(ctx, "edge-2"); err != nil {
+	if err := s.CreateEdge(ctx, "edge-2", ""); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now()

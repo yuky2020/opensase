@@ -8,3 +8,5 @@ provisioning.key.tmp
 connector.key
 connector.key.tmp
 connector-state/
+edge-state/
+emu-backup-*/

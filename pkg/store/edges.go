@@ -52,28 +52,38 @@ func (s *Store) renewCert(ctx context.Context, table, id, presented, newSerial s
 // Edge is a row of the edges table.
 type Edge struct {
 	ID        string
+	TenantID  string // "" = public multi-tenant edge; else a Private Edge of that tenant (ADR-0014)
 	Revoked   bool
 	CreatedAt time.Time
 }
 
-// CreateEdge registers an edge ID. ErrConflict if it exists (revoked or not).
-func (s *Store) CreateEdge(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO edges(id, created_at) VALUES (?, ?)`, id, time.Now().Unix())
+// CreateEdge registers an edge ID, bound to tenantID if it is not "" (a Private Edge).
+// ErrConflict if it exists (revoked or not); ErrNotFound if the tenant does not exist.
+func (s *Store) CreateEdge(ctx context.Context, id, tenantID string) error {
+	if tenantID != "" {
+		if _, err := s.GetTenant(ctx, tenantID); err != nil {
+			return err
+		}
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO edges(id, tenant_id, created_at) VALUES (?, ?, ?)`, id, nullStr(tenantID), time.Now().Unix())
 	return mapErr(err)
 }
+
+func nullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
 
 // GetEdge returns a registered edge.
 func (s *Store) GetEdge(ctx context.Context, id string) (Edge, error) {
 	var e Edge
 	var ts int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, revoked, created_at FROM edges WHERE id = ?`, id).Scan(&e.ID, &e.Revoked, &ts)
-	e.CreatedAt = time.Unix(ts, 0)
+	var t sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, tenant_id, revoked, created_at FROM edges WHERE id = ?`, id).Scan(&e.ID, &t, &e.Revoked, &ts)
+	e.TenantID, e.CreatedAt = t.String, time.Unix(ts, 0)
 	return e, mapErr(err)
 }
 
 // ListEdges returns every registered edge, ordered by ID.
 func (s *Store) ListEdges(ctx context.Context) ([]Edge, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, revoked, created_at FROM edges ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, tenant_id, revoked, created_at FROM edges ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -82,10 +92,11 @@ func (s *Store) ListEdges(ctx context.Context) ([]Edge, error) {
 	for rows.Next() {
 		var e Edge
 		var ts int64
-		if err := rows.Scan(&e.ID, &e.Revoked, &ts); err != nil {
+		var t sql.NullString
+		if err := rows.Scan(&e.ID, &t, &e.Revoked, &ts); err != nil {
 			return nil, err
 		}
-		e.CreatedAt = time.Unix(ts, 0)
+		e.TenantID, e.CreatedAt = t.String, time.Unix(ts, 0)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -105,19 +116,21 @@ func (s *Store) RevokeEdge(ctx context.Context, id string) error {
 }
 
 // ReportEdgeSessions records that edgeID has live sessions for deviceIDs at now. Unknown
-// device IDs are ignored. Rows older than now-keep (devices the edge no longer reports) are
+// device IDs, and for a Private Edge devices of other tenants, are ignored. Rows older than now-keep (devices the edge no longer reports) are
 // deleted for this edge.
 func (s *Store) ReportEdgeSessions(ctx context.Context, edgeID string, deviceIDs []string, now time.Time, keep time.Duration) error {
 	return mapErr(s.tx(ctx, func(tx *sql.Tx) error {
+		// A Private Edge (edges.tenant_id set) records only devices of its tenant (ADR-0014).
 		st, err := tx.PrepareContext(ctx, `INSERT INTO edge_sessions(edge_id, device_id, updated_at)
-			SELECT ?, id, ? FROM devices WHERE id = ? AND revoked = 0
+			SELECT e.id, d.id, ? FROM devices d JOIN edges e ON e.id = ?
+			WHERE d.id = ? AND d.revoked = 0 AND (e.tenant_id IS NULL OR e.tenant_id = d.tenant_id)
 			ON CONFLICT(edge_id, device_id) DO UPDATE SET updated_at = excluded.updated_at`)
 		if err != nil {
 			return err
 		}
 		defer st.Close()
 		for _, d := range deviceIDs {
-			if _, err := st.ExecContext(ctx, edgeID, now.Unix(), d); err != nil {
+			if _, err := st.ExecContext(ctx, now.Unix(), edgeID, d); err != nil {
 				return err
 			}
 		}

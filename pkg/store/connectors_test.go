@@ -102,7 +102,7 @@ func TestConnectorLifecycle(t *testing.T) {
 
 	// last_seen.
 	seen := time.Unix(now.Unix(), 0)
-	if err := s.TouchConnectors(ctx, []string{"c1", "c2", "ghost"}, seen); err != nil {
+	if err := s.TouchConnectors(ctx, "", []string{"c1", "c2", "ghost"}, seen); err != nil {
 		t.Fatal(err)
 	}
 	if c, _ := s.GetConnector(ctx, "c1"); !c.LastSeen.Equal(seen) {

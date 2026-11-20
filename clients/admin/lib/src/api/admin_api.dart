@@ -119,7 +119,11 @@ class AdminApi {
 
   Future<List<AdminEdge>> listEdges() async => _list(await _send('GET', '/v1/admin/edges'), AdminEdge.fromJson);
 
-  Future<void> createEdge(String id) async => _send('POST', '/v1/admin/edges', body: AdminEdge(id: id).toJson());
+  Future<void> createEdge(String id, {String tenantId = ''}) async => _send(
+    'POST',
+    '/v1/admin/edges',
+    body: AdminEdge(id: id, tenantId: tenantId).toJson(),
+  );
 
   Future<void> revokeEdge(String id) async => _send('POST', '/v1/admin/edges/${_seg(id)}/revoke');
 

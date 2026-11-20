@@ -162,19 +162,19 @@ func (s *Store) RenewConnectorCert(ctx context.Context, connectorID, presented, 
 }
 
 // TouchConnectors sets last_seen to now for the given non-revoked connectors. Unknown IDs are
-// ignored.
-func (s *Store) TouchConnectors(ctx context.Context, ids []string, now time.Time) error {
+// ignored. tenantID != "" (a Private Edge, ADR-0014) limits the update to that tenant.
+func (s *Store) TouchConnectors(ctx context.Context, tenantID string, ids []string, now time.Time) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return mapErr(s.tx(ctx, func(tx *sql.Tx) error {
-		st, err := tx.PrepareContext(ctx, `UPDATE connectors SET last_seen = ? WHERE id = ? AND revoked = 0`)
+		st, err := tx.PrepareContext(ctx, `UPDATE connectors SET last_seen = ? WHERE id = ? AND revoked = 0 AND (? = '' OR tenant_id = ?)`)
 		if err != nil {
 			return err
 		}
 		defer st.Close()
 		for _, id := range ids {
-			if _, err := st.ExecContext(ctx, now.Unix(), id); err != nil {
+			if _, err := st.ExecContext(ctx, now.Unix(), id, tenantID, tenantID); err != nil {
 				return err
 			}
 		}

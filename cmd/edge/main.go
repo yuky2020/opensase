@@ -41,6 +41,9 @@ func run() error {
 	allowDoH := flag.Bool("allow-doh", false, "disable the built-in DNS-over-HTTPS endpoint blocklist (plain DNS and DoT to other resolvers stay blocked)")
 	ztnaListen := flag.String("ztna-listen", "0.0.0.0:15001", "ZTNA broker listener for TCP the kernel REDIRECTs from the tunnel to 100.96.0.0/12 (\"off\" disables)")
 	brokerListen := flag.String("broker-listen", ":8444", "Connector listener (mTLS, ALPN opensase-broker/1; \"off\" disables)")
+	tenant := flag.String("tenant", "", "Private Edge: serve only this tenant (must match the edge registration, opensasectl edge add -tenant)")
+	stateDir := flag.String("state-dir", "", "cache the last good Control Plane state here, so the Edge starts and keeps enforcing while the Control Plane is unreachable")
+	flowLog := flag.String("flow-log", "", "also append every flow record to this local JSONL file (rotated to FILE.1 at 64 MiB)")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	var deny []netip.Prefix
@@ -88,5 +91,6 @@ func run() error {
 		MTU: *mtu, Upstream: *upstream, RotateAfter: *rotate, Logger: log,
 		DenyCIDRs: deny, AllowPrivate: *allowPrivate, AllowDoH: *allowDoH,
 		ZTNAListen: *ztnaListen, BrokerListen: *brokerListen,
+		TenantID: *tenant, StateDir: *stateDir, FlowLogPath: *flowLog,
 	})
 }

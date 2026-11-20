@@ -53,6 +53,26 @@ The Edge is the primary data-plane component of OpenSASE, deployed across provid
 - **Private Edge disconnection**: Operates completely stand-alone on customer premises, performing local internet breakout and ZTNA brokering without internet connectivity.
 - **Memory pressure / buffer exhaustion**: Enforces graceful flow shedding by rejecting new low-priority sessions while preserving active Microtunnels and critical flows.
 
+## Private Edge (ADR-0014)
+
+The same binary runs as a Private Edge on customer premises:
+
+```
+opensasectl edge add -id site-1 -tenant acme      # bind the Edge to one tenant
+edge -tenant acme -state-dir /var/lib/opensase-edge -flow-log /var/lib/opensase-edge/flows.jsonl -allow-private ...
+```
+
+- **Tenant binding.** The Control Plane scopes the peer feed, decisions, flow ingestion and session
+  reports of a bound Edge to its tenant. It tells only that tenant's devices and connectors about
+  the Edge. `-tenant` makes the Edge enforce the same binding locally: it trusts only that tenant's
+  CA and drops other tenants from the feed.
+- **Offline start.** `-state-dir` caches the last good PKI bundle and peer feed in `state.json`
+  (mode 0600). If the Control Plane is unreachable at startup, the Edge verifies the cache like a
+  live response (CA chain, snapshot signatures) and serves from it.
+- **Local logging.** `-flow-log` appends every flow record as JSONL, rotated to `FILE.1` at 64 MiB.
+- **Limits.** Device certificates (24h) still need the Control Plane to renew. Enrollments, policy
+  changes and revocations wait until it is reachable again.
+
 ## MVP scope vs later
 - **MVP**:
   - Single Go binary supporting both public multi-tenant and private single-tenant modes.

@@ -234,16 +234,28 @@ class FlowBatch {
 }
 
 class AdminEdge {
-  AdminEdge({required this.id, this.revoked = false, this.createdAt});
+  AdminEdge({required this.id, this.tenantId = '', this.revoked = false, this.createdAt});
 
   String id;
+
+  /// Non-empty for a Private Edge bound to that tenant (ADR-0014).
+  String tenantId;
   bool revoked;
   DateTime? createdAt;
 
-  factory AdminEdge.fromJson(Json j) =>
-      AdminEdge(id: str(j, 'id'), revoked: boolean(j, 'revoked'), createdAt: time(j, 'createdAt'));
+  factory AdminEdge.fromJson(Json j) => AdminEdge(
+    id: str(j, 'id'),
+    tenantId: str(j, 'tenantId'),
+    revoked: boolean(j, 'revoked'),
+    createdAt: time(j, 'createdAt'),
+  );
 
-  Json toJson() => {'id': id, 'revoked': revoked, 'createdAt': goTime(createdAt)};
+  Json toJson() => {
+    'id': id,
+    if (tenantId.isNotEmpty) 'tenantId': tenantId,
+    'revoked': revoked,
+    'createdAt': goTime(createdAt),
+  };
 }
 
 /// internal/controlplane.AdminDevice (see the CONTRACT-CHANGE-REQUEST there).

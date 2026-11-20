@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -56,7 +57,14 @@ type Config struct {
 	// connections (default ":8444"). "off" disables either.
 	ZTNAListen   string
 	BrokerListen string
-	Logger       *slog.Logger
+	// Private Edge (ADR-0014). TenantID != "" makes the Edge single-tenant: it trusts only
+	// that tenant's CA and drops other tenants from the peer feed. StateDir caches the last
+	// good Control Plane state so the Edge can start and keep enforcing while the Control
+	// Plane is unreachable. FlowLogPath appends every flow record to a local JSONL file.
+	TenantID    string
+	StateDir    string
+	FlowLogPath string
+	Logger      *slog.Logger
 }
 
 func (c *Config) defaults() {
@@ -128,6 +136,7 @@ type Edge struct {
 	syncSF   singleflight.Group
 	minSync  time.Duration // minSyncInterval; shorter in tests
 	unknown  *negCache     // device IDs absent from a fresh peer feed (security review #7)
+	stateSum [32]byte      // hash of the state last written to StateDir (guarded by syncMu)
 	reportCh chan struct{} // wakes the session reporter
 }
 
@@ -160,6 +169,9 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 	}
 	copy(e.wgPub[:], k.PublicKey().Bytes())
 	e.dec = newDecider(ctx, cp, cfg.Logger)
+	if cfg.FlowLogPath != "" {
+		e.flows.local = newLocalFlowLog(cfg.FlowLogPath, cfg.Logger)
+	}
 	return e, nil
 }
 
@@ -185,11 +197,23 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 func (e *Edge) run(ctx context.Context) error {
-	// 1. Trust material and peers from the Control Plane (retry until it is up).
-	for {
+	// 1. Trust material and peers from the Control Plane (retry until it is up). A Private
+	// Edge with a state cache starts from the cache instead of waiting (ADR-0014); the
+	// periodic peer sync then catches up when the Control Plane is reachable.
+	for first := true; ; first = false {
 		err := e.syncPeers(ctx)
 		if err == nil {
 			break
+		}
+		if first && e.cfg.StateDir != "" {
+			saved, lerr := e.loadState()
+			if lerr == nil {
+				e.log.Warn("control plane unreachable; enforcing cached state", "savedAt", saved, "err", err)
+				break
+			}
+			if !errors.Is(lerr, fs.ErrNotExist) {
+				e.log.Warn("state cache unusable", "err", lerr)
+			}
 		}
 		e.log.Warn("waiting for control plane", "err", err)
 		select {
@@ -247,6 +271,13 @@ func (e *Edge) run(ctx context.Context) error {
 	}
 
 	// 5. Background loops.
+	if e.flows.local != nil {
+		go func() {
+			if err := e.flows.local.run(ctx); err != nil {
+				e.log.Error("local flow log disabled", "err", err)
+			}
+		}()
+	}
 	go e.peerLoop(ctx)
 	go e.sweepLoop(ctx)
 	go e.flowLoop(ctx)
@@ -264,7 +295,7 @@ func (e *Edge) run(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServeTLS("", "") }()
 	e.log.Info("built-in deny active", "prefixes", len(e.guard.deny), "allowPrivate", e.cfg.AllowPrivate, "dohBlock", e.guard.blockDoH)
-	e.log.Info("edge ready", "session", e.cfg.ListenAddr, "wg", e.cfg.WGPort, "tun", name, "mtu", e.cfg.MTU, "kex", "X25519MLKEM768")
+	e.log.Info("edge ready", "tenant", e.cfg.TenantID, "stateDir", e.cfg.StateDir, "session", e.cfg.ListenAddr, "wg", e.cfg.WGPort, "tun", name, "mtu", e.cfg.MTU, "kex", "X25519MLKEM768")
 	select {
 	case <-ctx.Done():
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -372,7 +403,8 @@ func (e *Edge) ztnaName(d *device, dst netip.Addr, now time.Time) (string, bool)
 	return name, entitled
 }
 
-// syncPeers refreshes trust material and the device list from the Control Plane.
+// syncPeers refreshes trust material and the device list from the Control Plane, and caches
+// them in StateDir (ADR-0014).
 func (e *Edge) syncPeers(ctx context.Context) error {
 	e.syncMu.Lock()
 	defer e.syncMu.Unlock()
@@ -381,15 +413,27 @@ func (e *Edge) syncPeers(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("pki bundle: %w", err)
 	}
-	t, err := parseBundle(b, e.cfg.Root)
-	if err != nil {
-		return err
-	}
-	e.trust.Store(t)
 	peers, err := e.cp.Peers(ctx)
 	if err != nil {
 		return fmt.Errorf("peers: %w", err)
 	}
+	peers = e.scopePeers(peers)
+	if err := e.applyState(b, peers); err != nil {
+		return err
+	}
+	if err := e.saveState(b, peers); err != nil {
+		e.log.Warn("state cache not written", "err", err)
+	}
+	return nil
+}
+
+// applyState installs a PKI bundle and peer feed. Caller holds syncMu.
+func (e *Edge) applyState(b api.PKIBundle, peers api.EdgePeers) error {
+	t, err := parseBundle(b, e.cfg.Root, e.cfg.TenantID)
+	if err != nil {
+		return err
+	}
+	e.trust.Store(t)
 	res := e.reg.sync(peers, t.keys)
 	e.hub.setAllowed(peers.Connectors)
 	if len(res.removed) > 0 {

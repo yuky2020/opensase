@@ -118,7 +118,7 @@ commands:
   flows -tenant ID [-limit N] [-json]
   devices -tenant ID
   revoke -tenant ID -device ID
-  edge add -id ID | edge list | edge revoke -id ID
+  edge add -id ID [-tenant T] | edge list | edge revoke -id ID
   connector add -tenant ID -name N [-group G] [-key-out FILE]
   connector list -tenant ID
   connector revoke -tenant ID -id C
@@ -392,7 +392,7 @@ func bootstrap(ctx context.Context, g *globals, args []string) error {
 		return fmt.Errorf("create user: %w", err)
 	}
 	if *edgeID != "" {
-		if err := registerEdge(ctx, g, *edgeID); err != nil {
+		if err := registerEdge(ctx, g, *edgeID, ""); err != nil {
 			return err
 		}
 	}
@@ -544,15 +544,11 @@ func pqCheck(ctx context.Context, g *globals, args []string) error {
 	return nil
 }
 
-// adminEdge mirrors controlplane.AdminEdge.
-type adminEdge struct {
-	ID        string    `json:"id"`
-	Revoked   bool      `json:"revoked"`
-	CreatedAt time.Time `json:"createdAt,omitzero"`
-}
+type adminEdge = api.AdminEdge
 
-func registerEdge(ctx context.Context, g *globals, id string) error {
-	err := g.do(ctx, http.MethodPost, "/v1/admin/edges", adminEdge{ID: id}, nil)
+// registerEdge registers an edge; tenantID != "" makes it a Private Edge of that tenant (ADR-0014).
+func registerEdge(ctx context.Context, g *globals, id, tenantID string) error {
+	err := g.do(ctx, http.MethodPost, "/v1/admin/edges", adminEdge{ID: id, TenantID: tenantID}, nil)
 	switch {
 	case err == nil:
 		fmt.Fprintf(os.Stderr, "edge %s registered\n", id)
@@ -567,11 +563,12 @@ func registerEdge(ctx context.Context, g *globals, id string) error {
 func edgeAdd(ctx context.Context, g *globals, args []string) error {
 	fs := flag.NewFlagSet("edge add", flag.ExitOnError)
 	id := fs.String("id", "", "edge ID (as in its certificate, spiffe://opensase/edge/<id>)")
+	tenant := fs.String("tenant", "", "bind the edge to this tenant: a Private Edge (ADR-0014); empty = public multi-tenant edge")
 	_ = fs.Parse(args)
 	if *id == "" {
 		return errors.New("-id is required")
 	}
-	return registerEdge(ctx, g, *id)
+	return registerEdge(ctx, g, *id, *tenant)
 }
 
 func edgeList(ctx context.Context, g *globals) error {
@@ -580,9 +577,13 @@ func edgeList(ctx context.Context, g *globals) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tREVOKED\tCREATED")
+	fmt.Fprintln(tw, "ID\tTENANT\tREVOKED\tCREATED")
 	for _, e := range es {
-		fmt.Fprintf(tw, "%s\t%v\t%s\n", e.ID, e.Revoked, e.CreatedAt.Local().Format(time.DateTime))
+		tenant := e.TenantID
+		if tenant == "" {
+			tenant = "(public)"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\n", e.ID, tenant, e.Revoked, e.CreatedAt.Local().Format(time.DateTime))
 	}
 	return tw.Flush()
 }

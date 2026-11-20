@@ -484,6 +484,16 @@ class AppLocalizationsIt extends AppLocalizations {
   String get edgesCreateHelp => 'Registra l\'ID dell\'Edge prima di avviarlo con il suo certificato.';
 
   @override
+  String get edgesFieldTenant => 'Tenant (Private Edge)';
+
+  @override
+  String get edgesFieldTenantHelp =>
+      'Facoltativo. Lega l\'Edge a un solo tenant; vuoto per un Edge pubblico multi-tenant.';
+
+  @override
+  String get edgesPublic => 'pubblico';
+
+  @override
   String get flowsVerdict => 'Verdetto';
 
   @override

@@ -142,7 +142,10 @@ type fixture struct {
 	apps   []policy.PrivateApp // PrivateApps of the snapshots setPeer publishes
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
+
+// newFixtureCfg is newFixture with mod applied to the Edge Config.
+func newFixtureCfg(t *testing.T, mod func(*Config)) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	if err := pki.InitDir(dir, pki.InitOptions{}); err != nil {
@@ -161,7 +164,11 @@ func newFixture(t *testing.T) *fixture {
 	cp := &fakeCP{bundle: api.PKIBundle{CAPEM: string(auth.BundlePEM()), SnapshotKeys: []api.SigningKey{{KeyID: kid, Algorithm: "ed25519", PublicKey: sk.Public().(ed25519.PublicKey)}}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	e, err := newEdge(ctx, Config{Root: auth.Root.Cert, Cert: cert, WGPrivateKey: wgPriv, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, cp)
+	cfg := Config{Root: auth.Root.Cert, Cert: cert, WGPrivateKey: wgPriv, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if mod != nil {
+		mod(&cfg)
+	}
+	e, err := newEdge(ctx, cfg, cp)
 	if err != nil {
 		t.Fatal(err)
 	}

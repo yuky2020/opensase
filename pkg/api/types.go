@@ -24,7 +24,7 @@
 //	PUT  /v1/self/rules                 UserRules -> policy.Envelope (new snapshot) ; 403 if tenant disallows user rules (mTLS)
 //	POST /v1/decide                     DecideRequest -> DecideResponse (mTLS device cert, or edge cert with ?device=<id>, evaluated in edge mode)
 //	POST /v1/flows                      FlowBatch -> 202 (mTLS device or edge cert; with an edge cert the tenant comes from each record's DeviceID)
-//	GET  /v1/edge/peers                 -> EdgePeers; for Edges, mTLS with edge cert
+//	GET  /v1/edge/peers                 -> EdgePeers; for Edges, mTLS with edge cert (a Private Edge gets only its tenant)
 //	POST /v1/edge/sessions              EdgeSessions -> 204 (edge cert; devices with a live session on that edge, sent every 10s)
 //	GET  /v1/pki/ca                     -> PEM bundle of tenant CAs + snapshot public keys (JSON PKIBundle)
 //
@@ -42,7 +42,7 @@
 //	GET  /v1/admin/tenants/{t}/policy  -> TenantPolicy
 //	GET  /v1/admin/tenants/{t}/devices -> []AdminDevice (internal/controlplane)
 //	POST /v1/admin/tenants/{t}/devices/{d}/revoke -> 204
-//	POST /v1/admin/edges                AdminEdge -> 201 | 409
+//	POST /v1/admin/edges                AdminEdge -> 201 | 409 | 404 (unknown tenant); TenantID set = Private Edge (ADR-0014)
 //	GET  /v1/admin/edges                -> []AdminEdge
 //	POST /v1/admin/edges/{e}/revoke     -> 204 | 404
 //	POST /v1/admin/tenants/{t}/connectors              AdminConnectorRequest -> AdminConnectorCreated (one-time provisioning key)
@@ -268,9 +268,12 @@ type EdgeSessions struct {
 
 // AdminEdge is a registered Edge in the admin API.
 type AdminEdge struct {
-	ID        string    `json:"id"`
+	ID string `json:"id"`
+	// TenantID binds the Edge to one tenant (a Private Edge, ADR-0014); "" = public multi-tenant
+	// Edge. Set at registration only.
+	TenantID  string    `json:"tenantId,omitempty"`
 	Revoked   bool      `json:"revoked"`
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt time.Time `json:"createdAt,omitzero"`
 }
 
 // Broker request headers (ADR-0013).

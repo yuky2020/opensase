@@ -3,6 +3,30 @@
 ## Purpose
 The Workload Gateway is a customer-managed data-plane component deployed within public cloud environments (AWS, Azure, GCP) to secure non-user workload egress and cross-workload communication. Deployed via declarative Terraform modules inside autoscaling groups behind cloud-native gateway load balancers, it intercepts traffic from VPC and VNet subnets without requiring agent software on individual workload instances. It forwards internet-bound traffic to Edges for SWG and FWaaS inspection and routes workload-to-private-app flows into the fabric via ZTNA. By mapping cloud topology and resource metadata to workload identities, it enforces centralized policies while preserving traffic statefulness and flow symmetry.
 
+## Current implementation (ADR-0015)
+
+The first slice is the headless Linux Client in gateway mode. It runs on any Linux host or VM
+that the workloads use as their default route:
+
+```
+opensase-client -gateway 10.30.0.0/24 -enroll -control https://cp:9443 -key-file /run/secrets/pk -state /var/lib/opensase-gw
+```
+
+- The gateway enrolls as a device of a service user. The workloads get that user's policy, enforced
+  on the gateway and at the Edge.
+- Subnet traffic is NATed into the PQ WireGuard tunnel, with TCP MSS clamped.
+- Workload DNS (port 53) is diverted to the Edge resolver, so DNS policy and private app names
+  (ZTNA) work for workloads.
+- Fail closed: forwarded traffic can only leave through the tunnel, and after shutdown a kill
+  switch keeps blocking the subnets.
+- Needs `iptables` and the `net.ipv4.ip_forward` sysctl. IPv6 forwarding stays off.
+
+Not yet built:
+- GENEVE behind a cloud gateway load balancer;
+- per-workload identity (flows currently carry the gateway's device ID);
+- cloud metadata;
+- autoscaling hooks and Terraform.
+
 ## Responsibilities
 - Intercept outbound and east-west workload traffic using cloud-native gateway load balancing primitives (AWS GWLB with GENEVE encapsulation, Azure Gateway LB).
 - Decapsulate cloud gateway framing, extract inner IP payload headers, and ensure symmetric forward and return routing for active connections.

@@ -13,6 +13,9 @@
 #      through the Connector from the corp network, which the Edge cannot reach; a port
 #      outside the app fails; after `opensasectl connector revoke` access fails within ~20s.
 #      Destructive: the connector stays revoked (re-run bootstrap.sh to add a new one).
+#  10. Workload Gateway (ADR-0015): a workload on an internal subnet, with no Client, reaches the
+#      internet and the private app only through the gateway; policy and DNS policy apply;
+#      forwarded traffic cannot bypass the tunnel.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -106,6 +109,45 @@ if out="$(cexec nc -z -w 5 1.1.1.1 853 2>&1)"; then
 else
   ok "DoT to 1.1.1.1:853 blocked"
 fi
+
+# 10. Workload Gateway (ADR-0015).
+wexec() { docker compose --profile e2e exec -T workload "$@"; }
+log "workload gateway: starting the gateway and a workload on the vpc subnet"
+docker compose --profile e2e rm -sf gateway workload >/dev/null 2>&1 || true
+docker volume rm opensase_gatewaystate >/dev/null 2>&1 || true
+docker compose --profile e2e up -d gateway workload >/dev/null 2>&1
+i=0
+until docker compose --profile e2e logs gateway 2>/dev/null | grep -q 'workload gateway active'; do
+  i=$((i + 1))
+  if [ "$i" -ge 60 ]; then break; fi
+  sleep 1
+done
+if [ "$i" -lt 60 ]; then ok "gateway tunnel up and forwarding 10.30.0.0/24"; else ko "gateway not active"; docker compose --profile e2e logs --tail 30 gateway >&2; fi
+wexec sh -c 'ip route replace default via 10.30.0.2 && echo "nameserver 1.1.1.1" >/etc/resolv.conf'
+code=""
+for _ in 1 2 3 4 5; do
+  code="$(wexec curl -sS -m 15 -o /dev/null -w '%{http_code}' https://example.com 2>/dev/null)" && break
+  sleep 2
+done
+case "$code" in
+  2??|3??) ok "workload: curl https://example.com -> HTTP $code through the gateway" ;;
+  *) ko "workload: HTTPS through the gateway failed: $code" ;;
+esac
+# DNS to 1.1.1.1 is diverted to the Edge resolver: DNS policy applies to the workload.
+if wexec dig +short +time=3 +tries=1 ads.doubleclick.net | grep -q .; then ko "workload: blocklisted name resolved"; else ok "workload: ads.doubleclick.net blocked (DNS diverted to the Edge)"; fi
+if wexec nc -z -w 5 smtp.gmail.com 25 >/dev/null 2>&1; then ko "workload: TCP 25 connected"; else ok "workload: TCP 25 blocked"; fi
+i=0
+until body="$(wexec wget -qO- -T 5 http://intranet.acme.internal/ 2>/dev/null)" && echo "$body" | grep -q 'hello from intranet'; do
+  i=$((i + 1))
+  [ "$i" -ge 10 ] && break
+  sleep 2
+done
+if echo "${body:-}" | grep -q 'hello from intranet'; then ok "workload: private app via gateway + connector (ZTNA)"; else ko "workload: private app unreachable"; fi
+# Fail closed: the Control Plane is reachable from the gateway outside the tunnel (bypass
+# route), but forwarded workload traffic may only leave through the tunnel.
+cpip="$(docker compose --profile e2e exec -T gateway getent hosts controlplane | awk '{print $1; exit}')"
+if [ -n "$cpip" ] && wexec nc -z -w 4 "$cpip" 9443 >/dev/null 2>&1; then ko "workload reached $cpip outside the tunnel"; else ok "workload cannot bypass the tunnel (direct $cpip:9443 dropped)"; fi
+docker compose --profile e2e rm -sf gateway workload >/dev/null 2>&1 || true
 
 # 8. ZTNA private access through the Connector (ADR-0013).
 log "ZTNA: waiting for the Connector broker link"

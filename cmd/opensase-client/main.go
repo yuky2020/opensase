@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -37,6 +38,7 @@ const envProvisioningKey = "OPENSASE_PROVISIONING_KEY"
 
 type options struct {
 	state, control, key, keyFile, name, ca, network, tunName string
+	gateway                                                  string
 	enroll, routes, verbose, renewNow                        bool
 	statusEvery                                              time.Duration
 }
@@ -54,6 +56,7 @@ func main() {
 	flag.StringVar(&o.network, "network", "ethernet", "network type: wifi, cellular, roaming, ethernet, unknown")
 	flag.StringVar(&o.tunName, "tun", "osase0", "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
+	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
 	flag.BoolVar(&o.verbose, "v", false, "debug logging")
 	flag.DurationVar(&o.statusEvery, "status-every", 30*time.Second, "print status JSON at this interval (0 = never)")
 	flag.Parse()
@@ -97,6 +100,14 @@ func (p stubPlatform) OnEvent(kind, payload string) {
 }
 
 func run(o options, log *slog.Logger) error {
+	var gwCIDRs []netip.Prefix
+	if o.gateway != "" {
+		var err error
+		if gwCIDRs, err = parseGatewayCIDRs(o.gateway); err != nil {
+			return err
+		}
+		o.routes = true
+	}
 	if err := os.MkdirAll(o.state, 0o700); err != nil {
 		return err
 	}
@@ -181,6 +192,21 @@ func run(o options, log *slog.Logger) error {
 
 	if err := eng.StartDevice(dev, o.network); err != nil {
 		return err
+	}
+	if gwCIDRs != nil {
+		dns := netip.MustParseAddr("100.64.0.1")
+		for _, d := range tc.DNS {
+			if a, err := netip.ParseAddr(d); err == nil && a.Is4() {
+				dns = a
+				break
+			}
+		}
+		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log)
+		if err != nil {
+			eng.Stop()
+			return fmt.Errorf("workload gateway: %w", err)
+		}
+		defer cleanup()
 	}
 	fmt.Println(eng.Status())
 	if o.renewNow {

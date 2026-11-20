@@ -158,6 +158,43 @@ services:
         condition: service_started
     command: ["-state", "/var/lib/opensase-client", "-control", "https://controlplane:9443", "-ca", "/etc/opensase/root.crt", "-key-file", "/run/secrets/provisioning_key", "-enroll", "-renew-now", "-routes", "-name", "e2e-client", "-status-every", "5s"]
 
+  # Workload Gateway (ADR-0015): the Linux client in gateway mode, routing the vpc subnet into
+  # the PQ tunnel. vpc is internal: its only way out is through the gateway.
+  gateway:
+    profiles: ["e2e"]
+    image: opensase/client:dev
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.disable_ipv6: 0
+    volumes:
+      - ./pki/root.crt:/etc/opensase/root.crt:ro
+      - gatewaystate:/var/lib/opensase-client
+    secrets:
+      - provisioning_key
+    networks:
+      default: {}
+      vpc:
+        ipv4_address: 10.30.0.2
+    depends_on:
+      edge:
+        condition: service_started
+    command: ["-state", "/var/lib/opensase-client", "-control", "https://controlplane:9443", "-ca", "/etc/opensase/root.crt", "-key-file", "/run/secrets/provisioning_key", "-enroll", "-gateway", "10.30.0.0/24", "-name", "e2e-gateway", "-status-every", "30s"]
+
+  # A workload with no Client: its default route is the gateway (set by e2e.sh).
+  workload:
+    profiles: ["e2e"]
+    image: opensase/client:dev
+    cap_add:
+      - NET_ADMIN
+    networks:
+      vpc:
+        ipv4_address: 10.30.0.10
+    entrypoint: ["sleep", "infinity"]
+
 secrets:
   provisioning_key:
     file: ./provisioning.key # written by bootstrap.sh (mode 0600)
@@ -169,6 +206,13 @@ networks:
   # is attached. Only the Connector bridges it, outbound.
   corp:
     internal: true
+  # A workload subnet (ADR-0015) with no route to anything but the Workload Gateway.
+  vpc:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
 
 volumes:
   clientstate: {}
+  gatewaystate: {}

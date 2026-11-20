@@ -5,7 +5,7 @@ GOMOBILE ?= $(HOME)/go/bin/gomobile
 FLUTTER ?= $(shell command -v flutter 2>/dev/null || echo $(HOME)/opt/flutter/bin/flutter)
 AAR := clients/mobile/android/app/libs/opensase-core.aar
 
-.PHONY: test vet lint aar apk app-test portal portal-test bins dev-up dev-down e2e fmt
+.PHONY: test vet lint aar apk app-test portal portal-test bins dev-up dev-down e2e fmt sectest sectest-unit
 
 test:
 	go test -race ./...
@@ -46,6 +46,15 @@ dev-down:
 
 e2e:
 	deploy/dev/e2e.sh
+
+# Security suite (test/security/README.md). sectest: black box + Go checks against the
+# running dev stack (deploy/dev/bootstrap.sh); SECTEST_DESTRUCTIVE=1 adds floods.
+# sectest-unit: the Go checks that need no stack.
+sectest:
+	test/security/run.sh
+
+sectest-unit:
+	go test -count=1 -race -v -run '^TestUnit' ./test/security/go/
 
 fmt:
 	gofmt -w pkg cmd internal mobile

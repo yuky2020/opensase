@@ -8,7 +8,7 @@ COPY . .
 RUN go build -ldflags="-s -w" -o /out/opensase-client ./cmd/opensase-client
 
 FROM alpine:3.22
-RUN apk add --no-cache iproute2 ca-certificates curl bind-tools netcat-openbsd
+RUN apk add --no-cache iproute2 iptables ca-certificates curl bind-tools netcat-openbsd
 COPY --from=build /out/opensase-client /usr/local/bin/opensase-client
 COPY deploy/dev/client-entrypoint.sh /usr/local/bin/client-entrypoint.sh
 RUN chmod 0755 /usr/local/bin/client-entrypoint.sh

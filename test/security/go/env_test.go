@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -142,30 +143,60 @@ func (r resp) String() string {
 	return fmt.Sprintf("HTTP %d %s", r.code, bytes.TrimSpace(b))
 }
 
+// hdrNoRetry, set in a request's headers, disables the enroll rate-limit retry of do (for
+// the brute-force check, which wants to see the 429). The header is not sent.
+const hdrNoRetry = "X-Sectest-No-Retry"
+
+// do sends one request. Enrollment routes are rate-limited per source IP on failed attempts
+// (ST-05 fix; every host request shares the docker-proxy source address): a 429 there is
+// never a test result, so do waits out Retry-After and retries (at most twice).
 func do(c *http.Client, method, url string, body any, hdr map[string]string) resp {
-	var rd io.Reader
+	var raw []byte
 	switch b := body.(type) {
 	case nil:
 	case []byte:
-		rd = bytes.NewReader(b)
+		raw = b
 	case string:
-		rd = strings.NewReader(b)
+		raw = []byte(b)
 	default:
 		j, err := json.Marshal(b)
 		if err != nil {
 			return resp{err: err}
 		}
-		rd = bytes.NewReader(j)
+		raw = j
+	}
+	_, noRetry := hdr[hdrNoRetry]
+	enroll := strings.HasSuffix(url, "/v1/enroll") || strings.HasSuffix(url, "/v1/connector/enroll")
+	for attempt := 0; ; attempt++ {
+		r := doOnce(c, method, url, raw, body != nil, hdr)
+		if r.code != http.StatusTooManyRequests || !enroll || noRetry || attempt == 2 {
+			return r
+		}
+		wait := 61 * time.Second
+		if n, err := strconv.Atoi(r.hdr.Get("Retry-After")); err == nil && n > 0 && n <= 120 {
+			wait = time.Duration(n+1) * time.Second
+		}
+		fmt.Printf("sectest: enrollment rate-limited (429), waiting %v before retrying\n", wait)
+		time.Sleep(wait)
+	}
+}
+
+func doOnce(c *http.Client, method, url string, raw []byte, hasBody bool, hdr map[string]string) resp {
+	var rd io.Reader
+	if hasBody {
+		rd = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequest(method, url, rd) //nolint:noctx // client has a timeout
 	if err != nil {
 		return resp{err: err}
 	}
-	if rd != nil {
+	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	for k, v := range hdr {
-		req.Header.Set(k, v)
+		if k != hdrNoRetry {
+			req.Header.Set(k, v)
+		}
 	}
 	r, err := c.Do(req)
 	if err != nil {
@@ -481,4 +512,20 @@ func edgeDenied(r resp, what string) error {
 		return fmt.Errorf("%s: edge set up a session (%s)", what, r)
 	}
 	return fmt.Errorf("%s: inconclusive, want 401/403: %s", what, r)
+}
+
+// sessionOK retries an epoch-0 session with cert until the Edge answers 200 or d elapses
+// (the Edge picks up just-issued serials with a rate-limited on-demand sync).
+func (e *env) sessionOK(cert tls.Certificate, d time.Duration) error {
+	deadline := time.Now().Add(d)
+	for {
+		r := e.session(cert)
+		if r.code == http.StatusOK {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("last answer %s", r)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }

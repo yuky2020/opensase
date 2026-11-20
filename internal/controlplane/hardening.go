@@ -211,19 +211,19 @@ func (l *pollLimiter) release(id string) {
 	}
 }
 
-// limitEnroll caps FAILED enrollment attempts per source IP and in total (ST-05):
+// limitEnroll caps FAILED enrollment attempts per source IP (ST-05):
 // provisioning keys are high-entropy, but unlimited guessing still costs CPU (CSR checks)
 // and log volume. Successful enrollments are free, so many devices behind one NAT can enroll
 // at once. Over the limit: 429 with Retry-After. The source is the TCP peer (no proxy
-// headers trusted).
+// headers trusted). There is deliberately no global cap: a few sources could spend it and
+// block every enrollment; provisioning keys carry 256 random bits, so distributed guessing is moot.
 func (s *Server) limitEnroll(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			ip = r.RemoteAddr
 		}
-		global := s.cfg.EnrollRate * enrollGlobalFactor
-		if !s.enrollLimit.has(ip, s.cfg.EnrollRate) || !s.enrollLimit.has("*", global) {
+		if !s.enrollLimit.has(ip, s.cfg.EnrollRate) {
 			if s.enrollLimit.take("log:"+ip, 1) == 1 {
 				s.log.WarnContext(r.Context(), "enroll rate limit hit", "remote", ip)
 			}
@@ -234,7 +234,7 @@ func (s *Server) limitEnroll(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(sw, r)
 		if sw.code >= 400 && sw.code < 500 {
-			s.enrollLimit.takeKeys(1, global, ip, "*")
+			s.enrollLimit.take(ip, 1)
 		}
 	})
 }
@@ -294,29 +294,6 @@ func (l *rateLimiter) has(key string, limit int) bool {
 	defer l.mu.Unlock()
 	w, ok := l.m[key]
 	return !ok || now.Sub(w.start) >= l.window || w.n < limit
-}
-
-// takeKeys reserves n units on the per-source key and on the global key (limit global)
-// atomically: both or neither.
-func (l *rateLimiter) takeKeys(n, global int, key, globalKey string) bool {
-	now := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	win := func(k string) *rateWindow {
-		w, ok := l.m[k]
-		if !ok || now.Sub(w.start) >= l.window {
-			w = &rateWindow{start: now}
-			l.m[k] = w
-		}
-		return w
-	}
-	wk, wg := win(key), win(globalKey)
-	if wk.n+n > l.limit || wg.n+n > global {
-		return false
-	}
-	wk.n += n
-	wg.n += n
-	return true
 }
 
 // prune forgets expired windows.

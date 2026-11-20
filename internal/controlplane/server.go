@@ -39,7 +39,6 @@ const (
 	DefaultFlowRetention = 7 * 24 * time.Hour
 	DefaultFlowRate      = 1000 // flow records per device per minute
 	DefaultEnrollRate    = 30   // enrollment attempts per source IP per minute (ST-05)
-	enrollGlobalFactor   = 20   // all sources together: 20x the per-IP rate
 	maxLongPollsPerDev   = 2
 
 	// Per-route deadlines (security review #8). The snapshot long-poll gets wait+10s.
@@ -86,7 +85,7 @@ type Server struct {
 
 	polls       *pollLimiter
 	flowLimit   *rateLimiter
-	enrollLimit *rateLimiter // per source IP, plus the global key "*" (ST-05)
+	enrollLimit *rateLimiter // failed enroll attempts per source IP (ST-05)
 }
 
 // New validates cfg and returns a Server.

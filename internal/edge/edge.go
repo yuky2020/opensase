@@ -435,16 +435,15 @@ func (e *Edge) applyState(b api.PKIBundle, peers api.EdgePeers) error {
 	}
 	e.trust.Store(t)
 	res := e.reg.sync(peers, t.keys)
-	e.hub.setAllowed(peers.Connectors)
-	if len(res.removed) > 0 {
-		e.reg.mu.Lock()
-		for _, d := range res.removed {
-			if e.reg.devices[d.id] == nil && e.wg != nil {
-				e.removePeer(d)
-			}
+	e.hub.setAllowed(peers.Connectors, e.supersededGrace())
+	e.reg.mu.Lock()
+	for _, d := range res.removed {
+		if e.reg.devices[d.id] == nil && e.wg != nil {
+			e.removePeer(d)
 		}
-		e.reg.mu.Unlock()
 	}
+	e.expireSupersededLocked(time.Now())
+	e.reg.mu.Unlock()
 	if res.updated > 0 || len(res.removed) > 0 || res.invalid > 0 {
 		e.log.Info("peers synced", "devices", len(peers.Devices), "updated", res.updated, "removed", len(res.removed), "invalid", res.invalid)
 	}
@@ -593,6 +592,33 @@ func (e *Edge) findAfterSync(ctx context.Context, key string, found func() bool)
 		// Joined a sync that started before this call: it may predate the enrollment.
 	}
 	return false
+}
+
+// supersededGrace is how long a session may keep running on a certificate the device has
+// since renewed: one PSK rotation (when clients set up the session again with the new
+// certificate) plus a minute.
+func (e *Edge) supersededGrace() time.Duration { return e.cfg.RotateAfter + time.Minute }
+
+// expireSupersededLocked removes peers whose session certificate is no longer the device's
+// current one for longer than supersededGrace (ST-10): a stolen superseded certificate
+// cannot keep a tunnel alive for the rest of its 24h lifetime. Caller holds reg.mu.
+func (e *Edge) expireSupersededLocked(now time.Time) {
+	for _, d := range e.reg.devices {
+		cur := e.reg.serial(d.id)
+		if !d.hasPeer || d.sessionSerial == "" || cur == "" || cur == d.sessionSerial {
+			d.staleSince = time.Time{}
+			continue
+		}
+		if d.staleSince.IsZero() {
+			d.staleSince = now
+			continue
+		}
+		if now.Sub(d.staleSince) > e.supersededGrace() && e.wg != nil {
+			e.log.Info("session certificate superseded; removing peer", "device", d.id)
+			e.removePeer(d)
+			d.hasPeer, d.staleSince = false, time.Time{}
+		}
+	}
 }
 
 // expireSessions removes the WireGuard peer of every device whose session certificate has

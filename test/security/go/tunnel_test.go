@@ -92,6 +92,23 @@ func (f *fixture) openTunnel(d *ident) (*tunnel, error) {
 	return nil, fmt.Errorf("no ping reply from %s through the tunnel", edgeTunIP)
 }
 
+var pingID struct {
+	sync.Mutex
+	n uint16
+}
+
+// ping reports whether the Edge answers an echo request on its tunnel address.
+func (tn *tunnel) ping() bool {
+	pingID.Lock()
+	pingID.n++
+	id := 0x6000 + pingID.n
+	pingID.Unlock()
+	tn.send(icmpEcho(tn.ip4, netip.MustParseAddr(edgeTunIP), id))
+	return tn.wait(1500*time.Millisecond, func(p *packet.Packet) bool {
+		return p.Protocol == packet.ProtoICMP && p.Src == netip.MustParseAddr(edgeTunIP) && p.SrcPort == id
+	}) != nil
+}
+
 func (tn *tunnel) read() {
 	for {
 		select {

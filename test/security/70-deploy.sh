@@ -68,11 +68,13 @@ if [ -n "$problems" ]; then
 else
   pass SEC-DEP-003 "controlplane: non-root, no Edge keys, CA/snapshot keys read-only"
 fi
-# Least privilege beyond non-root: the CP needs no capability (it binds 9443).
-if [ "$bnd" = 0000000000000000 ] && [ "$nnp" = 1 ]; then
-  pass SEC-DEP-004 "controlplane: cap_drop ALL and no-new-privileges"
+# Least privilege beyond non-root (ST-08 fix): the CP needs no capability (it binds 9443),
+# no privilege gain and no writable root filesystem (writes go to /data, /pki/tenants, /tmp).
+ro="$(insp "$CP" '{{.HostConfig.ReadonlyRootfs}}')"
+if [ "$bnd" = 0000000000000000 ] && [ "$nnp" = 1 ] && [ "$ro" = true ]; then
+  pass SEC-DEP-004 "controlplane: cap_drop ALL, no-new-privileges, read-only rootfs (ST-08)"
 else
-  fail SEC-DEP-004 "controlplane: cap_drop ALL and no-new-privileges" "CapBnd=$bnd NoNewPrivs=$nnp (compose sets neither)" ST-08
+  fail SEC-DEP-004 "controlplane: cap_drop ALL, no-new-privileges, read-only rootfs (ST-08)" "CapBnd=$bnd NoNewPrivs=$nnp ReadonlyRootfs=$ro"
 fi
 
 # Connector (ADR-0013): non-root, cap_drop ALL, read-only root fs, no published port.
@@ -111,16 +113,15 @@ done
   fail SEC-DEP-010 "deploy/dev secrets 0600, key/state directories 0700" "$bad"
 
 # The Control Plane database holds every tenant's flows (user browsing history), policies,
-# devices and provisioning-key hashes: it must not be world-readable.
+# devices and provisioning-key hashes: owner-only (0700 dir, 0600 files).
 bad=""
 for f in data data/controlplane.db data/controlplane.db-wal data/controlplane.db-shm; do
   [ -e "$DEV/$f" ] || continue
   m="$(mode "$DEV/$f")"
-  o="${m#"${m%?}"}" # the "other" permission digit
-  [ "$o" = 0 ] || bad="$bad $f=$m"
+  case "$m" in *00) ;; *) bad="$bad $f=$m" ;; esac # owner only: 0700 dir, 0600 files
 done
-[ -z "$bad" ] && pass SEC-DEP-011 "Control Plane database not world-readable" ||
-  fail SEC-DEP-011 "Control Plane database not world-readable" "$bad" ST-09
+[ -z "$bad" ] && pass SEC-DEP-011 "Control Plane database owner-only (0700/0600) (ST-09)" ||
+  fail SEC-DEP-011 "Control Plane database owner-only (0700/0600) (ST-09)" "$bad"
 
 # Area 6: the Edge state cache and local flow log (ADR-0014) are 0600 in a 0700 directory.
 bad=""

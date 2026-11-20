@@ -31,6 +31,8 @@ const (
 // brokerConn is one live connector connection.
 type brokerConn struct {
 	id, tenant, group string
+	serial            string            // certificate serial of the link
+	staleSince        time.Time         // when the feed first listed another serial (ST-10); guarded by hub.mu
 	cc                *http2.ClientConn //nolint:staticcheck // SA1019: http.ClientConn cannot wrap an existing (accepted) conn
 	nc                net.Conn
 	done              chan struct{} // closed when the connection is gone
@@ -87,7 +89,10 @@ func newConnectorHub(log *slog.Logger) *connectorHub {
 
 // setAllowed applies the connector list of a fresh peer feed and closes the connections of
 // connectors that are gone (revoked) or whose tenant or group changed.
-func (h *connectorHub) setAllowed(list []api.EdgeConnector) {
+// setAllowed installs the allow-list. A live link whose certificate the connector has since
+// renewed is dropped once that lasts longer than grace (ST-10).
+func (h *connectorHub) setAllowed(list []api.EdgeConnector, grace time.Duration) {
+	now := time.Now()
 	m := make(map[string]api.EdgeConnector, len(list))
 	for _, c := range list {
 		if pki.ValidID(c.ConnectorID) && pki.ValidID(c.TenantID) {
@@ -99,7 +104,17 @@ func (h *connectorHub) setAllowed(list []api.EdgeConnector) {
 	var drop []*brokerConn
 	keep := h.conns[:0]
 	for _, b := range h.conns {
-		if a, ok := m[b.id]; ok && a.TenantID == b.tenant && a.Group == b.group {
+		a, ok := m[b.id]
+		if ok && a.CertSerial != "" && b.serial != "" && a.CertSerial != b.serial {
+			if b.staleSince.IsZero() {
+				b.staleSince = now
+			} else if now.Sub(b.staleSince) > grace {
+				ok = false
+			}
+		} else {
+			b.staleSince = time.Time{}
+		}
+		if ok && a.TenantID == b.tenant && a.Group == b.group {
 			keep = append(keep, b)
 		} else {
 			drop = append(drop, b)
@@ -140,7 +155,7 @@ func (h *connectorHub) admit(ctx context.Context, tc *tls.Conn) error {
 }
 
 // register wraps an authenticated connector connection as an HTTP/2 client connection.
-func (h *connectorHub) register(tc *tls.Conn, id pki.Identity, notAfter time.Time) (*brokerConn, error) {
+func (h *connectorHub) register(tc *tls.Conn, id pki.Identity, serial string, notAfter time.Time) (*brokerConn, error) {
 	a, ok := h.isAllowed(id)
 	if !ok {
 		return nil, errors.New("connector not in the peer feed (unknown, revoked or other tenant)")
@@ -150,7 +165,7 @@ func (h *connectorHub) register(tc *tls.Conn, id pki.Identity, notAfter time.Tim
 	if err != nil {
 		return nil, fmt.Errorf("http2: %w", err)
 	}
-	b := &brokerConn{id: id.ConnectorID, tenant: id.TenantID, group: a.Group, cc: cc, nc: wc, done: wc.done}
+	b := &brokerConn{id: id.ConnectorID, tenant: id.TenantID, group: a.Group, serial: serial, cc: cc, nc: wc, done: wc.done}
 	h.mu.Lock()
 	// Re-check under the lock: a peer sync may have revoked it meanwhile.
 	cur, ok := h.allowed[id.ConnectorID]
@@ -291,7 +306,7 @@ func (e *Edge) acceptConnector(ctx context.Context, tc *tls.Conn) {
 		_ = tc.Close()
 		return
 	}
-	b, err := e.hub.register(tc, id, cs.PeerCertificates[0].NotAfter)
+	b, err := e.hub.register(tc, id, cs.VerifiedChains[0][0].SerialNumber.String(), cs.PeerCertificates[0].NotAfter)
 	if err != nil {
 		e.log.Info("connector refused", "remote", remote, "connector", id.ConnectorID, "tenant", id.TenantID, "err", err)
 		_ = tc.Close()

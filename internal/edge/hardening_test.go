@@ -357,3 +357,32 @@ func TestSupersededCertRefused(t *testing.T) {
 		t.Fatal("current connector cert refused")
 	}
 }
+
+// TestSupersededSessionExpires checks ST-10: a session set up with a certificate the device has
+// since renewed is removed once the mismatch outlasts the grace period, but survives it within
+// the grace period (the device rotates onto the new certificate).
+func TestSupersededSessionExpires(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	_ = fx.e.syncPeers(context.Background())
+	srv := fx.sessionServer()
+	k, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	old := fx.deviceCert("acme", "d1")
+	if code, _, _ := postSession(t, fx.client(&old), srv.URL, api.SessionRequest{WGPublicKey: base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())}); code != 200 {
+		t.Fatal(code)
+	}
+	fx.deviceCert("acme", "d1") // renewed: the feed now lists the new serial
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	fx.e.reg.mu.Lock()
+	fx.e.expireSupersededLocked(now.Add(fx.e.supersededGrace() - time.Second))
+	within := fx.e.reg.devices["d1"].hasPeer
+	fx.e.expireSupersededLocked(now.Add(fx.e.supersededGrace() + 2*time.Second))
+	after := fx.e.reg.devices["d1"].hasPeer
+	fx.e.reg.mu.Unlock()
+	if !within || after {
+		t.Fatalf("hasPeer within grace %v, after grace %v; want true, false", within, after)
+	}
+}

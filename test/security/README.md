@@ -27,6 +27,7 @@ make sectest-unit                # Go checks that need no stack (CI)
 test/security/run.sh 10-tls 70-deploy          # only some shell areas
 SECTEST_GO_RUN='TestAuth|TestPKI' make sectest  # subset of the Go checks
 SECTEST_DESTRUCTIVE=1 make sectest              # also floods (loopback only)
+SECTEST_SLOW=1 make sectest                     # also checks that superseded tunnels die (waits ~12 min)
 OPENSASE_SECTEST=1 go test -v -run TestDataPlane ./test/security/go/
 ```
 
@@ -48,9 +49,10 @@ The results go to `$SECTEST_RESULTS` (a temp file by default). The Go log is nex
 | `go/auth_test.go` | 1 | Admin token variants and timing; role isolation matrix (device, connector and Edge certs on every route, the Edge session channel and the broker); revoked device, connector and Edge; superseded certificates |
 | `go/tenant_test.go` | 2 | Snapshot, decide, flows, user rules and connector config across tenants; Private Edge feed, decide and flows |
 | `go/tls_test.go` | 3 | Classic groups; forged SPIFFE URIs from a real tenant CA; foreign root; expired and not-yet-valid certs; chain shape; unknown serials at the Edge; broker ALPN |
-| `go/input_test.go` | 4 | Oversized bodies and headers; malformed JSON; traversal and injection in IDs; policy validation; long-poll cap; flow rate limit; enroll brute force; key expiry; flow clamping; JSON fuzz |
+| `go/input_test.go` | 4 | Oversized bodies and headers; malformed JSON; traversal and injection in IDs; policy validation; long-poll cap; flow rate limit; key expiry; flow clamping; JSON fuzz |
+| `go/zz_ratelimit_test.go` | 4 | Enroll brute force (429 + Retry-After). It runs last because it spends this host's enroll budget for a minute |
 | `go/dataplane_test.go` + `go/tunnel_test.go` | 5 | Hostile WireGuard client (real PQ session, raw packets): built-in deny, private ranges, Edge own ports, DNS bypass, port policy, stateless segments, spoofed sources, device-to-device, ZTNA cross-tenant, IPv6 |
-| `go/offline_test.go` | 6 | Throwaway Edge container (`--network none`) started from crafted `state.json` caches |
+| `go/offline_test.go` | 6 | Throwaway Edge container (`--network none`) started from crafted signed `state.json` caches. The control is the Edge's own cache; tampered variants are re-signed with `pki/edge/edge.key`, which models an attacker who holds the Edge key |
 | `go/flood_test.go` | 4 | Destructive (opt-in): idle-connection flood |
 | `go/unit_test.go` | 1, 3 | No stack: `pki.VerifyPeer`, `ValidID`/`ParseURI`, `ExpectServer`, `pqsession.Harden` and PSK binding |
 
@@ -73,6 +75,12 @@ The results go to `$SECTEST_RESULTS` (a temp file by default). The Go log is nex
   - Outbound probes go only to the e2e hosts (example.com, smtp.gmail.com:25/587). Probes to
     public resolvers and DoH endpoints only check that they are blocked.
   - Floods need `SECTEST_DESTRUCTIVE=1` and stay on loopback.
+- **Enroll rate limit.**
+  - The CP allows 30 failed enrollments per source IP per minute, and every host request
+    shares the docker-proxy source IP.
+  - `do()` waits out `Retry-After` and retries enrollment calls, so a 429 is never a result or a
+    control. The brute-force check opts out of the retry.
+  - Keep new failing-enrollment probes few, or the run slows down by a minute.
 - **Product code is never edited.** A failing check stays in the suite as `KNOWN-FAIL <id>`.
 
 ## Adding a check

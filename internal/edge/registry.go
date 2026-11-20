@@ -48,6 +48,11 @@ type device struct {
 	// certNotAfter is the expiry of the device certificate that set up or last rotated the
 	// session; the peer is removed once it passes (expireSessions).
 	certNotAfter time.Time
+	// sessionSerial is the serial of that certificate; staleSince is when the feed first
+	// listed a different (renewed) serial. The peer is removed once that lasts longer than
+	// the grace period (ST-10).
+	sessionSerial string
+	staleSince    time.Time
 }
 
 // registry holds devices known from the Control Plane peer feed and their tunnel state.

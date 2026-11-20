@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"net/url"
 	"testing"
 	"time"
@@ -189,7 +190,7 @@ func TestPKIAndTLS(t *testing.T) {
 
 	// A forged connector cert with a real connector ID but a serial the CP never issued.
 	// The CP checks serials; the Edge broker only checks the peer feed (ID + tenant).
-	check(t, "SEC-TLS-011", "tenant-CA-signed connector cert with unknown serial refused by the broker", "ST-04", func(t *testing.T) error {
+	check(t, "SEC-TLS-011", "tenant-CA-signed connector cert with unknown serial refused by the broker (ST-04)", "", func(t *testing.T) error {
 		ca, err := f.tenantCA(f.tA)
 		if err != nil {
 			return skipf("tenant CA: %v", err)
@@ -201,6 +202,9 @@ func TestPKIAndTLS(t *testing.T) {
 		if err := refused(do(f.cp(cert), "GET", f.cpURL+"/v1/connector/config", nil, nil), "CP connector config", 403); err != nil {
 			return err
 		}
+		if err := brokerProbe(f.env, f.connA.cert, api.BrokerALPN); err != nil {
+			return fmt.Errorf("control: real connector A on the broker: %w", err)
+		}
 		if brokerProbe(f.env, cert, api.BrokerALPN) == nil {
 			return errors.New("edge broker accepted a connector cert whose serial the CP never issued (no serial check at the Edge)")
 		}
@@ -209,7 +213,7 @@ func TestPKIAndTLS(t *testing.T) {
 
 	// Same for devices: a tenant-CA-signed cert for a real device ID with a serial the CP
 	// never issued. The CP refuses it (serial check); the Edge session channel must too.
-	check(t, "SEC-TLS-012", "tenant-CA-signed device cert with unknown serial refused by the Edge", "ST-01", func(t *testing.T) error {
+	check(t, "SEC-TLS-012", "tenant-CA-signed device cert with unknown serial refused by the Edge (ST-01)", "", func(t *testing.T) error {
 		ca, err := f.tenantCA(f.tA)
 		if err != nil {
 			return skipf("tenant CA: %v", err)
@@ -221,7 +225,14 @@ func TestPKIAndTLS(t *testing.T) {
 		if err := refused(do(f.cp(cert), "GET", f.cpURL+"/v1/snapshot", nil, nil), "CP snapshot", 403); err != nil {
 			return err
 		}
-		return edgeDenied(f.session(cert), "device cert with a serial the CP never issued")
+		if err := f.sessionOK(f.devA1.cert, 20*time.Second); err != nil {
+			return fmt.Errorf("control: real device A1 on the edge: %w", err)
+		}
+		r := f.session(cert)
+		if r.code != http.StatusForbidden {
+			return fmt.Errorf("device cert with a serial the CP never issued: want 403, got %s", r)
+		}
+		return nil
 	})
 
 	// The same identity under a root the stack does not know.

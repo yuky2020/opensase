@@ -179,6 +179,7 @@ func (e *Edge) setupSession(_ context.Context, d *device, cs tls.ConnectionState
 		return api.SessionResponse{}, http.StatusInternalServerError, fmt.Errorf("configure wireguard peer: %w", err)
 	}
 	d.wgPub, d.hasPeer, d.sessionID, d.epoch, d.certNotAfter = clientPub, true, sessionID, epoch, notAfter
+	d.sessionSerial, d.staleSince = cs.VerifiedChains[0][0].SerialNumber.String(), time.Time{}
 
 	dns := []string{EdgeIPv4.String()}
 	if e.ipv6 {

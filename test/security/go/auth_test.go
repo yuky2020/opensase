@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -356,44 +357,120 @@ func TestAuth(t *testing.T) {
 
 	// The Edge session channel is a route too: a superseded (possibly stolen) certificate
 	// must not set up tunnels once the device has renewed.
-	check(t, "SEC-AUTH-031", "superseded device certificate refused on the Edge session channel", "ST-01", func(t *testing.T) error {
+	check(t, "SEC-AUTH-031", "superseded device certificate refused on the Edge session channel (ST-01)", "", func(t *testing.T) error {
 		old, cur, err := sup(t)
 		if err != nil {
 			return err
 		}
-		if err := want(do(f.edge(cur.cert), "POST", f.edgeURL+"/v1/session", `{"wgPublicKey":"`+randWGKey()+`","epoch":0}`, nil), "control: new cert on edge", 200); err != nil {
-			return err
+		// Control: the renewed certificate sets up a session (the Edge learns the new serial
+		// through its on-demand sync, so allow a few attempts).
+		if err := f.sessionOK(cur.cert, 20*time.Second); err != nil {
+			return fmt.Errorf("control: new cert on edge: %w", err)
 		}
-		r := do(f.edge(old.cert), "POST", f.edgeURL+"/v1/session", `{"wgPublicKey":"`+randWGKey()+`","epoch":0}`, nil)
+		r := f.session(old.cert)
 		t.Logf("superseded cert on edge: %s", r)
-		switch r.code {
-		case http.StatusForbidden:
-			return nil
-		case http.StatusOK:
-			return errors.New("edge set up a WireGuard session for the superseded certificate (HTTP 200)")
+		if r.code != http.StatusForbidden {
+			return fmt.Errorf("want 403 for the superseded certificate, got %s", r)
 		}
-		return fmt.Errorf("inconclusive (want 403): %s", r)
+		return nil
 	})
 
-	// The lost-response retry window: once the new certificate has been used (so its
-	// response was clearly delivered), the superseded certificate must not renew again.
-	// Otherwise a thief of the old key takes over the device and locks the owner out.
-	check(t, "SEC-AUTH-032", "superseded certificate cannot renew after the new one was used", "ST-02", func(t *testing.T) error {
-		old, cur, err := sup(t)
+	// The lost-response retry window: the superseded certificate may renew again only while
+	// the new certificate has never been used (its response may have been lost). Once the
+	// new one authenticated, a thief of the old key must not take the device over.
+	check(t, "SEC-AUTH-032", "superseded certificate cannot renew after the new one was used (ST-02)", "", func(t *testing.T) error {
+		old, _, err := sup(t)
 		if err != nil {
 			return err
+		}
+		// Control: lost-response retry (new cert never used) still works, so the refusal
+		// below is due to the fix and not to a broken renewal path.
+		cur, err := f.renew(old)
+		if err != nil {
+			return fmt.Errorf("control: retry with the superseded cert before the new one was used: %w", err)
 		}
 		if err := want(do(f.cp(cur.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil), "control: new cert used", 200); err != nil {
 			return err
 		}
-		stolen, err := f.renew(old)
-		if err != nil {
-			return nil // refused
+		r := do(f.cp(old.cert), "POST", f.cpURL+"/v1/renew", api.RenewRequest{CSRPEM: csrPEM(newKey())}, nil)
+		if r.code == http.StatusOK {
+			ro := do(f.cp(cur.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil)
+			return fmt.Errorf("superseded cert renewed again after the new one was used; owner's cert now %d", ro.code)
 		}
-		// Demonstrate the impact: the attacker's cert works, the owner's is locked out.
-		ra := do(f.cp(stolen.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil)
-		ro := do(f.cp(cur.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil)
-		return fmt.Errorf("superseded cert renewed again: attacker cert %d, owner's current cert %d", ra.code, ro.code)
+		if err := want(r, "renew with the superseded cert", http.StatusForbidden, http.StatusConflict); err != nil {
+			return err
+		}
+		return want(do(f.cp(cur.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil), "owner's cert after the attempt", 200)
+	})
+
+	// A tunnel set up with a certificate that is later superseded: once the device has
+	// renewed, the Edge drops that WireGuard peer after a grace of one PSK rotation plus a
+	// minute (ST-10 fix: 11 min with the dev stack's default -rotate 10m), so a stolen key
+	// does not keep a live tunnel until NotAfter. Slow: runs only with SECTEST_SLOW=1.
+	check(t, "SEC-AUTH-034", "tunnel of a superseded certificate torn down after the renewal grace", "", func(t *testing.T) error {
+		if os.Getenv("SECTEST_SLOW") != "1" {
+			return skipf("slow (waits the 11 min renewal grace): set SECTEST_SLOW=1; unit test TestSupersededSessionExpires covers it")
+		}
+		d, err := f.enrollDevice(f.tA, f.uA, "sectest-livetunnel")
+		if err != nil {
+			return skipf("enroll: %v", err)
+		}
+		tn, err := f.openTunnel(d)
+		if err != nil {
+			return skipf("tunnel: %v", err)
+		}
+		defer tn.close()
+		n, err := f.renew(d)
+		if err != nil {
+			return skipf("renew: %v", err)
+		}
+		if err := want(do(f.cp(n.cert), "GET", f.cpURL+"/v1/snapshot", nil, nil), "control: new cert used", 200); err != nil {
+			return err
+		}
+		deadline := time.Now().Add(12*time.Minute + 30*time.Second) // grace 11 min + sync + margin
+		for tn.ping() {
+			if time.Now().After(deadline) {
+				return errors.New("tunnel set up with the superseded certificate still carries traffic 12.5 min after renewal")
+			}
+			time.Sleep(2 * time.Second)
+		}
+		return nil
+	})
+
+	// Superseded connector certificate on the broker (ST-04): after a connector renewal
+	// only the new certificate may connect.
+	check(t, "SEC-AUTH-035", "superseded connector certificate refused by the Edge broker (ST-04)", "", func(t *testing.T) error {
+		cn, err := f.enrollConnector(f.tA, "sectest-conn-renew")
+		if err != nil {
+			return skipf("enroll connector: %v", err)
+		}
+		defer f.admin("POST", "/tenants/"+cn.tenant+"/connectors/"+cn.id+"/revoke", nil)
+		k := newKey()
+		rr, err := decode[api.RenewResponse](do(f.cp(cn.cert), "POST", f.cpURL+"/v1/connector/renew", api.RenewRequest{CSRPEM: csrPEM(k)}, nil))
+		if err != nil {
+			return skipf("connector renew: %v", err)
+		}
+		nc, err := tlsCert([]byte(rr.CertificatePEM), k)
+		if err != nil {
+			return err
+		}
+		if err := want(do(f.cp(nc), "GET", f.cpURL+"/v1/connector/config", nil, nil), "control: new connector cert on CP", 200); err != nil {
+			return err
+		}
+		var perr error
+		for range 10 { // the Edge learns the new serial on sync
+			if perr = brokerProbe(f.env, nc, api.BrokerALPN); perr == nil {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if perr != nil {
+			return fmt.Errorf("control: new connector cert on broker: %w", perr)
+		}
+		if brokerProbe(f.env, cn.cert, api.BrokerALPN) == nil {
+			return errors.New("broker accepted the superseded connector certificate")
+		}
+		return nil
 	})
 
 	// Two renewals ago: no longer accepted even on /v1/renew.

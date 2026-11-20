@@ -1,0 +1,15 @@
+# Builds with the classic builder too (no BuildKit-only syntax).
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -ldflags="-s -w" -o /out/controlplane ./cmd/controlplane && \
+    go build -ldflags="-s -w" -o /out/opensasectl ./cmd/opensasectl
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/controlplane /controlplane
+COPY --from=build /out/opensasectl /opensasectl
+EXPOSE 9443/tcp
+ENTRYPOINT ["/controlplane"]

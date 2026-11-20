@@ -1,0 +1,170 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:opensase_admin/src/api/admin_models.dart';
+import 'package:opensase_admin/src/api/json.dart';
+
+/// Sample JSON written by hand from the Go struct tags in pkg/api/types.go and
+/// pkg/policy/types.go, with every field set (so omitempty does not drop anything).
+const tenantPolicyJson = '''
+{
+  "defaultAction": "block",
+  "allowUserRules": true,
+  "lockdown": false,
+  "rules": [
+    {
+      "id": "allow-web",
+      "source": "tenant",
+      "priority": 10,
+      "action": "allow",
+      "match": {
+        "apps": ["com.android.chrome"],
+        "networks": ["wifi", "cellular"],
+        "protocols": ["tcp"],
+        "cidrs": ["10.0.0.0/8", "fd00::/8"],
+        "ports": [{"from": 443, "to": 0}, {"from": 8000, "to": 8080}],
+        "domains": ["example.com", "*.example.org"]
+      },
+      "log": true,
+      "description": "web"
+    }
+  ],
+  "apps": {
+    "com.whatsapp": {"wifi": "allow", "cellular": "block", "roaming": "ask"}
+  },
+  "dns": {
+    "blockResponse": "nxdomain",
+    "blocklists": [{"id": "ads", "name": "Ads", "category": "ads", "domains": ["ads.example.com"]}],
+    "allowDomains": ["good.example.com"],
+    "blockDomains": ["bad.example.com"]
+  },
+  "privateApps": [
+    {
+      "id": "intranet",
+      "name": "Intranet",
+      "domains": ["intranet.acme.internal"],
+      "ports": [{"from": 443, "to": 0}],
+      "connectorGroup": "dc1",
+      "users": ["alice@acme.test"]
+    }
+  ],
+  "decideBlockDomains": ["*.casino.example"],
+  "decideBlockCidrs": ["203.0.113.0/24"],
+  "decideDefault": "allow"
+}
+''';
+
+void roundTrip<T>(String name, String src, T Function(Json) from, Json Function(T) to) {
+  test('$name round trip', () {
+    final j = jsonDecode(src) as Json;
+    final back = jsonDecode(jsonEncode(to(from(j))));
+    expect(back, equals(j));
+  });
+}
+
+void main() {
+  roundTrip('AdminTenant', '{"id":"acme","name":"Acme"}', AdminTenant.fromJson, (v) => v.toJson());
+  roundTrip('AdminUser', '{"id":"u1","email":"a@b.c","name":"A"}', AdminUser.fromJson, (v) => v.toJson());
+  roundTrip(
+    'ProvisioningKeyRequest',
+    '{"userId":"u1","maxUses":3,"validForSeconds":3600}',
+    ProvisioningKeyRequest.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'ProvisioningKey',
+    '{"key":"pk_abc","userId":"u1","expiresAt":"2026-11-21T10:00:00.123456Z"}',
+    ProvisioningKey.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip('TenantPolicy', tenantPolicyJson, TenantPolicy.fromJson, (v) => v.toJson());
+  roundTrip(
+    'FlowBatch',
+    '''{"records":[{"start":"2026-11-20T10:00:00Z","end":"2026-11-20T10:00:05.5Z",
+      "flow":{"app":"com.android.chrome","uid":10123,"network":"wifi","protocol":"tcp","dstIp":"93.184.216.34","dstPort":443,"domain":"example.com"},
+      "decision":{"action":"block","ruleId":"dns:ads","layer":"dns","log":true},
+      "bytesOut":100,"bytesIn":2000,"where":"edge","deviceId":"d1"}]}''',
+    FlowBatch.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'AdminEdge',
+    '{"id":"edge-1","revoked":true,"createdAt":"2026-11-20T09:00:00Z"}',
+    AdminEdge.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'AdminDevice',
+    '{"id":"d1","userId":"u1","name":"Pixel","platform":"android","revoked":false,"createdAt":"2026-11-20T09:00:00Z"}',
+    AdminDevice.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'AdminConnectorRequest',
+    '{"name":"dc1-a","group":"dc1"}',
+    AdminConnectorRequest.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'AdminConnectorCreated',
+    '''{"connector":{"id":"c1","tenantId":"acme","name":"dc1-a","group":"dc1","revoked":false,
+      "createdAt":"2026-11-20T09:00:00Z","lastSeen":"2026-11-20T09:59:00Z"},"provisioningKey":"ck_xyz"}''',
+    AdminConnectorCreated.fromJson,
+    (v) => v.toJson(),
+  );
+
+  group('Go encoding details', () {
+    test('omitempty fields are dropped and nil slices accepted', () {
+      final p = TenantPolicy.fromJson(
+        jsonDecode('{"defaultAction":"","rules":null,"apps":null,"dns":{"blockResponse":"","blocklists":null}}')
+            as Json,
+      );
+      expect(p.rules, isEmpty);
+      final j = p.toJson();
+      expect(j.containsKey('privateApps'), isFalse);
+      expect(j.containsKey('decideBlockDomains'), isFalse);
+      expect(j['decideDefault'], '');
+      expect((j['dns'] as Json).containsKey('allowDomains'), isFalse);
+      expect(j['rules'], isEmpty);
+    });
+
+    test('rule without description and empty match', () {
+      final r = TenantPolicy.fromJson(
+        jsonDecode('{"rules":[{"id":"r","source":"tenant","priority":1,"action":"block","match":{},"log":false}]}')
+            as Json,
+      ).rules.single;
+      expect(r.toJson(), {'id': 'r', 'source': 'tenant', 'priority': 1, 'action': 'block', 'match': {}, 'log': false});
+    });
+
+    test('zero time is null and written back as Go zero time', () {
+      final c = AdminConnectorCreated.fromJson(
+        jsonDecode('{"connector":{"id":"c","lastSeen":"0001-01-01T00:00:00Z"},"provisioningKey":"k"}') as Json,
+      ).connector;
+      expect(c.lastSeen, isNull);
+      expect(c.isOnline(DateTime.now()), isFalse);
+      expect(c.toJson()['lastSeen'], goZeroTime);
+    });
+
+    test('times with offsets are normalised to UTC', () {
+      final e = AdminEdge.fromJson({'id': 'e', 'createdAt': '2026-11-20T10:00:00+01:00'});
+      expect(goTime(e.createdAt), '2026-11-20T09:00:00Z');
+    });
+
+    test('wrong types are rejected', () {
+      expect(() => TenantPolicy.fromJson({'lockdown': 'yes'}), throwsFormatException);
+      expect(() => TenantPolicy.fromJson({'rules': {}}), throwsFormatException);
+    });
+
+    test('connector online window is 2 minutes', () {
+      final now = DateTime.utc(2026, 11, 20, 10);
+      final c = AdminConnector(id: 'c', lastSeen: now.subtract(const Duration(seconds: 119)));
+      expect(c.isOnline(now), isTrue);
+      c.lastSeen = now.subtract(const Duration(minutes: 3));
+      expect(c.isOnline(now), isFalse);
+      c
+        ..lastSeen = now
+        ..revoked = true;
+      expect(c.isOnline(now), isFalse);
+    });
+  });
+}

@@ -1,0 +1,16 @@
+# Builds with the classic builder too (no BuildKit-only syntax).
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -ldflags="-s -w" -o /out/edge ./cmd/edge
+
+FROM alpine:3.22
+RUN apk add --no-cache iptables iproute2 ca-certificates setpriv
+COPY --from=build /out/edge /usr/local/bin/edge
+COPY deploy/dev/edge-entrypoint.sh /usr/local/bin/edge-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/edge-entrypoint.sh
+EXPOSE 8443/tcp 8444/tcp 51820/udp
+ENTRYPOINT ["/usr/local/bin/edge-entrypoint.sh"]

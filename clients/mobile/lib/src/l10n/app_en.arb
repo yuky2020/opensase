@@ -1,0 +1,341 @@
+{
+  "@@locale": "en",
+  "stateConnected": "Connected",
+  "stateConnecting": "Connecting…",
+  "stateDisconnected": "Disconnected",
+  "stateError": "Error",
+  "navHome": "Home",
+  "navApps": "Apps",
+  "navRules": "Rules",
+  "navDns": "DNS",
+  "navActivity": "Activity",
+  "navStats": "Statistics",
+  "navSettings": "Settings",
+  "actionBack": "Back",
+  "actionSave": "Save",
+  "actionCancel": "Cancel",
+  "actionDelete": "Delete",
+  "actionAdd": "Add",
+  "actionEdit": "Edit",
+  "actionSearch": "Search",
+  "actionClear": "Clear",
+  "actionDone": "Done",
+  "msgSaved": "Saved. A new policy snapshot was issued.",
+  "msgForbidden": "Your organization does not allow personal rules.",
+  "msgError": "Error: {error}",
+  "@msgError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "companyPolicy": "Company policy",
+  "companyPolicyLocked": "Set by your company policy",
+  "verdictAllow": "Allowed",
+  "verdictBlock": "Blocked",
+  "verdictAsk": "Ask cloud",
+  "actionAllow": "Allow",
+  "actionBlock": "Block",
+  "actionAsk": "Ask",
+  "networkWifi": "Wi-Fi",
+  "networkCellular": "Mobile data",
+  "networkRoaming": "Roaming",
+  "networkEthernet": "Ethernet",
+  "networkUnknown": "Unknown",
+  "emptyNothingHere": "Nothing here yet",
+  "onboardingTitle": "Enroll this device",
+  "onboardingSubtitle": "Connect this device to your organization. All traffic is filtered on the device and protected by a quantum-safe tunnel.",
+  "onboardingControlUrl": "Control Plane URL",
+  "onboardingControlUrlInvalid": "The URL must start with https://",
+  "onboardingKey": "Provisioning key",
+  "onboardingKeyHint": "Provided by your administrator",
+  "onboardingDeviceName": "Device name",
+  "onboardingEnroll": "Enroll",
+  "onboardingEnrolling": "Enrolling…",
+  "onboardingFailed": "Enrollment failed: {error}",
+  "@onboardingFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "homeProtection": "Protection",
+  "homeToggleOn": "Your traffic is protected",
+  "homeToggleOff": "Tap to connect",
+  "homeEdge": "Edge",
+  "homeSnapshotVersion": "Policy version",
+  "homeStale": "The policy is out of date. It is still enforced, but it could not be refreshed.",
+  "homeQuantumSafe": "Quantum-safe: {kex}",
+  "@homeQuantumSafe": {
+    "placeholders": {
+      "kex": {
+        "type": "String"
+      }
+    }
+  },
+  "homeToday": "Today",
+  "homeAllowed": "Allowed",
+  "homeBlocked": "Blocked",
+  "homeDnsBlocked": "DNS blocked",
+  "homeTopBlocked": "Top blocked apps",
+  "homeNoBlocked": "No blocked connections yet",
+  "homeBlockedCount": "{count} blocked",
+  "@homeBlockedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeFailed": "Could not connect: {error}",
+  "@homeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "appsSearchHint": "Search apps",
+  "appsFilterAll": "All",
+  "appsFilterUser": "User",
+  "appsFilterSystem": "System",
+  "appsFilterInternet": "With internet",
+  "appsLoading": "Loading apps…",
+  "appsEmpty": "No apps match the filter",
+  "appsUserRulesDisabled": "Your organization manages app access. Toggles are read-only.",
+  "appDetailRecent": "Recent connections",
+  "appDetailNoFlows": "No connections recorded",
+  "appDetailBlockAll": "Block all",
+  "appDetailAllowAll": "Allow all",
+  "appDetailTraffic": "Traffic",
+  "appDetailIn": "Received",
+  "appDetailOut": "Sent",
+  "appDetailAccess": "Network access",
+  "originDefault": "Default",
+  "originUser": "Your setting",
+  "originLockdown": "Lockdown",
+  "rulesTenant": "Company policy",
+  "rulesTenantHint": "Mandatory rules from your organization, evaluated first.",
+  "rulesUser": "My rules",
+  "rulesUserHint": "Evaluated after the company policy. Drag the handle to reorder.",
+  "rulesUserDisabled": "Your organization does not allow personal rules.",
+  "rulesEmptyUser": "No personal rules",
+  "rulesAdd": "New rule",
+  "rulesEditTitle": "Edit rule",
+  "rulesNewTitle": "New rule",
+  "rulesFieldAction": "Action",
+  "rulesFieldDescription": "Description",
+  "rulesFieldProtocols": "Protocols",
+  "rulesFieldCidrs": "Destination IPs / CIDRs",
+  "rulesFieldCidrsHint": "e.g. 10.0.0.0/8, 2001:db8::/32",
+  "rulesFieldPorts": "Ports",
+  "rulesFieldPortsHint": "e.g. 443, 8000-8100",
+  "rulesFieldDomains": "Domains",
+  "rulesFieldDomainsHint": "e.g. example.com, *.ads.example",
+  "rulesFieldNetworks": "Networks",
+  "rulesFieldApps": "Apps",
+  "rulesFieldAppsAny": "Any app",
+  "rulesFieldAppsChoose": "Choose apps",
+  "rulesFieldLog": "Log matching connections",
+  "rulesFieldPriority": "Priority",
+  "rulesFieldPriorityHint": "Lower runs first",
+  "rulesErrorCidrs": "Invalid IP or CIDR",
+  "rulesErrorPorts": "Invalid port or range",
+  "rulesErrorDomains": "Invalid domain",
+  "rulesErrorPriority": "Must be a number",
+  "rulesErrorEmpty": "Add at least one condition",
+  "rulesAny": "Any traffic",
+  "rulesPriorityShort": "#{priority}",
+  "@rulesPriorityShort": {
+    "placeholders": {
+      "priority": {
+        "type": "int"
+      }
+    }
+  },
+  "rulesLogged": "Logged",
+  "rulesDeleteConfirm": "Delete this rule?",
+  "dnsBlocklists": "Blocklists",
+  "dnsBlocklistsHint": "Managed by your organization",
+  "dnsDomainCount": "{count} domains",
+  "@dnsDomainCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dnsBlockResponse": "Blocked queries answer with {response}",
+  "@dnsBlockResponse": {
+    "placeholders": {
+      "response": {
+        "type": "String"
+      }
+    }
+  },
+  "dnsTenantDomains": "Company domain rules",
+  "dnsCustom": "My domains",
+  "dnsCustomHint": "Saved as personal rules matching only the domain",
+  "dnsAddHint": "example.com or *.example.com",
+  "dnsAddBlock": "Block",
+  "dnsAddAllow": "Allow",
+  "dnsInvalid": "Invalid domain",
+  "dnsEmpty": "No custom domains",
+  "dnsBlockedToday": "{count} DNS queries blocked today",
+  "@dnsBlockedToday": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "activityPause": "Pause",
+  "activityResume": "Resume",
+  "activityFilterAll": "All",
+  "activityFilterAllowed": "Allowed",
+  "activityFilterBlocked": "Blocked",
+  "activityFilterApp": "App",
+  "activityAllApps": "All apps",
+  "activityEmpty": "No connections yet. Connect to see live traffic.",
+  "activityPaused": "Paused",
+  "activityRule": "{layer} · {rule}",
+  "@activityRule": {
+    "placeholders": {
+      "layer": {
+        "type": "String"
+      },
+      "rule": {
+        "type": "String"
+      }
+    }
+  },
+  "layerTenant": "company",
+  "layerUser": "my rule",
+  "layerApp": "app",
+  "layerDefault": "default",
+  "layerLockdown": "lockdown",
+  "layerCloud": "cloud",
+  "layerDns": "DNS",
+  "statsSort": "Sort by",
+  "statsSortTotal": "Total",
+  "statsSortIn": "Received",
+  "statsSortOut": "Sent",
+  "statsSortAllowed": "Allowed",
+  "statsSortBlocked": "Blocked",
+  "statsTotal": "↓ {received} · ↑ {sent}",
+  "@statsTotal": {
+    "placeholders": {
+      "received": {
+        "type": "String"
+      },
+      "sent": {
+        "type": "String"
+      }
+    }
+  },
+  "statsCounts": "{allowed} allowed · {blocked} blocked",
+  "@statsCounts": {
+    "placeholders": {
+      "allowed": {
+        "type": "int"
+      },
+      "blocked": {
+        "type": "int"
+      }
+    }
+  },
+  "statsEmpty": "No traffic recorded yet",
+  "settingsAlwaysOn": "Always-on VPN",
+  "settingsAlwaysOnDesc": "For the strongest protection, open the system VPN settings, tap the gear next to OpenSASE and enable “Always-on VPN” and “Block connections without VPN”.",
+  "settingsOpenVpnSettings": "Open VPN settings",
+  "settingsConnectOnBoot": "Reconnect after restart",
+  "settingsConnectOnBootDesc": "Used only when always-on VPN is off",
+  "settingsPolicy": "Policy",
+  "settingsDefaultAction": "Default for unknown apps",
+  "settingsLockdown": "Lockdown mode",
+  "settingsLockdownOn": "On: only allowlisted apps can connect",
+  "settingsLockdownOff": "Off",
+  "settingsUserRules": "Personal rules",
+  "settingsUserRulesAllowed": "Allowed by your organization",
+  "settingsUserRulesDenied": "Not allowed by your organization",
+  "settingsSnapshot": "Policy snapshot",
+  "settingsSnapshotValue": "Version {version} · expires {expires}",
+  "@settingsSnapshotValue": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "expires": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsDevice": "Device",
+  "settingsExportLogs": "Export connection log",
+  "settingsExportLogsDesc": "Save the recent connections as JSON",
+  "settingsExportDone": "Log exported",
+  "settingsUnenroll": "Unenroll device",
+  "settingsUnenrollDesc": "Removes the device certificate and keys from this phone",
+  "settingsUnenrollConfirm": "Unenroll this device? You will need a new provisioning key to enroll again.",
+  "settingsAbout": "About",
+  "settingsVersion": "Version {version} · engine {engine}",
+  "@settingsVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "engine": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLicenses": "Open-source licences",
+  "settingsLicensesText": "OpenSASE uses Flutter, Material and the Dart SDK (BSD 3-Clause), Riverpod, go_router and json_serializable (MIT / BSD 3-Clause), AndroidX and Kotlin (Apache License 2.0), the Go standard library (BSD 3-Clause) and wireguard-go (MIT). No analytics or Google Play Services are included. Tap for the full list.",
+  "settingsAppearance": "Appearance",
+  "engineFake": "Demo engine (fake data)",
+  "engineNative": "Native engine",
+  "appDetailUid": "UID {uid}",
+  "@appDetailUid": {
+    "placeholders": {
+      "uid": {
+        "type": "int"
+      }
+    }
+  },
+  "onboardingCode": "Enrollment code",
+  "onboardingCodeHint": "Paste the code from your administrator (URL and key)",
+  "onboardingCodeInvalid": "Not a valid enrollment code",
+  "onboardingPinned": "Server certificate pinned (sha256)",
+  "onboardingScan": "Scan QR code",
+  "onboardingScanSoon": "QR scanning is coming soon. Paste the code instead.",
+  "onboardingOr": "or enter the details",
+  "settingsEngine": "Engine",
+  "homeLastHandshake": "Last handshake",
+  "homeNetwork": "Network",
+  "rulesOrderSaved": "Rule order saved",
+  "activityLive": "Live",
+  "statsDns": "DNS {queries} queries · {blocked} blocked",
+  "@statsDns": {
+    "placeholders": {
+      "queries": {
+        "type": "int"
+      },
+      "blocked": {
+        "type": "int"
+      }
+    }
+  },
+  "vpnConsentDenied": "VPN permission was denied",
+  "settingsCertificate": "Device certificate",
+  "settingsCertificateExpires": "Expires {date}",
+  "@settingsCertificateExpires": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "onboardingCodeApplied": "Code applied: check the details below and tap Enroll"
+}

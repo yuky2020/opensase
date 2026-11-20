@@ -1,0 +1,172 @@
+name: opensase
+
+services:
+  controlplane:
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.controlplane
+    image: opensase/controlplane:dev
+    restart: unless-stopped
+    user: "${OPENSASE_UID:-1000}:${OPENSASE_GID:-1000}"
+    ports:
+      - "9443:9443/tcp"
+    environment:
+      OPENSASE_ADMIN_TOKEN: ${OPENSASE_ADMIN_TOKEN:?run bootstrap.sh first}
+    # Only what the Control Plane needs (security review #2): never pki/edge (Edge keys).
+    # tenants/ is writable because tenant CAs are created on demand.
+    volumes:
+      - ./pki/root.crt:/pki/root.crt:ro
+      - ./pki/root.key:/pki/root.key:ro
+      - ./pki/controlplane.crt:/pki/controlplane.crt:ro
+      - ./pki/controlplane.key:/pki/controlplane.key:ro
+      - ./pki/snapshot.key:/pki/snapshot.key:ro
+      - ./pki/edges.json:/pki/edges.json:ro
+      - ./pki/tenants:/pki/tenants
+      - ./data:/data
+      # Admin portal (Flutter web). Build it first with `make portal`; served at /admin/.
+      - ../../clients/admin/build/web:/portal:ro
+    command: ["-listen", ":9443", "-db", "/data/controlplane.db", "-pki", "/pki", "-control-url", "https://${CONTROL_HOST:-controlplane}:9443", "-portal-dir", "/portal"]
+    healthcheck:
+      test: ["CMD", "/opensasectl", "-url", "https://localhost:9443", "-ca", "/pki/root.crt", "pq-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 2s
+
+  edge:
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.edge
+    image: opensase/edge:dev
+    restart: unless-stopped
+    ports:
+      - "8443:8443/tcp"
+      - "8444:8444/tcp" # Connector broker (ADR-0013)
+      - "51820:51820/udp"
+    # Least privilege (security review #2): the entrypoint installs iptables rules as root
+    # with these capabilities only, then setpriv drops to EDGE_UID keeping NET_ADMIN (TUN,
+    # addresses) and NET_BIND_SERVICE (DNS on :53) as ambient capabilities.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.disable_ipv6: 0
+    environment:
+      EDGE_UID: ${OPENSASE_UID:-1000}
+      EDGE_GID: ${OPENSASE_GID:-1000}
+      EDGE_ALLOW_PRIVATE: ${EDGE_ALLOW_PRIVATE:-0}
+    # Only the Edge directory: root.crt, edge.crt, edge.key, edge-wg.key.
+    volumes:
+      - ./pki/edge:/pki:ro
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    command: ["-control-url", "https://controlplane:9443", "-pki", "/pki", "-listen", ":8443", "-wg-port", "51820", "-wg-endpoint", "${EDGE_HOST:-edge}:51820", "-upstream-dns", "${UPSTREAM_DNS:-1.1.1.1:53}", "-ztna-listen", "0.0.0.0:15001", "-broker-listen", ":8444"]
+
+  # Connector (ADR-0013): outbound only, on the default network (Control Plane, Edge) and
+  # on corp, the "data-centre LAN" that the Edge and the Control Plane cannot reach.
+  connector:
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.connector
+    image: opensase/connector:dev
+    restart: unless-stopped
+    # Same unprivileged host user as the Control Plane: it owns connector.key (0600) and the
+    # 0700 state directory (connector key and certificate, 0600).
+    user: "${OPENSASE_UID:-1000}:${OPENSASE_GID:-1000}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    networks:
+      - default
+      - corp
+    # The provisioning key is a mounted 0600 file (single use; ignored once enrolled).
+    secrets:
+      - connector_key
+    volumes:
+      - ./connector-state:/var/lib/opensase-connector
+    depends_on:
+      controlplane:
+        condition: service_healthy
+      edge:
+        condition: service_started
+    command: ["-control", "https://controlplane:9443#sha256=${OPENSASE_ROOT_SHA256:-}", "-key-file", "/run/secrets/connector_key", "-state", "/var/lib/opensase-connector"]
+
+  # A private app reachable only from corp, under the name the PrivateApp publishes.
+  intranet:
+    image: busybox:1.37
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      corp:
+        aliases:
+          - intranet.acme.internal
+    command: ["sh", "-c", "mkdir -p /tmp/www && echo 'hello from intranet' >/tmp/www/index.html && exec httpd -f -p 80 -h /tmp/www"]
+
+  ctl:
+    profiles: ["tools"]
+    image: opensase/controlplane:dev
+    user: "${OPENSASE_UID:-1000}:${OPENSASE_GID:-1000}"
+    entrypoint: ["/opensasectl"]
+    environment:
+      OPENSASE_URL: https://controlplane:9443
+      OPENSASE_CA: /pki/root.crt
+      OPENSASE_ADMIN_TOKEN: ${OPENSASE_ADMIN_TOKEN:-}
+    volumes:
+      - ./pki:/pki
+      - ./:/work:ro
+
+  client:
+    profiles: ["e2e"]
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.client
+    image: opensase/client:dev
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+    volumes:
+      - ./pki/root.crt:/etc/opensase/root.crt:ro
+      - clientstate:/var/lib/opensase-client
+    # The provisioning key is read from a mounted 0600 file, never from the command line or
+    # the environment, both visible in ps / docker inspect (security review #13).
+    secrets:
+      - provisioning_key
+    depends_on:
+      edge:
+        condition: service_started
+    command: ["-state", "/var/lib/opensase-client", "-control", "https://controlplane:9443", "-ca", "/etc/opensase/root.crt", "-key-file", "/run/secrets/provisioning_key", "-enroll", "-renew-now", "-routes", "-name", "e2e-client", "-status-every", "5s"]
+
+secrets:
+  provisioning_key:
+    file: ./provisioning.key # written by bootstrap.sh (mode 0600)
+  connector_key:
+    file: ./connector.key # written by bootstrap.sh (mode 0600)
+
+networks:
+  # The customer LAN: no route to the internet, and neither the Edge nor the Control Plane
+  # is attached. Only the Connector bridges it, outbound.
+  corp:
+    internal: true
+
+volumes:
+  clientstate: {}

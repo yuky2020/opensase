@@ -1,0 +1,234 @@
+package edge
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/pki"
+	"github.com/yuky2020/opensase/pkg/pqsession"
+)
+
+// wgConfigurer is the subset of *device.Device the session server needs.
+type wgConfigurer interface {
+	IpcSetOperation(r io.Reader) error
+}
+
+// sessionServer handles POST /v1/session.
+type sessionServer struct {
+	e *Edge
+}
+
+func (s *sessionServer) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/session", s.handleSession)
+	return mux
+}
+
+// tlsConfig requires a device certificate chained to a tenant CA from the PKI bundle.
+func (e *Edge) sessionTLSConfig() *tls.Config {
+	base := pqsession.Harden(&tls.Config{
+		Certificates: []tls.Certificate{e.cfg.Cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		NextProtos:   []string{"h2", "http/1.1"},
+	})
+	base.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
+		c := base.Clone()
+		c.GetConfigForClient = nil
+		t := e.trust.Load()
+		if t == nil {
+			return nil, errors.New("edge: PKI bundle not loaded yet")
+		}
+		c.ClientCAs = t.pool
+		return c, nil
+	}
+	return base
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
+	e := s.e
+	if r.TLS == nil || pqsession.CheckPostQuantum(*r.TLS) != nil {
+		writeErr(w, http.StatusUpgradeRequired, "post-quantum TLS required")
+		return
+	}
+	id, err := pki.VerifyPeerChains(r.TLS.VerifiedChains, e.cfg.Root)
+	if err != nil || id.Kind != pki.PeerDevice {
+		writeErr(w, http.StatusForbidden, "device certificate required")
+		return
+	}
+	var req api.SessionRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	clientPub, err := base64.StdEncoding.DecodeString(req.WGPublicKey)
+	if err != nil || len(clientPub) != 32 || isZero(clientPub) {
+		writeErr(w, http.StatusBadRequest, "wgPublicKey must be a base64 Curve25519 public key")
+		return
+	}
+
+	// Possibly enrolled after the last peer sync: lookupDevice refreshes, rate-limited.
+	ctx, cancel := context.WithTimeout(r.Context(), minSyncInterval+5*time.Second)
+	d := e.lookupDevice(ctx, id.DeviceID)
+	cancel()
+	if d == nil || d.tenantID != id.TenantID || d.compiled.Load() == nil {
+		writeErr(w, http.StatusForbidden, "unknown or revoked device")
+		return
+	}
+
+	resp, code, err := e.setupSession(r.Context(), d, *r.TLS, [32]byte(clientPub), req)
+	if err != nil {
+		if code >= 500 {
+			e.log.ErrorContext(r.Context(), "session setup failed", "device", id.DeviceID, "err", err)
+			writeErr(w, code, "internal error")
+		} else {
+			writeErr(w, code, err.Error())
+		}
+		return
+	}
+	e.triggerReport()
+	e.log.InfoContext(r.Context(), "session established", "tenant", id.TenantID, "device", id.DeviceID,
+		"session", resp.SessionID, "epoch", resp.Epoch, "ipv4", resp.TunnelIPv4, "kex", "X25519MLKEM768")
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// setupSession allocates the tunnel address, derives the PSK on this TLS connection and
+// installs or rotates the WireGuard peer. Serialized by the registry lock.
+//
+// Epochs: 0 starts a new session; current+1 rotates; current again re-derives the PSK of the
+// current epoch on this new connection and replaces it (idempotent retry after a lost
+// response, security review #5). Older epochs and skips are rejected.
+func (e *Edge) setupSession(ctx context.Context, d *device, cs tls.ConnectionState, clientPub [32]byte, req api.SessionRequest) (api.SessionResponse, int, error) {
+	r := e.reg
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.devices[d.id] != d {
+		return api.SessionResponse{}, http.StatusForbidden, errors.New("device was removed")
+	}
+	sessionID, epoch := d.sessionID, req.Epoch
+	switch {
+	case req.Epoch == 0:
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return api.SessionResponse{}, http.StatusInternalServerError, err
+		}
+		sessionID = hex.EncodeToString(b[:])
+	case d.sessionID == "" || req.SessionID != d.sessionID:
+		return api.SessionResponse{}, http.StatusConflict, errors.New("unknown session; start a new one with epoch 0")
+	case req.Epoch != d.epoch && req.Epoch != d.epoch+1:
+		return api.SessionResponse{}, http.StatusConflict, fmt.Errorf("epoch must be %d or %d", d.epoch, d.epoch+1)
+	}
+	if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
+		return api.SessionResponse{}, http.StatusForbidden, errors.New("device certificate required")
+	}
+	notAfter := cs.VerifiedChains[0][0].NotAfter
+	if err := r.allocateLocked(d); err != nil {
+		return api.SessionResponse{}, http.StatusServiceUnavailable, err
+	}
+	psk, err := pqsession.DerivePSK(cs, clientPub[:], e.wgPub[:], sessionID, epoch)
+	if err != nil {
+		return api.SessionResponse{}, http.StatusUpgradeRequired, err
+	}
+	defer clear(psk[:])
+
+	var buf bytes.Buffer
+	buf.Grow(512) // no reallocation, so no stray copies of the PSK
+	if d.hasPeer && d.wgPub != clientPub {
+		writePeerRemove(&buf, d.wgPub)
+	}
+	writePeerConfig(&buf, clientPub, psk, d)
+	err = e.wg.IpcSetOperation(bytes.NewReader(buf.Bytes()))
+	clear(buf.Bytes())
+	if err != nil {
+		return api.SessionResponse{}, http.StatusInternalServerError, fmt.Errorf("configure wireguard peer: %w", err)
+	}
+	d.wgPub, d.hasPeer, d.sessionID, d.epoch, d.certNotAfter = clientPub, true, sessionID, epoch, notAfter
+
+	dns := []string{EdgeIPv4.String()}
+	if e.ipv6 {
+		dns = append(dns, EdgeIPv6.String())
+	}
+	return api.SessionResponse{
+		SessionID:      sessionID,
+		Epoch:          epoch,
+		TunnelIPv4:     d.ip4.String() + "/32",
+		TunnelIPv6:     d.ip6.String() + "/128",
+		DNSServers:     dns,
+		EdgeWGKey:      base64.StdEncoding.EncodeToString(e.wgPub[:]),
+		WGEndpoint:     e.cfg.WGEndpoint,
+		RotateAfterSec: int(e.cfg.RotateAfter / time.Second),
+		MTU:            e.cfg.MTU,
+	}, http.StatusOK, nil
+}
+
+// removePeer deletes a device's WireGuard peer (revoked or unknown device).
+func (e *Edge) removePeer(d *device) {
+	if !d.hasPeer {
+		return
+	}
+	var buf bytes.Buffer
+	writePeerRemove(&buf, d.wgPub)
+	if err := e.wg.IpcSetOperation(&buf); err != nil {
+		e.log.Error("remove wireguard peer", "device", d.id, "err", err)
+		return
+	}
+	e.log.Info("device removed", "device", d.id, "tenant", d.tenantID)
+}
+
+// UAPI writers (keys are hex in the UAPI protocol).
+
+func writePeerRemove(b *bytes.Buffer, pub [32]byte) {
+	b.WriteString("public_key=")
+	writeHex(b, pub[:])
+	b.WriteString("\nremove=true\n")
+}
+
+func writePeerConfig(b *bytes.Buffer, pub [32]byte, psk [32]byte, d *device) {
+	b.WriteString("public_key=")
+	writeHex(b, pub[:])
+	b.WriteString("\npreshared_key=")
+	writeHex(b, psk[:])
+	b.WriteString("\nreplace_allowed_ips=true\nallowed_ip=")
+	b.WriteString(d.ip4.String())
+	b.WriteString("/32\nallowed_ip=")
+	b.WriteString(d.ip6.String())
+	b.WriteString("/128\n")
+}
+
+func writeHex(b *bytes.Buffer, p []byte) {
+	var tmp [64]byte
+	hex.Encode(tmp[:], p)
+	b.Write(tmp[:2*len(p)])
+	clear(tmp[:])
+}
+
+func isZero(b []byte) bool {
+	var acc byte
+	for _, x := range b {
+		acc |= x
+	}
+	return acc == 0
+}

@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  enable:
+    - bodyclose
+    - contextcheck
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - noctx
+    - revive
+    - staticcheck
+    - unused
+  exclusions:
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - gosec
+        text: "G404"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/yuky2020/opensase

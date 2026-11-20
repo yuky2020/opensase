@@ -1,0 +1,80 @@
+package policy
+
+import "strings"
+
+// domainPatternCases contains test cases for normalizePattern.
+var domainPatternCases = []struct {
+	in           string // input pattern
+	wantName     string // normalized name ("" when wantErr)
+	wantWildcard bool
+	wantErr      bool
+}{
+	// Valid cases
+	{"example.com", "example.com", false, false},
+	{"ExAmPlE.CoM", "example.com", false, false},
+	{"example.com.", "example.com", false, false},
+	{"ExAmPlE.CoM.", "example.com", false, false},
+	{"*.example.com", "example.com", true, false},
+	{"*.EXAMPLE.COM", "example.com", true, false},
+	{"*.example.com.", "example.com", true, false},
+	{"*.ExAmPlE.CoM.", "example.com", true, false},
+	{"_dmarc.example.com", "_dmarc.example.com", false, false},
+	{"*._tcp.example.com", "_tcp.example.com", true, false},
+	{"localhost", "localhost", false, false},
+	{"localhost.", "localhost", false, false},
+	{"*.localhost", "localhost", true, false},
+	{"*.localhost.", "localhost", true, false},
+	{"123.com", "123.com", false, false},
+	{"*.123.com", "123.com", true, false},
+	{strings.Repeat("a", 63) + ".com", strings.Repeat("a", 63) + ".com", false, false},
+	{"*." + strings.Repeat("a", 63) + ".com", strings.Repeat("a", 63) + ".com", true, false},
+	{"xn--bcher-kva.example", "xn--bcher-kva.example", false, false},
+	{"*.xn--bcher-kva.example.", "xn--bcher-kva.example", true, false},
+	{strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61), strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61), false, false},
+	{"*." + strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61) + ".", strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61), true, false},
+	{"sub-domain.example.com", "sub-domain.example.com", false, false},
+	{"a.b.c.d", "a.b.c.d", false, false},
+	{"_sip._tls.example.com", "_sip._tls.example.com", false, false},
+	{"my_domain_name.com", "my_domain_name.com", false, false},
+	{"trailing-underscore_.example.com", "trailing-underscore_.example.com", false, false},
+	{"a-1.b-2.c-3", "a-1.b-2.c-3", false, false},
+
+	// Invalid cases
+	{"", "", false, true},
+	{"*", "", false, true},
+	{"*.", "", false, true},
+	{"**.a.com", "", false, true},
+	{"a..com", "", false, true},
+	{".a.com", "", false, true},
+	{"a.com..", "", false, true},
+	{"*.*.a.com", "", false, true},
+	{"a*.com", "", false, true},
+	{"a b.com", "", false, true},
+	{"-a.com", "", false, true},
+	{"a-.com", "", false, true},
+	{strings.Repeat("a", 64) + ".com", "", false, true},
+	{strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 62), "", false, true},
+	{"é.com", "", false, true},
+	{"a.com/x", "", false, true},
+	{"1.2.3.4:80", "", false, true},
+	{".", "", false, true},
+	{"..", "", false, true},
+	{"...", "", false, true},
+	{"*example.com", "", false, true},
+	{"example.*.com", "", false, true},
+	{"example.com/*", "", false, true},
+	{"sub.-middle.com", "", false, true},
+	{"sub.middle-.com", "", false, true},
+	{"-", "", false, true},
+	{"http://example.com", "", false, true},
+	{"user@example.com", "", false, true},
+	{"*.-a.com", "", false, true},
+	{"*.a-.com", "", false, true},
+	{strings.Repeat("b", 64), "", false, true},
+	{"a.-.com", "", false, true},
+	{"ex!ample.com", "", false, true},
+	{"ex?ample.com", "", false, true},
+	{"example.com#hash", "", false, true},
+	{"example\n.com", "", false, true},
+	{"example\t.com", "", false, true},
+}

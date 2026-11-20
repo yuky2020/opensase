@@ -1,0 +1,9 @@
+[
+  {
+    "id": "intranet",
+    "name": "Intranet",
+    "domains": ["intranet.acme.internal"],
+    "ports": [{ "from": 80 }],
+    "connectorGroup": "default"
+  }
+]

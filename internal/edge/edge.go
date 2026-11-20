@@ -1,0 +1,646 @@
+package edge
+
+import (
+	"bytes"
+	"context"
+	"crypto/ecdh"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/netip"
+	"os/exec"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/sync/singleflight"
+	wgconn "golang.zx2c4.com/wireguard/conn"
+	wgdevice "golang.zx2c4.com/wireguard/device"
+	"golang.zx2c4.com/wireguard/tun"
+
+	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/packet"
+	"github.com/yuky2020/opensase/pkg/pki"
+)
+
+// Config configures an Edge.
+type Config struct {
+	ControlURL   string            // https://controlplane:9443
+	Root         *x509.Certificate // provider root CA (verifies the Control Plane and anchors tenant CAs)
+	Cert         tls.Certificate   // edge certificate (server for sessions, client for the Control Plane)
+	WGPrivateKey []byte            // 32-byte Curve25519 key
+	ListenAddr   string            // session server, default ":8443"
+	WGPort       int               // default 51820
+	WGEndpoint   string            // host:port returned to clients, default "edge:51820"
+	TUNName      string            // default "wg0"
+	MTU          int               // default 1280
+	Upstream     string            // default "1.1.1.1:53"
+	RotateAfter  time.Duration     // PSK epoch length, default 10m
+	PeerRefresh  time.Duration     // default 10s
+	FlowFlush    time.Duration     // default 5s
+	// Built-in deny list (security review #3): always link-local, loopback, multicast and the
+	// Edge's own addresses (LocalAddrs); private ranges unless AllowPrivate; plus DenyCIDRs.
+	DenyCIDRs    []netip.Prefix
+	AllowPrivate bool
+	LocalAddrs   []netip.Addr // Edge interface addresses; Run fills them from the host
+	// AllowDoH disables the DNS-over-HTTPS endpoint blocklist (plain DNS and DoT to other
+	// resolvers stay blocked).
+	AllowDoH bool
+	// ZTNA (ADR-0013): ZTNAListen receives the TCP connections the kernel REDIRECTs from the
+	// tunnel to SyntheticPrefix (default "0.0.0.0:15001"); BrokerListen accepts Connector
+	// connections (default ":8444"). "off" disables either.
+	ZTNAListen   string
+	BrokerListen string
+	Logger       *slog.Logger
+}
+
+func (c *Config) defaults() {
+	if c.ListenAddr == "" {
+		c.ListenAddr = ":8443"
+	}
+	if c.WGPort == 0 {
+		c.WGPort = 51820
+	}
+	if c.WGEndpoint == "" {
+		c.WGEndpoint = "edge:" + strconv.Itoa(c.WGPort)
+	}
+	if c.TUNName == "" {
+		c.TUNName = "wg0"
+	}
+	if c.MTU == 0 {
+		c.MTU = 1280
+	}
+	if c.Upstream == "" {
+		c.Upstream = "1.1.1.1:53"
+	}
+	if c.RotateAfter <= 0 {
+		c.RotateAfter = 10 * time.Minute
+	}
+	if c.PeerRefresh <= 0 {
+		c.PeerRefresh = 10 * time.Second
+	}
+	if c.FlowFlush <= 0 {
+		c.FlowFlush = 5 * time.Second
+	}
+	if c.ZTNAListen == "" {
+		c.ZTNAListen = "0.0.0.0:15001"
+	}
+	if c.BrokerListen == "" {
+		c.BrokerListen = ":8444"
+	}
+	if c.Logger == nil {
+		c.Logger = slog.Default()
+	}
+}
+
+// listenOff is the Config value that disables a ZTNA listener.
+const listenOff = "off"
+
+// Edge is a Edge.
+type Edge struct {
+	cfg   Config
+	log   *slog.Logger
+	ctx   context.Context
+	cp    controlPlane
+	wg    wgConfigurer
+	wgPub [32]byte
+	ipv6  bool
+
+	reg   *registry
+	trust atomic.Pointer[trust]
+	ct    *conntrack
+	dec   *decider
+	snoop *snoop
+	flows *flowLog
+	guard *guard
+	synth *synthMap     // synthetic PrivateApp addresses (ADR-0013)
+	hub   *connectorHub // live Connector broker connections
+	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
+	origDst func(*net.TCPConn) (netip.AddrPort, error)
+
+	syncMu   sync.Mutex
+	lastSync atomic.Int64 // unix nanoseconds of the last peer sync attempt
+	syncSF   singleflight.Group
+	minSync  time.Duration // minSyncInterval; shorter in tests
+	unknown  *negCache     // device IDs absent from a fresh peer feed (security review #7)
+	reportCh chan struct{} // wakes the session reporter
+}
+
+// On-demand peer sync limits (security review #7).
+const (
+	minSyncInterval = 5 * time.Second
+	unknownHold     = 30 * time.Second
+	maxUnknown      = 10000
+)
+
+func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
+	cfg.defaults()
+	if cfg.Root == nil {
+		return nil, errors.New("edge: root CA required")
+	}
+	k, err := ecdh.X25519().NewPrivateKey(cfg.WGPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("edge: wireguard key: %w", err)
+	}
+	e := &Edge{
+		cfg: cfg, log: cfg.Logger, ctx: ctx, cp: cp,
+		reg: newRegistry(), ct: newConntrack(), snoop: newSnoop(), flows: &flowLog{},
+		guard:    newGuard(cfg.DenyCIDRs, cfg.LocalAddrs, cfg.AllowPrivate, !cfg.AllowDoH),
+		unknown:  newNegCache(maxUnknown),
+		reportCh: make(chan struct{}, 1),
+		minSync:  minSyncInterval,
+		synth:    newSynthMap(SyntheticPrefix, maxSynthEnts, synthIdle),
+		hub:      newConnectorHub(cfg.Logger),
+		origDst:  originalDst,
+	}
+	copy(e.wgPub[:], k.PublicKey().Bytes())
+	e.dec = newDecider(ctx, cp, cfg.Logger)
+	return e, nil
+}
+
+// Run starts the Edge and blocks until ctx is cancelled. It needs CAP_NET_ADMIN and
+// /dev/net/tun.
+func Run(ctx context.Context, cfg Config) error {
+	root := x509.NewCertPool()
+	if cfg.Root != nil {
+		root.AddCert(cfg.Root)
+	}
+	cp, err := newCPClient(cfg.ControlURL, root, cfg.Cert)
+	if err != nil {
+		return err
+	}
+	if cfg.LocalAddrs == nil {
+		cfg.LocalAddrs = hostAddrs()
+	}
+	e, err := newEdge(ctx, cfg, cp)
+	if err != nil {
+		return err
+	}
+	return e.run(ctx)
+}
+
+func (e *Edge) run(ctx context.Context) error {
+	// 1. Trust material and peers from the Control Plane (retry until it is up).
+	for {
+		err := e.syncPeers(ctx)
+		if err == nil {
+			break
+		}
+		e.log.Warn("waiting for control plane", "err", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	// 2. WireGuard on a kernel TUN wrapped by the policy filter.
+	tdev, err := tun.CreateTUN(e.cfg.TUNName, e.cfg.MTU)
+	if err != nil {
+		return fmt.Errorf("edge: create TUN %s: %w", e.cfg.TUNName, err)
+	}
+	filter := newFilter(tdev, e)
+	wglog := &wgdevice.Logger{
+		Verbosef: func(f string, a ...any) { e.log.Debug("wireguard: " + fmt.Sprintf(f, a...)) },
+		Errorf:   func(f string, a ...any) { e.log.Warn("wireguard: " + fmt.Sprintf(f, a...)) },
+	}
+	wgdev := wgdevice.NewDevice(filter, wgconn.NewDefaultBind(), wglog)
+	defer wgdev.Close()
+	var b bytes.Buffer
+	b.Grow(256)
+	b.WriteString("private_key=")
+	writeHex(&b, e.cfg.WGPrivateKey)
+	b.WriteString("\nlisten_port=" + strconv.Itoa(e.cfg.WGPort) + "\n")
+	err = wgdev.IpcSetOperation(bytes.NewReader(b.Bytes()))
+	clear(b.Bytes())
+	if err != nil {
+		return fmt.Errorf("edge: configure wireguard: %w", err)
+	}
+	if err := wgdev.Up(); err != nil {
+		return fmt.Errorf("edge: wireguard up: %w", err)
+	}
+	e.wg = wgdev
+	name, _ := tdev.Name()
+	if err := e.configureInterface(ctx, name); err != nil {
+		return err
+	}
+
+	// 3. DNS resolver on the tunnel addresses.
+	rs := newResolver(e, e.cfg.Upstream)
+	if err := rs.serveDNS(ctx, net.JoinHostPort(EdgeIPv4.String(), "53")); err != nil {
+		return fmt.Errorf("edge: dns: %w", err)
+	}
+	if e.ipv6 {
+		if err := rs.serveDNS(ctx, net.JoinHostPort(EdgeIPv6.String(), "53")); err != nil {
+			e.log.Warn("ipv6 dns listener failed", "err", err)
+		}
+	}
+
+	// 4. ZTNA broker (ADR-0013): redirected client connections and Connector connections.
+	if err := e.startZTNA(ctx); err != nil {
+		return err
+	}
+
+	// 5. Background loops.
+	go e.peerLoop(ctx)
+	go e.sweepLoop(ctx)
+	go e.flowLoop(ctx)
+	go e.reportLoop(ctx)
+
+	// 6. Session-setup server.
+	srv := &http.Server{
+		Addr:              e.cfg.ListenAddr,
+		Handler:           (&sessionServer{e: e}).handler(),
+		TLSConfig:         e.sessionTLSConfig(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ErrorLog:          slog.NewLogLogger(e.log.Handler(), slog.LevelDebug),
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServeTLS("", "") }()
+	e.log.Info("built-in deny active", "prefixes", len(e.guard.deny), "allowPrivate", e.cfg.AllowPrivate, "dohBlock", e.guard.blockDoH)
+	e.log.Info("edge ready", "session", e.cfg.ListenAddr, "wg", e.cfg.WGPort, "tun", name, "mtu", e.cfg.MTU, "kex", "X25519MLKEM768")
+	select {
+	case <-ctx.Done():
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(sctx)
+		fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer fcancel()
+		_ = e.flows.flush(fctx, e.cp)
+		return nil
+	case err := <-errc:
+		return err
+	}
+}
+
+// configureInterface assigns the Edge tunnel addresses with iproute2.
+func (e *Edge) configureInterface(ctx context.Context, name string) error {
+	run := func(args ...string) error {
+		out, err := exec.CommandContext(ctx, "ip", args...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("ip %v: %w: %s", args, err, bytes.TrimSpace(out))
+		}
+		return nil
+	}
+	p4 := netip.PrefixFrom(EdgeIPv4, TunnelPrefix4.Bits())
+	if err := run("addr", "replace", p4.String(), "dev", name); err != nil {
+		return err
+	}
+	if err := run("link", "set", name, "mtu", strconv.Itoa(e.cfg.MTU), "up"); err != nil {
+		return err
+	}
+	p6 := netip.PrefixFrom(EdgeIPv6, TunnelPrefix6.Bits())
+	if err := run("-6", "addr", "replace", p6.String(), "dev", name, "nodad"); err != nil {
+		e.log.Warn("ipv6 tunnel address not configured; continuing IPv4-only", "err", err)
+	} else {
+		e.ipv6 = true
+	}
+	return e.redirectZTNA(ctx, name)
+}
+
+// redirectZTNA installs the REDIRECT of tunnel TCP to SyntheticPrefix to the broker
+// listener (ADR-0013). edge-entrypoint.sh installs the same rule as root before dropping
+// privileges; here it is only checked and added if missing (needs NET_ADMIN).
+func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
+	if e.cfg.ZTNAListen == listenOff {
+		return nil
+	}
+	_, port, err := net.SplitHostPort(e.cfg.ZTNAListen)
+	if err != nil {
+		return fmt.Errorf("edge: -ztna-listen %q: %w", e.cfg.ZTNAListen, err)
+	}
+	rule := []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port}
+	ipt := func(op string) error {
+		args := append([]string{"-w", "5", "-t", "nat", op}, rule...)
+		out, err := exec.CommandContext(ctx, "iptables", args...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("iptables %v: %w: %s", args, err, bytes.TrimSpace(out))
+		}
+		return nil
+	}
+	if ipt("-C") == nil {
+		e.log.Info("ztna redirect present", "prefix", SyntheticPrefix, "port", port)
+		return nil
+	}
+	if err := ipt("-A"); err != nil {
+		e.log.Warn("ztna redirect not installed; private apps unreachable unless the entrypoint added it", "err", err)
+		return nil
+	}
+	e.log.Info("ztna redirect installed", "prefix", SyntheticPrefix, "port", port)
+	return nil
+}
+
+// startZTNA starts the broker listener and the Connector listener.
+func (e *Edge) startZTNA(ctx context.Context) error {
+	if e.cfg.ZTNAListen != listenOff {
+		ln, err := net.Listen("tcp4", e.cfg.ZTNAListen)
+		if err != nil {
+			return fmt.Errorf("edge: ztna listener: %w", err)
+		}
+		go e.serveBroker(ctx, ln)
+		e.log.Info("ztna broker listening", "addr", e.cfg.ZTNAListen, "prefix", SyntheticPrefix)
+	}
+	if e.cfg.BrokerListen != listenOff {
+		ln, err := net.Listen("tcp", e.cfg.BrokerListen)
+		if err != nil {
+			return fmt.Errorf("edge: connector listener: %w", err)
+		}
+		go e.serveConnectors(ctx, ln)
+		e.log.Info("connector listener", "addr", e.cfg.BrokerListen, "alpn", api.BrokerALPN)
+	}
+	return nil
+}
+
+// ztnaName returns the name a synthetic address maps to, if the mapping belongs to d's
+// tenant, and whether that name is a private app d is entitled to.
+func (e *Edge) ztnaName(d *device, dst netip.Addr, now time.Time) (string, bool) {
+	v := d.ztna.Load()
+	if v == nil {
+		return "", false
+	}
+	tenant, name, ok := e.synth.lookup(dst, now)
+	if !ok || tenant != v.tenant {
+		return "", false
+	}
+	_, entitled := v.app(name)
+	return name, entitled
+}
+
+// syncPeers refreshes trust material and the device list from the Control Plane.
+func (e *Edge) syncPeers(ctx context.Context) error {
+	e.syncMu.Lock()
+	defer e.syncMu.Unlock()
+	e.lastSync.Store(time.Now().UnixNano())
+	b, err := e.cp.PKIBundle(ctx)
+	if err != nil {
+		return fmt.Errorf("pki bundle: %w", err)
+	}
+	t, err := parseBundle(b, e.cfg.Root)
+	if err != nil {
+		return err
+	}
+	e.trust.Store(t)
+	peers, err := e.cp.Peers(ctx)
+	if err != nil {
+		return fmt.Errorf("peers: %w", err)
+	}
+	res := e.reg.sync(peers, t.keys)
+	e.hub.setAllowed(peers.Connectors)
+	if len(res.removed) > 0 {
+		e.reg.mu.Lock()
+		for _, d := range res.removed {
+			if e.reg.devices[d.id] == nil && e.wg != nil {
+				e.removePeer(d)
+			}
+		}
+		e.reg.mu.Unlock()
+	}
+	if res.updated > 0 || len(res.removed) > 0 || res.invalid > 0 {
+		e.log.Info("peers synced", "devices", len(peers.Devices), "updated", res.updated, "removed", len(res.removed), "invalid", res.invalid)
+	}
+	return nil
+}
+
+func (e *Edge) peerLoop(ctx context.Context) {
+	t := time.NewTicker(e.cfg.PeerRefresh)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := e.syncPeers(ctx); err != nil && ctx.Err() == nil {
+				e.log.Warn("peer sync failed; enforcing last known snapshots", "err", err)
+			}
+		}
+	}
+}
+
+// owner returns the device ID owning the source of an outbound flow key.
+func (e *Edge) owner(k packet.FlowKey) string {
+	if d := e.reg.byTunnelIP(k.Src); d != nil {
+		return d.id
+	}
+	return ""
+}
+
+func (e *Edge) sweepLoop(ctx context.Context) {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			e.expireSessions(now)
+			e.unknown.sweep(now)
+			e.flows.add(e.ct.sweep(now, e.owner)...)
+			e.dec.sweep(now)
+			e.synth.sweep(now)
+			e.snoop.sweep(now, func(a netip.Addr) bool { return e.reg.byTunnelIP(a) != nil })
+		}
+	}
+}
+
+func (e *Edge) flowLoop(ctx context.Context) {
+	t := time.NewTicker(e.cfg.FlowFlush)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := e.flows.flush(ctx, e.cp); err != nil && ctx.Err() == nil {
+				e.log.Warn("flow upload failed", "pending", e.flows.pending(), "err", err)
+			}
+		}
+	}
+}
+
+// hostAddrs returns the addresses of every host interface (the Edge's own addresses, which
+// tunnel clients must not reach).
+func hostAddrs() []netip.Addr {
+	as, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	out := []netip.Addr{}
+	for _, a := range as {
+		if p, err := netip.ParsePrefix(a.String()); err == nil {
+			out = append(out, p.Addr().Unmap())
+		}
+	}
+	return out
+}
+
+// lookupDevice returns the registry entry of a device presenting a valid certificate. An
+// unknown device triggers an on-demand peer sync, shared by concurrent callers
+// (singleflight) and at most every minSyncInterval; a device still absent after a sync that
+// started after this call is remembered as unknown for unknownHold, so repeated attempts
+// with such a certificate cost nothing (security review #7).
+func (e *Edge) lookupDevice(ctx context.Context, id string) *device {
+	var d *device
+	e.findAfterSync(ctx, id, func() bool { d = e.reg.get(id); return d != nil })
+	return d
+}
+
+// connectorAllowed reports whether a connector is in the peer feed, with the same
+// on-demand sync as lookupDevice, so a just-enrolled connector does not wait for the next
+// periodic sync. Negative entries are keyed apart from device IDs.
+func (e *Edge) connectorAllowed(ctx context.Context, id pki.Identity) bool {
+	return e.findAfterSync(ctx, "connector:"+id.TenantID+"/"+id.ConnectorID, func() bool {
+		_, ok := e.hub.isAllowed(id)
+		return ok
+	})
+}
+
+// findAfterSync returns true as soon as found does, running at most two rate-limited
+// on-demand peer syncs; key is remembered in the negative cache when a fresh sync did not
+// help.
+func (e *Edge) findAfterSync(ctx context.Context, key string, found func() bool) bool {
+	if found() {
+		return true
+	}
+	now := time.Now()
+	if e.unknown.has(key, now) {
+		return false
+	}
+	for range 2 {
+		ch := e.syncSF.DoChan("peers", func() (any, error) {
+			if wait := e.minSync - time.Since(time.Unix(0, e.lastSync.Load())); wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-e.ctx.Done():
+					return time.Time{}, e.ctx.Err()
+				}
+			}
+			started := time.Now()
+			sctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
+			defer cancel()
+			return started, e.syncPeers(sctx)
+		})
+		var res singleflight.Result
+		select {
+		case res = <-ch:
+		case <-ctx.Done():
+			return false
+		}
+		if found() {
+			return true
+		}
+		if res.Err != nil {
+			e.log.WarnContext(ctx, "on-demand peer sync failed", "err", res.Err)
+			return false
+		}
+		if started, _ := res.Val.(time.Time); !started.Before(now) {
+			e.unknown.add(key, time.Now().Add(unknownHold))
+			return false
+		}
+		// Joined a sync that started before this call: it may predate the enrollment.
+	}
+	return false
+}
+
+// expireSessions removes the WireGuard peer of every device whose session certificate has
+// expired (security review #4). A session set up or rotated with a renewed certificate
+// carries the new expiry, so it is not affected.
+func (e *Edge) expireSessions(now time.Time) {
+	r := e.reg
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.devices {
+		if !d.hasPeer || d.certNotAfter.IsZero() || !now.After(d.certNotAfter) {
+			continue
+		}
+		if e.wg != nil {
+			e.removePeer(d)
+		}
+		e.log.Info("session expired with its device certificate", "device", d.id, "notAfter", d.certNotAfter)
+		d.hasPeer, d.sessionID, d.epoch, d.certNotAfter = false, "", 0, time.Time{}
+	}
+}
+
+// liveSessions returns the IDs of devices with a WireGuard peer.
+func (e *Edge) liveSessions() []string {
+	r := e.reg
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []string{}
+	for id, d := range r.devices {
+		if d.hasPeer {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// triggerReport asks the reporter to send the session list now.
+func (e *Edge) triggerReport() {
+	select {
+	case e.reportCh <- struct{}{}:
+	default:
+	}
+}
+
+// reportLoop sends the live session list to the Control Plane every PeerRefresh and right
+// after each session setup, so the Control Plane scopes /v1/decide and /v1/flows from this
+// edge to devices it actually serves (security review #9).
+func (e *Edge) reportLoop(ctx context.Context) {
+	t := time.NewTicker(e.cfg.PeerRefresh)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-e.reportCh:
+		}
+		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := e.cp.ReportSessions(rctx, api.EdgeSessions{DeviceIDs: e.liveSessions(), ConnectorIDs: e.hub.liveIDs()})
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			e.log.Warn("session report failed", "err", err)
+		}
+	}
+}
+
+// negCache remembers device IDs that are not in the peer feed, with an expiry. Bounded:
+// when full, new entries are not added.
+type negCache struct {
+	max int
+	mu  sync.Mutex
+	m   map[string]time.Time
+}
+
+func newNegCache(max int) *negCache { return &negCache{max: max, m: map[string]time.Time{}} }
+
+func (c *negCache) has(id string, now time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	exp, ok := c.m[id]
+	return ok && now.Before(exp)
+}
+
+func (c *negCache) add(id string, exp time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.m[id]; ok || len(c.m) < c.max {
+		c.m[id] = exp
+	}
+}
+
+func (c *negCache) sweep(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, exp := range c.m {
+		if !now.Before(exp) {
+			delete(c.m, id)
+		}
+	}
+}

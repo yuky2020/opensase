@@ -1,0 +1,6 @@
+clients/
+**/build/
+.git/
+deploy/dev/data/
+deploy/dev/pki/
+*.aar

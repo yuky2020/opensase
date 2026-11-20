@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native strings only (notification, tile). UI strings live in lib/src/l10n/*.arb. -->
+<resources>
+    <string name="state_connected">Connesso</string>
+    <string name="state_connecting">Connessione in corso…</string>
+    <string name="state_disconnected">Disconnesso</string>
+    <string name="state_error">Errore</string>
+    <string name="vpn_channel_name">Stato VPN</string>
+    <string name="vpn_notif_connecting">Connessione a OpenSASE in corso…</string>
+    <string name="vpn_notif_connected">Protetto · %1$s</string>
+    <string name="vpn_notif_failed">Connessione non riuscita</string>
+    <string name="vpn_notif_pq">Resistente ai quantum %1$s</string>
+    <string name="vpn_notif_blocked">%1$d bloccate</string>
+    <string name="vpn_action_disconnect">Disconnetti</string>
+    <string name="vpn_action_retry">Riprova</string>
+    <string name="vpn_error_not_enrolled">Questo dispositivo non è registrato</string>
+    <string name="vpn_error_not_prepared">Autorizzazione VPN non concessa</string>
+    <string name="vpn_error_consent_denied">L\'autorizzazione VPN è stata negata</string>
+    <string name="tile_label">OpenSASE</string>
+</resources>

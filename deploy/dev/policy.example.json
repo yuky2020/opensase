@@ -1,0 +1,48 @@
+{
+  "defaultAction": "allow",
+  "allowUserRules": true,
+  "lockdown": false,
+  "rules": [
+    {
+      "id": "block-smtp",
+      "priority": 10,
+      "action": "block",
+      "log": true,
+      "description": "No direct SMTP from devices (spam/exfiltration)",
+      "match": { "protocols": ["tcp"], "ports": [{ "from": 25 }] }
+    },
+    {
+      "id": "block-tracker-domains",
+      "priority": 20,
+      "action": "block",
+      "log": true,
+      "description": "Flows to IPs learned from tracker lookups (DNS snooping)",
+      "match": { "domains": ["*.doubleclick.net"] }
+    },
+    {
+      "id": "ask-test-net-3",
+      "priority": 30,
+      "action": "ask",
+      "log": true,
+      "description": "TEST-NET-3 is decided by the cloud (POST /v1/decide)",
+      "match": { "cidrs": ["203.0.113.0/24"] }
+    }
+  ],
+  "apps": {},
+  "dns": {
+    "blockResponse": "nxdomain",
+    "blocklists": [
+      {
+        "id": "ads",
+        "name": "Advertising",
+        "category": "ads",
+        "domains": ["*.doubleclick.net", "*.googlesyndication.com"]
+      }
+    ],
+    "allowDomains": [],
+    "blockDomains": ["blocked.opensase.test"]
+  },
+  "decideBlockDomains": ["malware.opensase.test"],
+  "decideBlockCidrs": ["203.0.113.66/32"],
+  "decideDefault": "allow"
+}

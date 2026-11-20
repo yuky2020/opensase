@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test -race ./...
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2
+
+  android:
+    name: Mobile (Flutter + Go core)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android NDK
+        run: echo "y" | sdkmanager --install "ndk;28.2.13676358"
+
+      - name: Install gomobile and gobind
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+
+      - name: Initialize gomobile
+        run: gomobile init
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter analyze and test
+        run: make app-test
+
+      - name: Build APK
+        run: make apk
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: clients/mobile/build/app/outputs/flutter-apk/*.apk

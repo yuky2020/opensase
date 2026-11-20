@@ -1,0 +1,194 @@
+package edge
+
+import (
+	"context"
+	"net"
+	"net/netip"
+	"strings"
+	"time"
+
+	"github.com/miekg/dns"
+
+	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/policy"
+)
+
+// resolver is the Edge DNS resolver on the tunnel addresses. It applies the querying
+// device's DNS policy (EvaluateDNS), forwards allowed queries upstream, blocks answers whose
+// CNAME chain hits a blocked name, and snoops A/AAAA answers for domain rules.
+type resolver struct {
+	e        *Edge
+	upstream string
+	udp      *dns.Client
+	tcp      *dns.Client
+}
+
+func newResolver(e *Edge, upstream string) *resolver {
+	return &resolver{
+		e:        e,
+		upstream: upstream,
+		udp:      &dns.Client{Net: "udp", Timeout: 4 * time.Second, UDPSize: dns.DefaultMsgSize},
+		tcp:      &dns.Client{Net: "tcp", Timeout: 4 * time.Second},
+	}
+}
+
+func remoteAddr(a net.Addr) netip.Addr {
+	switch v := a.(type) {
+	case *net.UDPAddr:
+		return v.AddrPort().Addr().Unmap()
+	case *net.TCPAddr:
+		return v.AddrPort().Addr().Unmap()
+	}
+	return netip.Addr{}
+}
+
+func normalize(name string) string {
+	return strings.ToLower(strings.TrimSuffix(name, "."))
+}
+
+// ServeDNS implements dns.Handler.
+func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	defer w.Close()
+	client := remoteAddr(w.RemoteAddr())
+	d := rs.e.reg.byTunnelIP(client)
+	var c *policy.Compiled
+	if d != nil {
+		c = d.compiled.Load()
+	}
+	if c == nil || len(req.Question) != 1 || req.Opcode != dns.OpcodeQuery {
+		m := new(dns.Msg)
+		m.SetRcode(req, dns.RcodeRefused)
+		_ = w.WriteMsg(m)
+		return
+	}
+	q := req.Question[0]
+	name := normalize(q.Name)
+	if blocked, list := c.EvaluateDNS(name); blocked {
+		rs.block(w, req, c, d, name, list, q)
+		return
+	}
+	// Private app names (ADR-0013) are answered here and never forwarded upstream.
+	if v := d.ztna.Load(); v != nil {
+		if _, ok := v.app(name); ok {
+			rs.synthesize(w, req, client, v.tenant, name, q)
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(rs.e.ctx, 5*time.Second)
+	defer cancel()
+	resp, _, err := rs.udp.ExchangeContext(ctx, req, rs.upstream)
+	if err == nil && resp.Truncated {
+		resp, _, err = rs.tcp.ExchangeContext(ctx, req, rs.upstream)
+	}
+	if err != nil || resp == nil {
+		m := new(dns.Msg)
+		m.SetRcode(req, dns.RcodeServerFailure)
+		_ = w.WriteMsg(m)
+		return
+	}
+	// CNAME cloaking: a permitted name that aliases a blocked one is blocked too.
+	for _, rr := range resp.Answer {
+		if cn, ok := rr.(*dns.CNAME); ok {
+			if blocked, list := c.EvaluateDNS(normalize(cn.Target)); blocked {
+				rs.block(w, req, c, d, name, list, q)
+				return
+			}
+		}
+	}
+	now := time.Now()
+	for _, rr := range resp.Answer {
+		var ip netip.Addr
+		switch v := rr.(type) {
+		case *dns.A:
+			ip, _ = netip.AddrFromSlice(v.A.To4())
+		case *dns.AAAA:
+			ip, _ = netip.AddrFromSlice(v.AAAA)
+		default:
+			continue
+		}
+		if ip.IsValid() {
+			rs.e.snoop.add(client, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
+		}
+	}
+	resp.Id = req.Id
+	_ = w.WriteMsg(resp)
+}
+
+// synthesize answers a private app name: A with the sticky synthetic address of
+// (tenant, name), TTL synthTTL; every other type (AAAA included) with an empty NOERROR.
+func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, client netip.Addr, tenant, name string, q dns.Question) {
+	m := new(dns.Msg)
+	m.SetReply(req)
+	m.Authoritative = true
+	m.RecursionAvailable = true
+	if q.Qtype == dns.TypeA && q.Qclass == dns.ClassINET {
+		now := time.Now()
+		ip, err := rs.e.synth.assign(tenant, name, now)
+		if err != nil {
+			rs.e.log.Warn("synthetic address not assigned", "tenant", tenant, "name", name, "err", err)
+			m.SetRcode(req, dns.RcodeServerFailure)
+			_ = w.WriteMsg(m)
+			return
+		}
+		m.Answer = append(m.Answer, &dns.A{
+			Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: synthTTL},
+			A:   ip.AsSlice(),
+		})
+		rs.e.snoop.add(client, ip, name, synthTTL*time.Second, now)
+	}
+	_ = w.WriteMsg(m)
+}
+
+func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, name, list string, q dns.Question) {
+	m := new(dns.Msg)
+	if c.BlockResponse() == "zero" {
+		m.SetReply(req)
+		hdr := dns.RR_Header{Name: q.Name, Class: dns.ClassINET, Ttl: 60}
+		switch q.Qtype {
+		case dns.TypeA:
+			hdr.Rrtype = dns.TypeA
+			m.Answer = append(m.Answer, &dns.A{Hdr: hdr, A: net.IPv4zero})
+		case dns.TypeAAAA:
+			hdr.Rrtype = dns.TypeAAAA
+			m.Answer = append(m.Answer, &dns.AAAA{Hdr: hdr, AAAA: net.IPv6zero})
+		}
+	} else {
+		m.SetRcode(req, dns.RcodeNameError)
+	}
+	_ = w.WriteMsg(m)
+	now := time.Now()
+	rs.e.flows.add(api.FlowRecord{
+		Start: now, End: now, Where: "edge", DeviceID: d.id,
+		Flow:     policy.Flow{Protocol: "udp", DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
+		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: "dns:" + list, Layer: "dns", Log: true},
+	})
+}
+
+// serveDNS runs UDP and TCP listeners on addr until ctx is done.
+func (rs *resolver) serveDNS(ctx context.Context, addr string) error {
+	errc := make(chan error, 2)
+	var servers []*dns.Server
+	for _, network := range []string{"udp", "tcp"} {
+		started := make(chan struct{})
+		srv := &dns.Server{Addr: addr, Net: network, Handler: rs, NotifyStartedFunc: func() { close(started) }, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
+		servers = append(servers, srv)
+		go func() { errc <- srv.ListenAndServe() }()
+		select {
+		case <-started:
+		case err := <-errc:
+			for _, s := range servers[:len(servers)-1] {
+				_ = s.Shutdown()
+			}
+			return err
+		}
+	}
+	rs.e.log.Info("dns resolver listening", "addr", addr, "upstream", rs.upstream)
+	go func() {
+		<-ctx.Done()
+		for _, s := range servers {
+			_ = s.Shutdown()
+		}
+	}()
+	return nil
+}

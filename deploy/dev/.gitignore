@@ -1,0 +1,10 @@
+pki/
+data/
+.env
+limit-watchdog.log
+.watchdog-disable
+provisioning.key
+provisioning.key.tmp
+connector.key
+connector.key.tmp
+connector-state/

@@ -1,0 +1,261 @@
+{
+  "@@locale": "en",
+  "appTitle": "OpenSASE Admin",
+  "navOverview": "Overview",
+  "navTenants": "Tenants",
+  "navUsers": "Users",
+  "navPolicy": "Policy",
+  "navPrivateApps": "Private apps",
+  "navConnectors": "Connectors",
+  "navDevices": "Devices",
+  "navEdges": "Edges",
+  "navActivity": "Activity",
+  "navSettings": "Settings",
+  "actionSave": "Save",
+  "actionCancel": "Cancel",
+  "actionDelete": "Delete",
+  "actionAdd": "Add",
+  "actionEdit": "Edit",
+  "actionCreate": "Create",
+  "actionRevoke": "Revoke",
+  "actionRefresh": "Refresh",
+  "actionReload": "Discard changes",
+  "actionClose": "Close",
+  "actionCopy": "Copy",
+  "actionLogout": "Sign out",
+  "actionMoveUp": "Move up",
+  "actionMoveDown": "Move down",
+  "msgCopied": "Copied to the clipboard",
+  "msgSaved": "Saved. Device snapshots are being recompiled.",
+  "msgError": "Error: {error}",
+  "@msgError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "msgSessionExpired": "The admin token was rejected. Sign in again.",
+  "emptyNothingHere": "Nothing here yet",
+  "emptyNoTenant": "Create or select a tenant first.",
+  "tenantPicker": "Tenant",
+  "loginTitle": "OpenSASE administration",
+  "loginSubtitle": "Paste the admin token of this Control Plane.",
+  "loginToken": "Admin token",
+  "loginRemember": "Remember for this tab",
+  "loginRememberHint": "Kept in this tab's session storage until the tab is closed. Otherwise the token stays in memory only.",
+  "loginSubmit": "Sign in",
+  "loginFailed": "Sign-in failed: {error}",
+  "@loginFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loginTokenRequired": "Enter the admin token",
+  "fieldId": "ID",
+  "fieldIdOptional": "ID (optional, generated if empty)",
+  "fieldName": "Name",
+  "fieldEmail": "Email",
+  "fieldGroup": "Group",
+  "fieldUser": "User",
+  "fieldPlatform": "Platform",
+  "fieldCreated": "Created",
+  "fieldLastSeen": "Last seen",
+  "fieldStatus": "Status",
+  "fieldInvalidId": "Letters, digits, '.', '_' and '-'; must start with a letter or digit",
+  "fieldRequired": "Required",
+  "statusRevoked": "Revoked",
+  "statusActive": "Active",
+  "statusOnline": "Online",
+  "statusOffline": "Offline",
+  "never": "never",
+  "tenantsCreate": "New tenant",
+  "usersCreate": "New user",
+  "usersProvisioningKey": "Provisioning key",
+  "provTitle": "Provisioning key for {user}",
+  "@provTitle": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      }
+    }
+  },
+  "provMaxUses": "Max uses",
+  "provValidHours": "Valid for (hours)",
+  "provGenerate": "Generate",
+  "provShownOnce": "This key is shown only once. Copy it or let the user scan the QR code now.",
+  "provExpires": "Expires {time}",
+  "@provExpires": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "provNoControlUrl": "Set the control URL with its #sha256= pin in Settings to show an enrollment QR code.",
+  "provScan": "Scan with the OpenSASE app to enroll",
+  "provLink": "Enrollment link",
+  "settingsControlUrl": "Control URL for enrollment",
+  "settingsControlUrlHint": "https://cp.example.com:9443#sha256=<root CA SHA-256>",
+  "settingsControlUrlHelp": "Put into enrollment QR codes. The #sha256= fragment pins the provider root CA (opensasectl prints it).",
+  "settingsUseOrigin": "Use this origin",
+  "settingsTokenInfo": "The admin token is held in memory, and in this tab's session storage only if you chose so at sign-in. It is never written to local storage.",
+  "policyTabForm": "Form",
+  "policyTabJson": "JSON",
+  "policyGeneral": "General",
+  "policyDefaultAction": "Default action",
+  "policyNotSet": "Not set (server default)",
+  "policyAllowUserRules": "Allow user rules",
+  "policyAllowUserRulesHelp": "Users may add personal rules and per-app policies below the tenant layer.",
+  "policyLockdown": "Lockdown",
+  "policyLockdownHelp": "Apps without a tenant app policy are blocked; user rules can only block.",
+  "policyRules": "Tenant rules",
+  "policyRulesHelp": "Evaluated by priority, lowest first; the first match wins. All filled match fields must match.",
+  "policyApps": "Per-app policies",
+  "policyAppsHelp": "Mandatory verdicts per Android package and network.",
+  "policyDns": "DNS",
+  "policyBlockResponse": "Block response",
+  "policyBlocklists": "Blocklists",
+  "policyAllowDomains": "Allowed domains (override blocklists)",
+  "policyBlockDomains": "Blocked domains",
+  "policyDecide": "Cloud decisions (ask)",
+  "policyDecideDefault": "Decide default",
+  "policyDecideBlockDomains": "Domains blocked by the cloud",
+  "policyDecideBlockCidrs": "CIDRs blocked by the cloud",
+  "policyOnePerLine": "One per line; \"*.example.com\" also matches example.com",
+  "policyJsonInvalid": "Invalid JSON: {error}",
+  "@policyJsonInvalid": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "policyJsonLocked": "The JSON tab has an error. Fix it to edit the form.",
+  "policyIssues": "Fix these problems before saving:",
+  "policyServerError": "The Control Plane rejected the policy: {error}",
+  "@policyServerError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "policyUnsaved": "Unsaved changes",
+  "ruleNew": "New rule",
+  "ruleEdit": "Edit rule",
+  "rulePriority": "Priority",
+  "ruleAction": "Action",
+  "ruleLog": "Log matching flows",
+  "ruleDescription": "Description",
+  "ruleMatch": "Match",
+  "ruleMatchAny": "any",
+  "matchApps": "Apps (package names)",
+  "matchNetworks": "Networks",
+  "matchProtocols": "Protocols",
+  "matchCidrs": "Destination CIDRs",
+  "matchPorts": "Destination ports",
+  "matchPortsHint": "443, 8000-8080",
+  "matchDomains": "Domains",
+  "appPackage": "Package name",
+  "appNew": "New app policy",
+  "networkWifi": "Wi-Fi",
+  "networkCellular": "Mobile data",
+  "networkRoaming": "Roaming",
+  "networkEthernet": "Ethernet",
+  "networkUnknown": "Unknown",
+  "actionAllow": "Allow",
+  "actionBlock": "Block",
+  "actionAsk": "Ask cloud",
+  "actionUnset": "Not set",
+  "blocklistNew": "New blocklist",
+  "blocklistCategory": "Category",
+  "blocklistDomainsCount": "{count} domains",
+  "@blocklistDomainsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privateAppsHelp": "Private apps are reachable by name only, through a Connector group (ZTNA). Saving updates the tenant policy.",
+  "privateAppNew": "New private app",
+  "privateAppEdit": "Edit private app",
+  "privateAppPorts": "TCP ports",
+  "privateAppConnectorGroup": "Connector group",
+  "privateAppUsers": "Users (IDs or emails; empty = every user)",
+  "privateAppEveryone": "everyone",
+  "connectorsCreate": "New Connector",
+  "connectorsCreated": "Connector {name} created",
+  "@connectorsCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connectorsKeyHelp": "Single-use key, valid 24 hours. Pass it to opensase-connector -key at its first start.",
+  "connectorsGroupHint": "default",
+  "revokeConfirmTitle": "Revoke {name}?",
+  "@revokeConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "revokeConfirmConnector": "The connector's certificate stops working on the next Edge sync (about 10 seconds). This cannot be undone.",
+  "revokeConfirmDevice": "The device loses access and must enroll again. This cannot be undone.",
+  "revokeConfirmEdge": "The Edge is refused by the Control Plane; its ID cannot be reused. This cannot be undone.",
+  "edgesCreate": "Register Edge",
+  "edgesCreateHelp": "Register the Edge ID before starting the Edge with its certificate.",
+  "flowsVerdict": "Verdict",
+  "flowsLayer": "Layer",
+  "flowsWhere": "Where",
+  "flowsDevice": "Device",
+  "flowsSearch": "Search domain, IP, port, app, rule",
+  "flowsAny": "Any",
+  "flowsAutoRefresh": "Auto refresh (10 s)",
+  "flowsTime": "Time",
+  "flowsDestination": "Destination",
+  "flowsApp": "App",
+  "flowsRule": "Rule",
+  "flowsBytes": "Bytes out/in",
+  "flowsShown": "{shown} of {total} flows",
+  "@flowsShown": {
+    "placeholders": {
+      "shown": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "overviewDevices": "Active devices",
+  "overviewConnectorsOnline": "Connectors online",
+  "overviewEdges": "Edges",
+  "overviewBlocksHour": "Blocks in the last hour",
+  "overviewChartTitle": "Verdicts by layer (last {count} flows)",
+  "@overviewChartTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "overviewOf": "of {total}",
+  "@overviewOf": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "verdictAllow": "Allowed",
+  "verdictBlock": "Blocked",
+  "verdictOther": "Other",
+  "msgSettingsSaved": "Settings saved"
+}

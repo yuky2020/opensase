@@ -1,0 +1,8 @@
+OpenSASE
+Copyright 2026 The OpenSASE Authors
+
+This product includes software developed by The OpenSASE Authors
+(https://github.com/yuky2020/opensase).
+
+Third-party dependencies keep their own licences (MIT, BSD-3-Clause, Apache-2.0);
+see go.mod and the pubspec.lock files of each Flutter app.

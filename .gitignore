@@ -1,0 +1,16 @@
+/bin/
+*.aar
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+.gradle/
+build/
+local.properties
+/deploy/dev/data/
+*.db
+.idea/
+
+# local-only tooling
+/.agy/prompts/
+/deploy/dev/limit-watchdog.sh
+/deploy/dev/limit-watchdog.log
+/deploy/dev/.watchdog-disable

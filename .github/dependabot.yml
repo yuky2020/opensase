@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "gradle"
+    directory: "/clients/mobile/android"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pub"
+    directory: "/clients/mobile"
+    schedule:
+      interval: "weekly"

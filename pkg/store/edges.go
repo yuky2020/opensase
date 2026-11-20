@@ -43,7 +43,7 @@ func (s *Store) renewCert(ctx context.Context, table, id, presented, newSerial s
 		default:
 			return ErrConflict
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE `+table+` SET cert_serial = ?, prev_cert_serial = ? WHERE id = ? AND cert_serial = ? AND revoked = 0`,
+		_, err = tx.ExecContext(ctx, `UPDATE `+table+` SET cert_serial = ?, prev_cert_serial = ? WHERE id = ? AND cert_serial = ? AND revoked = 0`, //nolint:gosec // G202: table is a constant ("devices" or "connectors") from the callers
 			newSerial, prev, id, cur)
 		return err
 	})

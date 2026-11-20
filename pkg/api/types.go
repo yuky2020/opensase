@@ -83,6 +83,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/policy"
 )
 
+// EnrollRequest is the body of POST /v1/enroll.
 type EnrollRequest struct {
 	ProvisioningKey string `json:"provisioningKey"`
 	DeviceName      string `json:"deviceName"`
@@ -90,6 +91,7 @@ type EnrollRequest struct {
 	CSRPEM          string `json:"csrPem"`   // PKCS#10, ECDSA P-256 key generated on device
 }
 
+// EnrollResponse is the reply to POST /v1/enroll: the device identity and trust material.
 type EnrollResponse struct {
 	TenantID       string       `json:"tenantId"`
 	UserID         string       `json:"userId"`
@@ -101,6 +103,7 @@ type EnrollResponse struct {
 	ControlURL     string       `json:"controlUrl"`
 }
 
+// EdgeInfo describes one Edge: where to set up sessions, the WireGuard endpoint and the broker address.
 type EdgeInfo struct {
 	ID          string `json:"id"`
 	Region      string `json:"region"`
@@ -110,12 +113,14 @@ type EdgeInfo struct {
 	BrokerAddr  string `json:"brokerAddr,omitempty"` // host:8444, where Connectors dial (ADR-0013)
 }
 
+// SigningKey is a public key that verifies policy snapshot signatures.
 type SigningKey struct {
 	KeyID     string `json:"keyId"`
 	Algorithm string `json:"alg"`
 	PublicKey []byte `json:"publicKey"`
 }
 
+// PKIBundle is the reply to GET /v1/pki/ca: tenant CAs and snapshot public keys.
 type PKIBundle struct {
 	CAPEM        string       `json:"caPem"`
 	SnapshotKeys []SigningKey `json:"snapshotKeys"`
@@ -134,15 +139,18 @@ type TenantPrivateApp struct {
 	Users []string `json:"users,omitempty"`
 }
 
+// DecideRequest is the body of POST /v1/decide.
 type DecideRequest struct {
 	Flow policy.Flow `json:"flow"`
 }
 
+// DecideResponse is the reply to POST /v1/decide; TTL is how long the decision may be cached.
 type DecideResponse struct {
 	Decision policy.Decision `json:"decision"` // Action is never "ask"
 	TTL      int             `json:"ttlSeconds"`
 }
 
+// FlowRecord is one logged flow with its decision and byte counts.
 type FlowRecord struct {
 	Start    time.Time       `json:"start"`
 	End      time.Time       `json:"end,omitempty"`
@@ -154,16 +162,19 @@ type FlowRecord struct {
 	DeviceID string          `json:"deviceId,omitempty"`
 }
 
+// FlowBatch is the body of POST /v1/flows and the reply to the admin flows query.
 type FlowBatch struct {
 	Records []FlowRecord `json:"records"`
 }
 
+// SessionRequest is the body of POST /v1/session on an Edge.
 type SessionRequest struct {
 	WGPublicKey string `json:"wgPublicKey"` // base64 Curve25519
 	Epoch       uint64 `json:"epoch"`       // 0 for a new session; incremented on each PSK rotation
 	SessionID   string `json:"sessionId,omitempty"`
 }
 
+// SessionResponse is the reply to POST /v1/session: the tunnel configuration.
 type SessionResponse struct {
 	SessionID      string   `json:"sessionId"`
 	Epoch          uint64   `json:"epoch"`
@@ -176,40 +187,47 @@ type SessionResponse struct {
 	MTU            int      `json:"mtu"`
 }
 
+// EdgePeers is the reply to GET /v1/edge/peers: the devices and connectors an Edge accepts.
 type EdgePeers struct {
 	Devices    []EdgeDevice    `json:"devices"`
 	Connectors []EdgeConnector `json:"connectors"` // enrolled, non-revoked connectors; Edges refuse all others
 }
 
+// EdgeConnector is a connector an Edge may accept broker connections from.
 type EdgeConnector struct {
 	ConnectorID string `json:"connectorId"`
 	TenantID    string `json:"tenantId"`
 	Group       string `json:"group"`
 }
 
+// EdgeDevice is a device an Edge may accept, with its signed policy snapshot.
 type EdgeDevice struct {
 	DeviceID string          `json:"deviceId"`
 	TenantID string          `json:"tenantId"`
 	Snapshot policy.Envelope `json:"snapshot"`
 }
 
+// AdminTenant is a tenant in the admin API.
 type AdminTenant struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 }
 
+// AdminUser is a user in the admin API.
 type AdminUser struct {
 	ID    string `json:"id,omitempty"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
 }
 
+// ProvisioningKeyRequest asks for a device provisioning key for a user.
 type ProvisioningKeyRequest struct {
 	UserID   string `json:"userId"`
 	MaxUses  int    `json:"maxUses"`
 	ValidFor int    `json:"validForSeconds"`
 }
 
+// ProvisioningKey is a newly issued device provisioning key.
 type ProvisioningKey struct {
 	Key       string    `json:"key"`
 	UserID    string    `json:"userId"`
@@ -231,20 +249,24 @@ type TenantPolicy struct {
 	DecideDefault      policy.Action `json:"decideDefault"` // allow|block
 }
 
+// RenewRequest is the body of POST /v1/renew and POST /v1/connector/renew.
 type RenewRequest struct {
 	CSRPEM string `json:"csrPem"` // PKCS#10 for a freshly generated ECDSA P-256 key
 }
 
+// RenewResponse is the reply to a certificate renewal.
 type RenewResponse struct {
 	CertificatePEM string `json:"certificatePem"` // device cert followed by the tenant CA
 	CAPEM          string `json:"caPem"`
 }
 
+// EdgeSessions is the body of POST /v1/edge/sessions: the peers with a live session on that Edge.
 type EdgeSessions struct {
 	DeviceIDs    []string `json:"deviceIds"`
 	ConnectorIDs []string `json:"connectorIds,omitempty"` // connectors with a live broker connection
 }
 
+// AdminEdge is a registered Edge in the admin API.
 type AdminEdge struct {
 	ID        string    `json:"id"`
 	Revoked   bool      `json:"revoked"`
@@ -259,11 +281,13 @@ const (
 	BrokerHeaderDevice = "X-Opensase-Device" // device ID, for connector logs
 )
 
+// ConnectorEnrollRequest is the body of POST /v1/connector/enroll.
 type ConnectorEnrollRequest struct {
 	ProvisioningKey string `json:"provisioningKey"`
 	CSRPEM          string `json:"csrPem"`
 }
 
+// ConnectorEnrollResponse is the reply to POST /v1/connector/enroll: the connector identity.
 type ConnectorEnrollResponse struct {
 	TenantID       string `json:"tenantId"`
 	ConnectorID    string `json:"connectorId"`
@@ -281,11 +305,13 @@ type ConnectorConfig struct {
 	Apps    []policy.PrivateApp `json:"apps"`
 }
 
+// AdminConnectorRequest creates a connector in the admin API.
 type AdminConnectorRequest struct {
 	Name  string `json:"name"`
 	Group string `json:"group"` // default "default"
 }
 
+// AdminConnector is a connector in the admin API.
 type AdminConnector struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenantId"`
@@ -296,6 +322,7 @@ type AdminConnector struct {
 	LastSeen  time.Time `json:"lastSeen,omitempty"` // last time an Edge reported a live broker connection
 }
 
+// AdminConnectorCreated is the reply to connector creation, with its one-time provisioning key.
 type AdminConnectorCreated struct {
 	Connector       AdminConnector `json:"connector"`
 	ProvisioningKey string         `json:"provisioningKey"` // single use, 24h

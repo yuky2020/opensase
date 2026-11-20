@@ -13,6 +13,7 @@ import (
 // PeerKind is the role encoded in a peer certificate.
 type PeerKind int
 
+// Peer kinds.
 const (
 	PeerUnknown PeerKind = iota
 	PeerDevice

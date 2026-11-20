@@ -176,7 +176,7 @@ type pollLimiter struct {
 	n   map[string]int
 }
 
-func newPollLimiter(max int) *pollLimiter { return &pollLimiter{max: max, n: map[string]int{}} }
+func newPollLimiter(limit int) *pollLimiter { return &pollLimiter{max: limit, n: map[string]int{}} }
 
 func (l *pollLimiter) acquire(id string) bool {
 	l.mu.Lock()

@@ -49,16 +49,16 @@ type cachedPkgs struct {
 }
 
 // NewCachingResolver wraps inner. ttl bounds staleness (package lists change on app
-// install/uninstall); max bounds the per-connection cache.
-func NewCachingResolver(inner UIDResolver, ttl time.Duration, max int) *CachingResolver {
+// install/uninstall); limit bounds the per-connection cache.
+func NewCachingResolver(inner UIDResolver, ttl time.Duration, limit int) *CachingResolver {
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
-	if max <= 0 {
-		max = 4096
+	if limit <= 0 {
+		limit = 4096
 	}
 	return &CachingResolver{
-		inner: inner, ttl: ttl, max: max, now: time.Now,
+		inner: inner, ttl: ttl, max: limit, now: time.Now,
 		conns: make(map[packet.FlowKey]cachedUID), pkgs: make(map[int]cachedPkgs),
 	}
 }

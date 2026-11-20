@@ -2,6 +2,7 @@ package dnsfilter
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -171,7 +172,7 @@ func TestHandleQueryRejects(t *testing.T) {
 	m.SetQuestion("a.example.", dns.TypeA)
 	m.Response = true
 	b, _ := m.Pack()
-	if _, err := i.HandleQuery(c, "", src, dst, b); err != ErrNotQuery {
+	if _, err := i.HandleQuery(c, "", src, dst, b); !errors.Is(err, ErrNotQuery) {
 		t.Fatalf("response accepted as query: %v", err)
 	}
 	// nil policy never blocks.

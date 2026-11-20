@@ -228,7 +228,8 @@ func setDeadline(w http.ResponseWriter, d time.Duration) {
 
 // Run serves until ctx is cancelled, with background snapshot and flow maintenance.
 func (s *Server) Run(ctx context.Context, addr string, cert tls.Certificate) error {
-	ln, err := net.Listen("tcp", addr)
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -295,7 +296,7 @@ func (s *Server) signingKeys() []api.SigningKey {
 	}}
 }
 
-func (s *Server) handlePKI(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePKI(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, api.PKIBundle{CAPEM: string(s.cfg.Authority.BundlePEM()), SnapshotKeys: s.signingKeys()})
 }
 

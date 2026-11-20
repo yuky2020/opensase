@@ -212,7 +212,7 @@ func readSecretFile(path string) (string, error) {
 	if st.Mode().Perm()&0o077 != 0 {
 		return "", fmt.Errorf("%s must not be accessible by group or others (chmod 600)", path)
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: secret file path is an operator-supplied flag
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +319,7 @@ func pkiInit(args []string) error {
 	}
 	edges := []api.EdgeInfo{{ID: *edgeID, Region: *region, SessionURL: *sessionURL, WGEndpoint: *wgEndpoint, WGPublicKey: encodeB64(pub), BrokerAddr: *brokerAddr}}
 	b, _ := json.MarshalIndent(edges, "", "  ")
-	if err := os.WriteFile(filepath.Join(*dir, "edges.json"), append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(*dir, "edges.json"), append(b, '\n'), 0o644); err != nil { //nolint:gosec // G306: edges.json holds only public edge metadata (IDs, URLs, public keys)
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "PKI ready in %s (edge %s at %s)\n", *dir, *edgeID, *sessionURL)
@@ -345,7 +345,7 @@ func exportCA(ctx context.Context, g *globals, args []string) error {
 		return err
 	}
 	if *out != "" {
-		return os.WriteFile(*out, []byte(b.CAPEM), 0o644)
+		return os.WriteFile(*out, []byte(b.CAPEM), 0o644) //nolint:gosec // G306: CA certificate is public
 	}
 	_, err := io.WriteString(os.Stdout, b.CAPEM)
 	return err

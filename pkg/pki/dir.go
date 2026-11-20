@@ -127,11 +127,11 @@ func InitDir(dir string, o InitOptions) error {
 
 // LoadCA loads a CA certificate and key from PEM files.
 func LoadCA(certPath, keyPath string) (*CA, error) {
-	cb, err := os.ReadFile(certPath)
+	cb, err := os.ReadFile(certPath) //nolint:gosec // G304: path is chosen by the caller (operator flag); reading it is this function's job
 	if err != nil {
 		return nil, err
 	}
-	kb, err := os.ReadFile(keyPath)
+	kb, err := os.ReadFile(keyPath) //nolint:gosec // G304: path is chosen by the caller (operator flag); reading it is this function's job
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (a *Authority) ClientCAPool() *x509.CertPool {
 // LoadOrCreateSigningKey loads the Ed25519 snapshot signing key at path or creates it.
 // It returns the key and its key ID.
 func LoadOrCreateSigningKey(path string) (ed25519.PrivateKey, string, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: path is chosen by the caller (operator flag); reading it is this function's job
 	if errors.Is(err, fs.ErrNotExist) {
 		_, priv, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
@@ -316,7 +316,7 @@ func NewWireGuardKey() (priv, pub string, err error) {
 // LoadWireGuardKey reads a base64 Curve25519 private key file and returns the raw private
 // and public keys.
 func LoadWireGuardKey(path string) (priv, pub []byte, err error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: path is chosen by the caller (operator flag); reading it is this function's job
 	if err != nil {
 		return nil, nil, err
 	}

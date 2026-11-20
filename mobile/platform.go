@@ -54,13 +54,13 @@ func (b *protectedBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 			continue // that address family is not open
 		}
 		if !b.protect(fd) {
-			b.Bind.Close()
+			b.Close()
 			return nil, 0, errors.New("mobile: VpnService.protect failed for the WireGuard socket")
 		}
 		protected++
 	}
 	if protected == 0 {
-		b.Bind.Close()
+		b.Close()
 		return nil, 0, errors.New("mobile: no WireGuard socket to protect")
 	}
 	return fns, actual, nil

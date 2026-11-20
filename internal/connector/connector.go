@@ -36,10 +36,10 @@ import (
 const (
 	configWait       = 30 // seconds, long-poll of GET /v1/connector/config
 	maxResponseBytes = 8 << 20
-	retryMin         = 2 * time.Second
-	retryMax         = time.Minute
-	renewRetryMin    = 30 * time.Second
-	renewRetryMax    = 10 * time.Minute
+	minRetry         = 2 * time.Second
+	maxRetry         = time.Minute
+	minRenewRetry    = 30 * time.Second
+	maxRenewRetry    = 10 * time.Minute
 )
 
 // Config configures a Connector.
@@ -304,7 +304,7 @@ func renewAt(c *x509.Certificate) time.Time {
 
 func (c *Connector) renewLoop(ctx context.Context) {
 	defer c.wg.Done()
-	backoff := renewRetryMin
+	backoff := minRenewRetry
 	for {
 		leaf := c.id.leaf()
 		if !sleepCtx(ctx, time.Until(renewAt(leaf))) {
@@ -321,14 +321,14 @@ func (c *Connector) renewLoop(ctx context.Context) {
 			}
 			d := min(backoff, max(left/2, time.Second))
 			c.log.Warn("certificate renewal failed", "err", err, "retryIn", d.String())
-			backoff = min(2*backoff, renewRetryMax)
+			backoff = min(2*backoff, maxRenewRetry)
 			if !sleepCtx(ctx, d) {
 				return
 			}
 			continue
 		}
-		backoff = renewRetryMin
-		if time.Until(renewAt(c.id.leaf())) <= 0 && !sleepCtx(ctx, renewRetryMin) {
+		backoff = minRenewRetry
+		if time.Until(renewAt(c.id.leaf())) <= 0 && !sleepCtx(ctx, minRenewRetry) {
 			return
 		}
 	}
@@ -405,7 +405,7 @@ func checkRenewResponse(r *api.RenewResponse, key *ecdsa.PrivateKey, old *x509.C
 // --- configuration and broker links ---
 
 func (c *Connector) configLoop(ctx context.Context) {
-	backoff := retryMin
+	backoff := minRetry
 	for ctx.Err() == nil {
 		cfg, changed, err := c.pollConfig(ctx)
 		if err != nil {
@@ -421,10 +421,10 @@ func (c *Connector) configLoop(ctx context.Context) {
 			if !sleepCtx(ctx, backoff) {
 				return
 			}
-			backoff = min(2*backoff, retryMax)
+			backoff = min(2*backoff, maxRetry)
 			continue
 		}
-		backoff = retryMin
+		backoff = minRetry
 		if changed {
 			c.apply(ctx, cfg)
 		}

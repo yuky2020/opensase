@@ -480,11 +480,10 @@ func TestBuildICMPUnreachable(t *testing.T) {
 	}
 
 	// v6 errors are capped at 1280 bytes.
-	huge := ip6(ProtoUDP, a6src, a6dst, nil, udpDgram(a6src, a6dst, 1, 2, nil))
 	ext := make([]byte, 0, 2048)
 	ext = append(ext, ProtoUDP, 255) // hop-by-hop of (255+1)*8 = 2048 bytes
 	ext = append(ext, make([]byte, 2046)...)
-	huge = ip6(ipv6HopByHop, a6src, a6dst, ext, udpDgram(a6src, a6dst, 1, 2, nil))
+	huge := ip6(ipv6HopByHop, a6src, a6dst, ext, udpDgram(a6src, a6dst, 1, 2, nil))
 	out := make([]byte, MaxICMPUnreachableLen)
 	n, err := BuildICMPUnreachable(huge, out)
 	if err != nil || n != 1280 {
@@ -531,7 +530,7 @@ func FuzzParse(f *testing.F) {
 		if p.TotalLen > len(b) || p.IPHeaderLen > p.TotalLen || p.IPHeaderLen+p.TransportLen+len(p.Payload) != p.TotalLen {
 			t.Fatalf("inconsistent lengths: %+v (len %d)", p, len(b))
 		}
-		if p.Version == 4 && !(p.Src.Is4() && p.Dst.Is4()) || p.Version == 6 && !(p.Src.Is6() && p.Dst.Is6()) {
+		if p.Version == 4 && (!p.Src.Is4() || !p.Dst.Is4()) || p.Version == 6 && (!p.Src.Is6() || !p.Dst.Is6()) {
 			t.Fatalf("address family mismatch: %+v", p)
 		}
 		out := make([]byte, MaxICMPUnreachableLen)

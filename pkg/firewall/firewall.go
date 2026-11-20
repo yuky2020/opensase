@@ -287,11 +287,20 @@ func (f *FilteringTUN) Counters() Counters {
 
 // --- tun.Device ---
 
-func (f *FilteringTUN) File() *os.File           { return f.inner.File() }
-func (f *FilteringTUN) MTU() (int, error)        { return f.inner.MTU() }
-func (f *FilteringTUN) Name() (string, error)    { return f.inner.Name() }
+// File returns the inner device's file.
+func (f *FilteringTUN) File() *os.File { return f.inner.File() }
+
+// MTU returns the inner device's MTU.
+func (f *FilteringTUN) MTU() (int, error) { return f.inner.MTU() }
+
+// Name returns the inner device's interface name.
+func (f *FilteringTUN) Name() (string, error) { return f.inner.Name() }
+
+// Events returns the inner device's event channel.
 func (f *FilteringTUN) Events() <-chan tun.Event { return f.inner.Events() }
-func (f *FilteringTUN) BatchSize() int           { return f.inner.BatchSize() }
+
+// BatchSize returns the inner device's batch size.
+func (f *FilteringTUN) BatchSize() int { return f.inner.BatchSize() }
 
 // Close stops background work and closes the inner device.
 func (f *FilteringTUN) Close() error {
@@ -311,13 +320,13 @@ func (f *FilteringTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error)
 		n, err := f.inner.Read(bufs, sizes, offset)
 		out := 0
 		for i := range n {
-			pkt := bufs[i][offset : offset+sizes[i]]
+			pkt := bufs[i][offset : offset+sizes[i]] //nolint:gosec // G602: tun.Device.Read returns n <= len(bufs), len(sizes)
 			if !f.outbound(pkt) {
 				continue
 			}
 			if out != i {
 				copy(bufs[out][offset:], pkt)
-				sizes[out] = sizes[i]
+				sizes[out] = sizes[i] //nolint:gosec // G602: out < i < n <= len(sizes)
 			}
 			out++
 		}

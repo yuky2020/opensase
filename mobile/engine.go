@@ -118,7 +118,7 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 
 		livenessTimeout:  defaultLivenessTimeout,
 		livenessInterval: defaultLivenessInterval,
-		renewRetryMin:    defaultRenewRetryMin,
+		renewRetryMin:    defaultMinRenewRetry,
 	}
 	if platform != nil {
 		e.protect = platform.Protect
@@ -542,7 +542,9 @@ func (e *Engine) Stop() {
 	rs.dev.Close()
 	rs.fw.Flush()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	e.uploadFlows(ctx, rs)
+	if err := e.uploadFlows(ctx, rs); err != nil {
+		e.log.Debug("final flow upload failed", "err", err)
+	}
 	cancel()
 	rs.sessMu.Lock()
 	rs.sess.wipe()

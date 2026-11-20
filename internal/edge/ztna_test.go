@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -359,7 +360,7 @@ func TestBrokerRevokedConnectorDropped(t *testing.T) {
 	}
 	waitFor(t, func() bool { return len(z.e.hub.liveIDs()) == 0 })
 	if _, err := io.ReadAll(open); err != nil {
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		if ne, ok := errors.AsType[net.Error](err); ok && ne.Timeout() {
 			t.Fatal("brokered stream survived the revocation")
 		}
 	}

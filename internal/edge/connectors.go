@@ -31,7 +31,7 @@ const (
 // brokerConn is one live connector connection.
 type brokerConn struct {
 	id, tenant, group string
-	cc                *http2.ClientConn
+	cc                *http2.ClientConn //nolint:staticcheck // SA1019: http.ClientConn cannot wrap an existing (accepted) conn
 	nc                net.Conn
 	done              chan struct{} // closed when the connection is gone
 	once              sync.Once
@@ -69,7 +69,7 @@ func (w *watchedConn) Close() error {
 // connections, by tenant and group.
 type connectorHub struct {
 	log *slog.Logger
-	tr  *http2.Transport
+	tr  *http2.Transport //nolint:staticcheck // SA1019: http.Transport.NewClientConn dials itself; we wrap an accepted conn
 
 	mu      sync.Mutex
 	allowed map[string]api.EdgeConnector // connector ID -> latest EdgePeers entry
@@ -80,7 +80,7 @@ type connectorHub struct {
 func newConnectorHub(log *slog.Logger) *connectorHub {
 	return &connectorHub{
 		log:     log,
-		tr:      &http2.Transport{ReadIdleTimeout: brokerReadIdle, PingTimeout: brokerPingTimeout},
+		tr:      &http2.Transport{ReadIdleTimeout: brokerReadIdle, PingTimeout: brokerPingTimeout}, //nolint:staticcheck // SA1019: see connectorHub.tr
 		allowed: map[string]api.EdgeConnector{},
 	}
 }
@@ -146,7 +146,7 @@ func (h *connectorHub) register(tc *tls.Conn, id pki.Identity, notAfter time.Tim
 		return nil, errors.New("connector not in the peer feed (unknown, revoked or other tenant)")
 	}
 	wc := &watchedConn{Conn: tc, done: make(chan struct{})}
-	cc, err := h.tr.NewClientConn(wc)
+	cc, err := h.tr.NewClientConn(wc) //nolint:staticcheck // SA1019: see connectorHub.tr
 	if err != nil {
 		return nil, fmt.Errorf("http2: %w", err)
 	}

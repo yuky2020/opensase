@@ -197,9 +197,3 @@ func (c *decisionCache) put(f policy.Flow, d policy.Decision, expires time.Time,
 	}
 	c.m[f] = cachedDecision{dec: d, expires: expires}
 }
-
-func (c *decisionCache) reset() {
-	c.mu.Lock()
-	clear(c.m)
-	c.mu.Unlock()
-}

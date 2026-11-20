@@ -21,8 +21,8 @@ import (
 
 const (
 	linkDialTimeout = 10 * time.Second
-	linkBackoffMin  = time.Second
-	linkBackoffMax  = time.Minute
+	minLinkBackoff  = time.Second
+	maxLinkBackoff  = time.Minute
 	linkStable      = 30 * time.Second // a link that lived this long resets the backoff
 	linkReadIdle    = 15 * time.Second // HTTP/2 PING after this much silence
 	linkPingTimeout = 5 * time.Second
@@ -80,12 +80,14 @@ func DialEdge(ctx context.Context, addr string, cfg *tls.Config) (*tls.Conn, err
 func ServeBroker(ctx context.Context, conn net.Conn, h http.Handler) {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
-	srv := &http2.Server{
-		ReadIdleTimeout: linkReadIdle,
-		PingTimeout:     linkPingTimeout,
+	// x/net/http2 is kept on purpose: net/http has no API to serve HTTP/2 on one
+	// already-established (reverse-dialled) conn; http.Server.Serve needs a Listener.
+	srv := &http2.Server{ //nolint:staticcheck // SA1019: no net/http equivalent of ServeConn on an existing conn
+		ReadIdleTimeout: linkReadIdle,    //nolint:staticcheck // SA1019: see above
+		PingTimeout:     linkPingTimeout, //nolint:staticcheck // SA1019: see above
 		// No IdleTimeout: an idle broker link without streams is the normal state.
 	}
-	srv.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, Handler: h})
+	srv.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, Handler: h}) //nolint:staticcheck // SA1019: see above
 	_ = conn.Close()
 }
 
@@ -102,7 +104,7 @@ type Link struct {
 
 func (l *Link) Run(ctx context.Context) {
 	lg := l.Log.With("edge", l.Edge.ID, "addr", l.Edge.BrokerAddr)
-	backoff := linkBackoffMin
+	backoff := minLinkBackoff
 	for ctx.Err() == nil {
 		start := time.Now()
 		tc, err := DialEdge(ctx, l.Edge.BrokerAddr, l.TLS)
@@ -124,12 +126,12 @@ func (l *Link) Run(ctx context.Context) {
 				return
 			}
 			if time.Since(start) >= linkStable {
-				backoff = linkBackoffMin
+				backoff = minLinkBackoff
 			}
 			lg.Info("broker link down", "retryIn", backoff.String())
 		}
 		// Full jitter in [backoff/2, backoff].
-		wait := backoff/2 + rand.N(backoff/2+1)
+		wait := backoff/2 + rand.N(backoff/2+1) //nolint:gosec // G404: reconnect jitter, not security relevant
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
@@ -137,6 +139,6 @@ func (l *Link) Run(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		backoff = min(2*backoff, linkBackoffMax)
+		backoff = min(2*backoff, maxLinkBackoff)
 	}
 }

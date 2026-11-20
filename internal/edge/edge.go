@@ -282,7 +282,7 @@ func (e *Edge) run(ctx context.Context) error {
 // configureInterface assigns the Edge tunnel addresses with iproute2.
 func (e *Edge) configureInterface(ctx context.Context, name string) error {
 	run := func(args ...string) error {
-		out, err := exec.CommandContext(ctx, "ip", args...).CombinedOutput()
+		out, err := exec.CommandContext(ctx, "ip", args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args from Edge config and constants
 		if err != nil {
 			return fmt.Errorf("ip %v: %w: %s", args, err, bytes.TrimSpace(out))
 		}
@@ -318,7 +318,7 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 	rule := []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port}
 	ipt := func(op string) error {
 		args := append([]string{"-w", "5", "-t", "nat", op}, rule...)
-		out, err := exec.CommandContext(ctx, "iptables", args...).CombinedOutput()
+		out, err := exec.CommandContext(ctx, "iptables", args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args from Edge config and constants
 		if err != nil {
 			return fmt.Errorf("iptables %v: %w: %s", args, err, bytes.TrimSpace(out))
 		}
@@ -339,7 +339,7 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 // startZTNA starts the broker listener and the Connector listener.
 func (e *Edge) startZTNA(ctx context.Context) error {
 	if e.cfg.ZTNAListen != listenOff {
-		ln, err := net.Listen("tcp4", e.cfg.ZTNAListen)
+		ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", e.cfg.ZTNAListen)
 		if err != nil {
 			return fmt.Errorf("edge: ztna listener: %w", err)
 		}
@@ -347,7 +347,7 @@ func (e *Edge) startZTNA(ctx context.Context) error {
 		e.log.Info("ztna broker listening", "addr", e.cfg.ZTNAListen, "prefix", SyntheticPrefix)
 	}
 	if e.cfg.BrokerListen != listenOff {
-		ln, err := net.Listen("tcp", e.cfg.BrokerListen)
+		ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", e.cfg.BrokerListen)
 		if err != nil {
 			return fmt.Errorf("edge: connector listener: %w", err)
 		}
@@ -512,7 +512,9 @@ func (e *Edge) findAfterSync(ctx context.Context, key string, found func() bool)
 		return false
 	}
 	for range 2 {
-		ch := e.syncSF.DoChan("peers", func() (any, error) {
+		// The shared sync is detached from the caller's ctx on purpose: one caller giving up
+		// must not cancel the sync other waiters joined. It is bound to the Edge lifetime.
+		ch := e.syncSF.DoChan("peers", func() (any, error) { //nolint:contextcheck // shared singleflight sync uses e.ctx, not one caller's ctx
 			if wait := e.minSync - time.Since(time.Unix(0, e.lastSync.Load())); wait > 0 {
 				select {
 				case <-time.After(wait):
@@ -618,7 +620,7 @@ type negCache struct {
 	m   map[string]time.Time
 }
 
-func newNegCache(max int) *negCache { return &negCache{max: max, m: map[string]time.Time{}} }
+func newNegCache(limit int) *negCache { return &negCache{max: limit, m: map[string]time.Time{}} }
 
 func (c *negCache) has(id string, now time.Time) bool {
 	c.mu.Lock()

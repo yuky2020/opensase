@@ -101,11 +101,11 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 	if o.ca != "" {
-		pemBytes, err := os.ReadFile(o.ca)
+		pemBytes, err := os.ReadFile(o.ca) //nolint:gosec // G304: -ca is an operator-supplied flag
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(o.state, "bootstrap-ca.pem"), pemBytes, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(o.state, "bootstrap-ca.pem"), pemBytes, 0o600); err != nil { //nolint:gosec // G703: -state is an operator-supplied flag
 			return err
 		}
 	}
@@ -126,13 +126,13 @@ func run(o options, log *slog.Logger) error {
 		if !o.enroll || o.control == "" || key == "" {
 			return errors.New("not enrolled: run with -enroll -control URL and -key-file FILE or $" + envProvisioningKey)
 		}
-		err = eng.Enroll(o.control, key, o.name)
-		key = ""
-		if err != nil {
+		if err := eng.Enroll(o.control, key, o.name); err != nil {
 			return err
 		}
 	}
-	os.Unsetenv(envProvisioningKey)
+	if err := os.Unsetenv(envProvisioningKey); err != nil {
+		log.Warn("clear provisioning key from environment", "err", err)
+	}
 
 	cfgJSON, err := eng.TunnelConfig()
 	if err != nil {
@@ -157,14 +157,14 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 
-	cmds, err := routeCommands(name, tc.IPv4, tc.IPv6, tc.MTU, eng.BypassHosts())
+	cmds, err := routeCommands(context.Background(), name, tc.IPv4, tc.IPv6, tc.MTU, eng.BypassHosts())
 	if err != nil {
 		dev.Close()
 		return err
 	}
 	if o.routes {
 		for _, c := range cmds {
-			if err := runIP(c, log); err != nil && !c.optional {
+			if err := runIP(context.Background(), c, log); err != nil && !c.optional {
 				dev.Close()
 				return err
 			}
@@ -259,7 +259,7 @@ type ipCmd struct {
 // routeCommands builds the ip(8) commands: interface address, host routes for the bypass
 // hosts via the current IPv4 default gateway, then 0.0.0.0/1 + 128.0.0.0/1 (and ::/1 +
 // 8000::/1) into the TUN, which override the default route without deleting it.
-func routeCommands(dev, ipv4, ipv6 string, mtu int, bypass []string) ([]ipCmd, error) {
+func routeCommands(ctx context.Context, dev, ipv4, ipv6 string, mtu int, bypass []string) ([]ipCmd, error) {
 	var cmds []ipCmd
 	add := func(optional bool, args ...string) { cmds = append(cmds, ipCmd{args: args, optional: optional}) }
 	if ipv4 == "" {
@@ -271,12 +271,12 @@ func routeCommands(dev, ipv4, ipv6 string, mtu int, bypass []string) ([]ipCmd, e
 	}
 	add(false, "link", "set", "dev", dev, "mtu", fmt.Sprint(mtu), "up")
 
-	gw, gwDev, err := defaultGateway()
+	gw, gwDev, err := defaultGateway(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, h := range bypass {
-		ips, err := net.LookupIP(h)
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", h)
 		if err != nil {
 			return nil, fmt.Errorf("resolve bypass host %s: %w", h, err)
 		}
@@ -300,8 +300,8 @@ func routeCommands(dev, ipv4, ipv6 string, mtu int, bypass []string) ([]ipCmd, e
 }
 
 // defaultGateway parses `ip -4 route show default`.
-func defaultGateway() (gw, dev string, err error) {
-	out, err := exec.Command("ip", "-4", "route", "show", "default").Output()
+func defaultGateway(ctx context.Context) (gw, dev string, err error) {
+	out, err := exec.CommandContext(ctx, "ip", "-4", "route", "show", "default").Output()
 	if err != nil {
 		return "", "", fmt.Errorf("ip route show default: %w", err)
 	}
@@ -322,14 +322,14 @@ func defaultGateway() (gw, dev string, err error) {
 	return gw, dev, nil
 }
 
-func runIP(c ipCmd, log *slog.Logger) error {
-	out, err := exec.Command("ip", c.args...).CombinedOutput()
+func runIP(ctx context.Context, c ipCmd, log *slog.Logger) error {
+	out, err := exec.CommandContext(ctx, "ip", c.args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args built by routeCommands from the session config
 	if err != nil {
 		lvl := slog.LevelError
 		if c.optional {
 			lvl = slog.LevelWarn
 		}
-		log.Log(context.Background(), lvl, "ip command failed", "cmd", "ip "+strings.Join(c.args, " "), "err", err, "out", strings.TrimSpace(string(out)))
+		log.Log(ctx, lvl, "ip command failed", "cmd", "ip "+strings.Join(c.args, " "), "err", err, "out", strings.TrimSpace(string(out)))
 		return fmt.Errorf("ip %s: %w", strings.Join(c.args, " "), err)
 	}
 	log.Info("configured", "cmd", "ip "+strings.Join(c.args, " "))

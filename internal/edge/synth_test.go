@@ -2,6 +2,7 @@ package edge
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"testing"
@@ -96,7 +97,7 @@ func TestSynthMapExhausted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := m.assign("t", "c", now); err != errSynthExhausted {
+	if _, err := m.assign("t", "c", now); !errors.Is(err, errSynthExhausted) {
 		t.Fatalf("err %v", err)
 	}
 }

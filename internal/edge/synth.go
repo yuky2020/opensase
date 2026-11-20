@@ -45,7 +45,7 @@ type synthMap struct {
 	idle  time.Duration
 }
 
-func newSynthMap(prefix netip.Prefix, max int, idle time.Duration) *synthMap {
+func newSynthMap(prefix netip.Prefix, limit int, idle time.Duration) *synthMap {
 	prefix = prefix.Masked()
 	b := prefix.Addr().As4()
 	return &synthMap{
@@ -55,7 +55,7 @@ func newSynthMap(prefix netip.Prefix, max int, idle time.Duration) *synthMap {
 		base:  uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3]),
 		size:  uint32(1) << (32 - prefix.Bits()),
 		next:  1,
-		max:   max,
+		max:   limit,
 		idle:  idle,
 	}
 }

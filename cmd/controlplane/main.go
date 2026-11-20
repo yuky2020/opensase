@@ -74,7 +74,7 @@ func run() error {
 		}
 	}
 	if ef != "" {
-		b, err := os.ReadFile(ef)
+		b, err := os.ReadFile(ef) //nolint:gosec // G304: -edges/-pki-dir are operator-supplied flags
 		if err != nil {
 			return err
 		}
@@ -91,7 +91,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Warn("close store", "err", err)
+		}
+	}()
 
 	srv, err := controlplane.New(controlplane.Config{
 		Store: st, Authority: auth, SigningKey: sk, SigningKeyID: keyID,

@@ -121,7 +121,7 @@ func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
 // Epochs: 0 starts a new session; current+1 rotates; current again re-derives the PSK of the
 // current epoch on this new connection and replaces it (idempotent retry after a lost
 // response, security review #5). Older epochs and skips are rejected.
-func (e *Edge) setupSession(ctx context.Context, d *device, cs tls.ConnectionState, clientPub [32]byte, req api.SessionRequest) (api.SessionResponse, int, error) {
+func (e *Edge) setupSession(_ context.Context, d *device, cs tls.ConnectionState, clientPub [32]byte, req api.SessionRequest) (api.SessionResponse, int, error) {
 	r := e.reg
 	r.mu.Lock()
 	defer r.mu.Unlock()

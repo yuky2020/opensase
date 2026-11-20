@@ -36,7 +36,7 @@ func (b *backoff) next() time.Duration {
 	} else {
 		b.cur = min(b.cur*2, b.max)
 	}
-	return b.cur/2 + rand.N(b.cur/2+1)
+	return b.cur/2 + rand.N(b.cur/2+1) //nolint:gosec // G404: retry jitter, not security relevant
 }
 
 func (b *backoff) reset() { b.cur = 0 }

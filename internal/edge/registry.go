@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/netip"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -244,11 +242,4 @@ func sameVersion(e *policy.Envelope, v uint64) bool {
 		return false
 	}
 	return hdr.Version == v
-}
-
-// snapshotIDs returns the device IDs currently known (for tests and metrics).
-func (r *registry) snapshotIDs() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return slices.Sorted(maps.Keys(r.devices))
 }

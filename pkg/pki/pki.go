@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-// SPIFFE trust domain used in every URI SAN.
+// TrustDomain is the SPIFFE trust domain used in every URI SAN.
 const TrustDomain = "opensase"
 
 // Default validities.
@@ -163,6 +163,7 @@ func (ca *CA) signTenantLeaf(csrPEM []byte, tenantID, cn string, uri *url.URL, v
 // ServerKind is the role a server certificate is issued for.
 type ServerKind int
 
+// Server kinds.
 const (
 	KindControlPlane ServerKind = iota + 1
 	KindEdge

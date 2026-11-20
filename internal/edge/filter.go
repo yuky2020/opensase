@@ -71,7 +71,7 @@ func newFilter(inner tun.Device, e *Edge) *Filter {
 
 // pump reads the kernel TUN so that Read can also deliver injected packets promptly.
 func (f *Filter) pump() {
-	bs := f.Device.BatchSize()
+	bs := f.BatchSize()
 	b := &readBatch{bufs: make([][]byte, bs), sizes: make([]int, bs)}
 	for i := range b.bufs {
 		b.bufs[i] = make([]byte, pumpOffset+maxPacket)
@@ -228,7 +228,7 @@ func (f *Filter) outbound(pkt []byte) bool {
 	}
 	if local {
 		// The Edge only serves DNS and answers pings on its tunnel address.
-		if !(proto == "icmp" || p.DstPort == 53) {
+		if proto != "icmp" && p.DstPort != 53 {
 			f.reject(&p, pkt)
 			return false
 		}
@@ -479,10 +479,4 @@ func (t *conntrack) sweep(now time.Time, owner func(packet.FlowKey) string) []ap
 		}
 	}
 	return out
-}
-
-func (t *conntrack) len() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return len(t.m)
 }

@@ -64,7 +64,7 @@ func writeFileAtomic(dir, name string, data []byte) error {
 }
 
 func readStateFile(dir, name string) ([]byte, error) {
-	f, err := os.Open(filepath.Join(dir, name))
+	f, err := os.Open(filepath.Join(dir, name)) //nolint:gosec // G304: state dir from the app, name is a package constant
 	if err != nil {
 		return nil, err
 	}

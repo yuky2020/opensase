@@ -512,7 +512,7 @@ func validName(s string) error {
 			continue
 		}
 		ch := s[i]
-		if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '-' && ch != '_' {
 			return fmt.Errorf("invalid character %q in %q", ch, s)
 		}
 		label++

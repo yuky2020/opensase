@@ -63,7 +63,6 @@ func run() error {
 		ControlURL: *control, ProvisioningKey: key, StateDir: *state,
 		AllowLoopback: *allowLoopback, Logger: log,
 	})
-	key = ""
 	if err != nil {
 		return err
 	}

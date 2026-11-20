@@ -86,8 +86,8 @@ type conntrack struct {
 	count    atomic.Int64
 }
 
-func newConntrack(max int) *conntrack {
-	ct := &conntrack{perShard: max/numShards + 1}
+func newConntrack(limit int) *conntrack {
+	ct := &conntrack{perShard: limit/numShards + 1}
 	for i := range ct.shards {
 		ct.shards[i].m = make(map[packet.FlowKey]*entry)
 	}
@@ -138,16 +138,6 @@ func (ct *conntrack) insert(e *entry, now int64) (cur *entry, evicted []*entry) 
 	s.m[e.key] = e
 	ct.count.Add(1)
 	return e, evicted
-}
-
-func (ct *conntrack) remove(e *entry) {
-	s := ct.shardFor(e.key)
-	s.mu.Lock()
-	if s.m[e.key] == e {
-		delete(s.m, e.key)
-		ct.count.Add(-1)
-	}
-	s.mu.Unlock()
 }
 
 // gc removes expired entries (all entries if all is set) and returns them.

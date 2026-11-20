@@ -11,6 +11,7 @@ import "time"
 // Action is a verdict for a flow or DNS query.
 type Action string
 
+// Actions.
 const (
 	ActionAllow Action = "allow"
 	ActionBlock Action = "block"
@@ -22,6 +23,7 @@ const (
 // NetworkType is the kind of network the device is currently using.
 type NetworkType string
 
+// Network types.
 const (
 	NetworkWiFi     NetworkType = "wifi"
 	NetworkCellular NetworkType = "cellular"
@@ -33,6 +35,7 @@ const (
 // RuleSource says which policy layer a rule belongs to. Precedence: tenant > user.
 type RuleSource string
 
+// Rule sources.
 const (
 	SourceTenant RuleSource = "tenant"
 	SourceUser   RuleSource = "user"
@@ -108,6 +111,7 @@ type Rule struct {
 	Description string     `json:"description,omitempty"`
 }
 
+// Match holds the conditions of a Rule (see Rule for how they combine).
 type Match struct {
 	Apps      []string      `json:"apps,omitempty"`      // package names; device-only attribute
 	Networks  []NetworkType `json:"networks,omitempty"`  // device-only attribute
@@ -117,6 +121,7 @@ type Match struct {
 	Domains   []string      `json:"domains,omitempty"`   // "example.com" exact, "*.example.com" suffix incl. apex
 }
 
+// PortRange is an inclusive destination port range.
 type PortRange struct {
 	From uint16 `json:"from"`
 	To   uint16 `json:"to"` // inclusive; To==0 means To=From
@@ -130,6 +135,7 @@ type DNSPolicy struct {
 	BlockDomains  []string    `json:"blockDomains,omitempty"`
 }
 
+// Blocklist is a named list of blocked domains in one category.
 type Blocklist struct {
 	ID       string   `json:"id"`
 	Name     string   `json:"name"`

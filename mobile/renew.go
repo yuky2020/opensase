@@ -27,7 +27,7 @@ import (
 var errCertExpired = errors.New("certificate expired, re-enrollment required")
 
 const (
-	defaultRenewRetryMin = 30 * time.Second
+	defaultMinRenewRetry = 30 * time.Second
 	renewRetryMax        = 10 * time.Minute
 )
 

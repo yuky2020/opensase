@@ -33,7 +33,7 @@ type protectFunc func(fd int) bool
 func dialer(protect protectFunc) *net.Dialer {
 	d := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	if protect != nil {
-		d.Control = func(network, address string, c syscall.RawConn) error {
+		d.Control = func(_, _ string, c syscall.RawConn) error {
 			var ok bool
 			if err := c.Control(func(fd uintptr) { ok = protect(int(fd)) }); err != nil {
 				return err

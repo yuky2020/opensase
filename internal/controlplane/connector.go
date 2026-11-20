@@ -432,6 +432,6 @@ func portalHandler(dir string) http.Handler {
 		if name == "index.html" {
 			h.Set("Cache-Control", "no-cache")
 		}
-		http.ServeFileFS(w, r, fsys, name)
+		http.ServeFileFS(w, r, fsys, name) //nolint:gosec // G703: name is cleaned with path.Clean("/"+...), os.DirFS rejects non-ValidPath names; dir is an operator flag
 	})
 }

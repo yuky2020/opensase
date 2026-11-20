@@ -22,8 +22,8 @@ type cacheEntry struct {
 	expires time.Time
 }
 
-func newDomainCache(max int) *domainCache {
-	return &domainCache{max: max, entries: make(map[netip.Addr]*list.Element, max), lru: list.New()}
+func newDomainCache(limit int) *domainCache {
+	return &domainCache{max: limit, entries: make(map[netip.Addr]*list.Element, limit), lru: list.New()}
 }
 
 func (c *domainCache) put(ip netip.Addr, name string, expires time.Time) {

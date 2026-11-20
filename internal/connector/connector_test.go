@@ -158,7 +158,7 @@ func TestServeBrokerHTTP2(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go ServeBroker(ctx, connSide, h)
-	cc, err := (&http2.Transport{}).NewClientConn(edgeSide)
+	cc, err := (&http2.Transport{}).NewClientConn(edgeSide) //nolint:staticcheck // SA1019: mirrors the edge, which wraps an existing conn
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func newFakeCP(t *testing.T, serverCert string) (*fakeCP, string) {
 	}
 	mux.HandleFunc("GET /v1/connector/config", func(w http.ResponseWriter, r *http.Request) {
 		if !connectorOnly(r) {
-			http.Error(w, "forbidden", 403)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		f.mu.Lock()
@@ -271,7 +271,7 @@ func newFakeCP(t *testing.T, serverCert string) (*fakeCP, string) {
 	})
 	mux.HandleFunc("POST /v1/connector/renew", func(w http.ResponseWriter, r *http.Request) {
 		if !connectorOnly(r) {
-			http.Error(w, "forbidden", 403)
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		var req api.RenewRequest

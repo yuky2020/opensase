@@ -14,12 +14,69 @@ linters:
     - revive
     - staticcheck
     - unused
+  settings:
+    errcheck:
+      # Best-effort cleanup calls whose error carries no actionable information
+      # (deferred Close on read paths, deadline setters, diagnostic prints).
+      # Close after writing a file is still checked explicitly in code.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (net.Conn).Close
+        - (net.Conn).SetDeadline
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
+        - (*net.TCPConn).SetLinger
+        - (*crypto/tls.Conn).Close
+        - (net.Listener).Close
+        - (*net/http.Server).Close
+        - (golang.zx2c4.com/wireguard/tun.Device).Close
+        - (golang.zx2c4.com/wireguard/conn.Bind).Close
+        - (github.com/miekg/dns.ResponseWriter).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.DB).Close
+        # Deferred removal of a temp file that was usually renamed away already.
+        - os.Remove
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
   exclusions:
     rules:
+      # G104 duplicates errcheck, which is configured above with a reviewed
+      # exclude-functions list; keeping both would need two suppressions per call.
+      - linters:
+          - gosec
+        text: "G104"
+      # doJSON (mobile, internal/connector) closes the body itself before
+      # returning; callers only read StatusCode/TLS from the returned response.
+      - linters:
+          - bodyclose
+        source: 'doJSON\('
+      # G115 (integer conversion overflow) fires on packet/wire parsing where the
+      # value is already bounds-checked; all 46 were reviewed, none was a real overflow.
+      - linters:
+          - gosec
+        text: "G115"
+      # Tests: unchecked errors, fixed file paths, plain contexts and unclosed
+      # bodies in throwaway test servers are not production risks.
       - path: '(.+)_test\.go'
         linters:
+          - errcheck
           - gosec
-        text: "G404"
+          - noctx
+          - bodyclose
+      # Tests often implement interfaces/handlers and ignore some parameters.
+      - path: '(.+)_test\.go'
+        linters:
+          - revive
+        text: "unused-parameter"
+      # internal/ and cmd/ are not importable APIs; doc comments on every
+      # exported identifier add no value there (pkg/ still requires them).
+      - path: '^(internal|cmd)/'
+        linters:
+          - revive
+        text: "^exported:"
 
 formatters:
   enable:

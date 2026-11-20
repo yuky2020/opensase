@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -38,6 +39,11 @@ type Store struct {
 // Open opens (creating if needed) the database at path and applies migrations.
 // path may be ":memory:" for tests.
 func Open(ctx context.Context, path string) (*Store, error) {
+	if path != ":memory:" {
+		if err := restrictDBFiles(path); err != nil {
+			return nil, err
+		}
+	}
 	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -51,6 +57,25 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// restrictDBFiles creates the database file 0600 (SQLite gives the -wal and -shm files the
+// mode of the main file) and tightens existing files: the store holds every tenant's
+// policies and flows (ST-09).
+func restrictDBFiles(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // G304: operator-configured DB path
+	if err != nil {
+		return fmt.Errorf("store: open: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("store: chmod %s: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // Close closes the database.

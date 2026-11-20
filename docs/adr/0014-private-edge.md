@@ -51,8 +51,10 @@ response:
 - tenant CAs must chain to the configured root;
 - every snapshot must verify against the cached signing keys.
 
-A cache that fails these checks is ignored. Someone who can write the state dir can also read the
-Edge key, so the cache adds no new trust.
+A cache that fails these checks is ignored. The cache is also signed with the Edge's own
+certificate key and verified on load (security test finding ST-06). It carries the snapshot keys
+too, so without this signature someone able to write the state dir, but not to read the Edge key,
+could plant a self-signed policy. The cache is also scoped to the tenant again on load (ST-07).
 
 While offline:
 - **Already enrolled devices** keep working. They set up sessions with their certificate, which

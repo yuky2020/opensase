@@ -4,7 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,7 +88,11 @@ func (e *Edge) saveState(b api.PKIBundle, p api.EdgePeers) error {
 	if h == e.stateSum {
 		return nil
 	}
-	j, err := json.Marshal(cachedState{SavedAt: time.Now().UTC(), Tenant: e.cfg.TenantID, Bundle: b, Peers: p})
+	body, err := json.Marshal(cachedState{SavedAt: time.Now().UTC(), Tenant: e.cfg.TenantID, Bundle: b, Peers: p})
+	if err != nil {
+		return err
+	}
+	j, err := e.signState(body)
 	if err != nil {
 		return err
 	}
@@ -142,13 +151,19 @@ func (e *Edge) loadState() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	body, err := e.verifyState(j)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("edge: cached state: %w", err)
+	}
 	var st cachedState
-	if err := json.Unmarshal(j, &st); err != nil {
+	if err := json.Unmarshal(body, &st); err != nil {
 		return time.Time{}, fmt.Errorf("edge: cached state: %w", err)
 	}
 	if st.Tenant != e.cfg.TenantID {
 		return time.Time{}, fmt.Errorf("edge: cached state is for tenant %q, edge runs as %q", st.Tenant, e.cfg.TenantID)
 	}
+	// The cache may have been relabelled or edited: scope it again (ST-07).
+	st.Peers = e.scopePeers(st.Peers)
 	e.syncMu.Lock()
 	defer e.syncMu.Unlock()
 	if err := e.applyState(st.Bundle, st.Peers); err != nil {
@@ -158,6 +173,60 @@ func (e *Edge) loadState() (time.Time, error) {
 		e.stateSum = h
 	}
 	return st.SavedAt, nil
+}
+
+// signedState is the on-disk form of stateFile: the cachedState JSON signed with the Edge's
+// own certificate key (ST-06). Snapshot signatures alone do not protect the cache, because
+// the cache also carries the snapshot keys; with this signature, writing a usable cache
+// requires the Edge private key, not only write access to the state dir.
+type signedState struct {
+	State     json.RawMessage `json:"state"`
+	Signature []byte          `json:"signature"`
+}
+
+func (e *Edge) signState(body []byte) ([]byte, error) {
+	signer, ok := e.cfg.Cert.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, errors.New("edge: certificate key cannot sign the state cache")
+	}
+	msg, opts := body, crypto.Hash(0) // Ed25519 signs the message itself
+	if _, isEd := signer.(ed25519.PrivateKey); !isEd {
+		d := sha256.Sum256(body)
+		msg, opts = d[:], crypto.SHA256
+	}
+	sig, err := signer.Sign(rand.Reader, msg, opts)
+	if err != nil {
+		return nil, fmt.Errorf("edge: sign state: %w", err)
+	}
+	return json.Marshal(signedState{State: body, Signature: sig})
+}
+
+func (e *Edge) verifyState(j []byte) ([]byte, error) {
+	var ss signedState
+	if err := json.Unmarshal(j, &ss); err != nil {
+		return nil, err
+	}
+	if len(e.cfg.Cert.Certificate) == 0 {
+		return nil, errors.New("no edge certificate")
+	}
+	leaf, err := x509.ParseCertificate(e.cfg.Cert.Certificate[0])
+	if err != nil {
+		return nil, err
+	}
+	d := sha256.Sum256(ss.State)
+	var ok bool
+	switch pub := leaf.PublicKey.(type) {
+	case *ecdsa.PublicKey:
+		ok = ecdsa.VerifyASN1(pub, d[:], ss.Signature)
+	case ed25519.PublicKey:
+		ok = ed25519.Verify(pub, ss.State, ss.Signature)
+	default:
+		return nil, fmt.Errorf("unsupported edge key type %T", pub)
+	}
+	if !ok {
+		return nil, errors.New("signature does not verify with the edge certificate (tampered, or written by another edge)")
+	}
+	return ss.State, nil
 }
 
 // localFlowLog appends flow records as JSON lines to a local file, rotated to <path>.1 at

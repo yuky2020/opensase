@@ -392,7 +392,7 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 		if !scoped(c.TenantID) {
 			continue
 		}
-		out.Connectors = append(out.Connectors, api.EdgeConnector{ConnectorID: c.ID, TenantID: c.TenantID, Group: c.Group})
+		out.Connectors = append(out.Connectors, api.EdgeConnector{ConnectorID: c.ID, TenantID: c.TenantID, Group: c.Group, CertSerial: c.CertSerial})
 	}
 	for _, a := range act {
 		if !scoped(a.Device.TenantID) {
@@ -403,7 +403,7 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 			s.internalErr(w, r, "decode envelope", err)
 			return
 		}
-		out.Devices = append(out.Devices, api.EdgeDevice{DeviceID: a.Device.ID, TenantID: a.Device.TenantID, Snapshot: env})
+		out.Devices = append(out.Devices, api.EdgeDevice{DeviceID: a.Device.ID, TenantID: a.Device.TenantID, Snapshot: env, CertSerial: a.Device.CertSerial})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

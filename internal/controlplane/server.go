@@ -38,6 +38,8 @@ const (
 	DefaultMaxConns      = 4096
 	DefaultFlowRetention = 7 * 24 * time.Hour
 	DefaultFlowRate      = 1000 // flow records per device per minute
+	DefaultEnrollRate    = 30   // enrollment attempts per source IP per minute (ST-05)
+	enrollGlobalFactor   = 20   // all sources together: 20x the per-IP rate
 	maxLongPollsPerDev   = 2
 
 	// Per-route deadlines (security review #8). The snapshot long-poll gets wait+10s.
@@ -63,6 +65,7 @@ type Config struct {
 	MaxConns      int              // concurrent connections, default 4096
 	FlowRetention time.Duration    // flow records older than this are deleted, default 7 days
 	FlowRate      int              // flow records accepted per device per minute, default 1000
+	EnrollRate    int              // enroll attempts (devices + connectors) per source IP per minute, default 30
 	PortalDir     string           // if set, the admin portal (static Flutter web build) is served at /admin/
 	Logger        *slog.Logger     // default slog.Default()
 	Now           func() time.Time // default time.Now
@@ -81,8 +84,9 @@ type Server struct {
 	decideMu sync.Mutex
 	decide   map[string]*decideEntry // tenant ID -> compiled cloud-only decision data
 
-	polls     *pollLimiter
-	flowLimit *rateLimiter
+	polls       *pollLimiter
+	flowLimit   *rateLimiter
+	enrollLimit *rateLimiter // per source IP, plus the global key "*" (ST-05)
 }
 
 // New validates cfg and returns a Server.
@@ -105,6 +109,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.FlowRetention <= 0 {
 		cfg.FlowRetention = DefaultFlowRetention
 	}
+	if cfg.EnrollRate <= 0 {
+		cfg.EnrollRate = DefaultEnrollRate
+	}
 	if cfg.FlowRate <= 0 {
 		cfg.FlowRate = DefaultFlowRate
 	}
@@ -124,6 +131,7 @@ func New(cfg Config) (*Server, error) {
 		polls:    newPollLimiter(maxLongPollsPerDev),
 	}
 	s.flowLimit = newRateLimiter(cfg.FlowRate, time.Minute, cfg.Now)
+	s.enrollLimit = newRateLimiter(cfg.EnrollRate, time.Minute, cfg.Now)
 	s.pool.Store(cfg.Authority.ClientCAPool())
 	return s, nil
 }
@@ -152,7 +160,7 @@ func (s *Server) Handler() http.Handler {
 	r.Use(s.logRequests, s.requirePQ, deadline(routeTimeout))
 	short := deadline(shortRouteTimeout)
 
-	r.With(short).Post("/v1/enroll", s.handleEnroll)
+	r.With(short, s.limitEnroll).Post("/v1/enroll", s.handleEnroll)
 	r.Get("/v1/pki/ca", s.handlePKI)
 
 	r.Group(func(r chi.Router) {
@@ -169,7 +177,7 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/v1/flows", s.handleFlows)
 	})
 	// Connectors (ADR-0013). Connector certificates are accepted on these routes only.
-	r.With(short).Post("/v1/connector/enroll", s.handleConnectorEnroll)
+	r.With(short, s.limitEnroll).Post("/v1/connector/enroll", s.handleConnectorEnroll)
 	r.With(s.requireRole(roleConnector)).Get("/v1/connector/config", s.handleConnectorConfig) // own deadline
 	r.With(short, s.requireRole(roleConnector|roleRenewal)).Post("/v1/connector/renew", s.handleConnectorRenew)
 	r.Group(func(r chi.Router) {
@@ -280,6 +288,7 @@ func (s *Server) maintain(ctx context.Context) {
 			s.log.Info("old flow records deleted", "count", n, "retention", s.cfg.FlowRetention)
 		}
 		s.flowLimit.prune()
+		s.enrollLimit.prune()
 		select {
 		case <-ctx.Done():
 			return

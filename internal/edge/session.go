@@ -98,6 +98,19 @@ func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "unknown or revoked device")
 		return
 	}
+	// Only the device's current certificate (ST-01): a just-renewed one may be newer than the
+	// last feed, so a mismatch triggers the same rate-limited on-demand sync.
+	serial := r.TLS.VerifiedChains[0][0].SerialNumber.String()
+	sctx, scancel := context.WithTimeout(r.Context(), minSyncInterval+5*time.Second)
+	current := e.findAfterSync(sctx, "serial:"+id.DeviceID+"/"+serial, func() bool {
+		s := e.reg.serial(id.DeviceID)
+		return s != "" && s == serial
+	})
+	scancel()
+	if !current {
+		writeErr(w, http.StatusForbidden, "certificate superseded or not issued to this device")
+		return
+	}
 
 	resp, code, err := e.setupSession(r.Context(), d, *r.TLS, [32]byte(clientPub), req)
 	if err != nil {

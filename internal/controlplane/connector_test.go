@@ -302,7 +302,7 @@ func TestConnectorRenewAndRevoke(t *testing.T) {
 	}
 	_, oldCert := e.enrollConnector(created.ProvisioningKey)
 	old := e.client(&oldCert)
-	if p := e.peers(edge); len(p.Connectors) != 1 || p.Connectors[0] != (api.EdgeConnector{ConnectorID: id, TenantID: "acme", Group: "dc1"}) {
+	if p := e.peers(edge); len(p.Connectors) != 1 || p.Connectors[0] != (api.EdgeConnector{ConnectorID: id, TenantID: "acme", Group: "dc1", CertSerial: oldCert.Leaf.SerialNumber.String()}) {
 		t.Fatalf("peers connectors %+v", p.Connectors)
 	}
 

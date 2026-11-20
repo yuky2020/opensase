@@ -8,6 +8,14 @@ services:
     image: opensase/controlplane:dev
     restart: unless-stopped
     user: "${OPENSASE_UID:-1000}:${OPENSASE_GID:-1000}"
+    # Least privilege (ST-08): no capabilities, no privilege gain, read-only root filesystem.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "9443:9443/tcp"
     environment:

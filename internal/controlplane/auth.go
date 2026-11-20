@@ -110,6 +110,13 @@ func (s *Server) authDevice(r *http.Request, id pki.Identity, allowPrev bool) (s
 	if d.Revoked {
 		return d, http.StatusForbidden, errors.New("device revoked")
 	}
+	if d.PrevCertSerial != "" && serial == d.CertSerial {
+		// The renewed certificate is in use: the superseded one is now dead (ST-02).
+		if err := s.cfg.Store.ForgetPrevDeviceSerial(r.Context(), d.ID, serial); err != nil {
+			return d, http.StatusInternalServerError, err
+		}
+		d.PrevCertSerial = ""
+	}
 	return d, 0, nil
 }
 
@@ -131,6 +138,12 @@ func (s *Server) authConnector(r *http.Request, id pki.Identity, allowPrev bool)
 	}
 	if c.Revoked {
 		return c, http.StatusForbidden, errors.New("connector revoked")
+	}
+	if c.PrevCertSerial != "" && serial == c.CertSerial {
+		if err := s.cfg.Store.ForgetPrevConnectorSerial(r.Context(), c.ID, serial); err != nil {
+			return c, http.StatusInternalServerError, err
+		}
+		c.PrevCertSerial = ""
 	}
 	return c, 0, nil
 }

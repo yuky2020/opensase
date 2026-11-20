@@ -69,6 +69,7 @@ func (fx *fixture) connectorCert(tenant, id string) tls.Certificate {
 	if err != nil {
 		fx.t.Fatal(err)
 	}
+	fx.setSerial("connector:"+id, c)
 	return c
 }
 

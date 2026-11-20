@@ -94,18 +94,44 @@ func TestStateCache(t *testing.T) {
 		t.Fatal("cache of another tenant accepted")
 	}
 
-	// A tampered snapshot in the cache does not verify, so the device is not accepted.
+	var ss signedState
 	var cs cachedState
 	b, _ := os.ReadFile(path)
-	if err := json.Unmarshal(b, &cs); err != nil {
+	if err := json.Unmarshal(b, &ss); err != nil {
 		t.Fatal(err)
 	}
-	cs.Peers.Devices[0].Snapshot.Payload = append([]byte(nil), cs.Peers.Devices[0].Snapshot.Payload...)
-	cs.Peers.Devices[0].Snapshot.Payload[len(cs.Peers.Devices[0].Snapshot.Payload)/2] ^= 1
-	b, _ = json.Marshal(cs)
-	if err := os.WriteFile(path, b, 0o600); err != nil {
+	if err := json.Unmarshal(ss.State, &cs); err != nil {
 		t.Fatal(err)
 	}
+	write := func(cs cachedState, sign bool) {
+		t.Helper()
+		body, _ := json.Marshal(cs)
+		var out []byte
+		if sign {
+			out, _ = fx.e.signState(body) // the Edge key: only the Edge can write a usable cache
+		} else {
+			out, _ = json.Marshal(signedState{State: body, Signature: ss.Signature})
+		}
+		if err := os.WriteFile(path, out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Any edit without the Edge key (here: relabelling the tenant scope) is refused (ST-06).
+	relabel := cs
+	relabel.Peers.Devices = append([]api.EdgeDevice(nil), cs.Peers.Devices...)
+	relabel.Peers.Devices = append(relabel.Peers.Devices, api.EdgeDevice{DeviceID: "evil", TenantID: "acme"})
+	write(relabel, false)
+	if _, err := load("acme"); err == nil {
+		t.Fatal("unsigned edit of the cache accepted")
+	}
+
+	// Even with a valid cache signature, a tampered snapshot does not verify.
+	tampered := cs
+	tampered.Peers.Devices = append([]api.EdgeDevice(nil), cs.Peers.Devices...)
+	tampered.Peers.Devices[0].Snapshot.Payload = append([]byte(nil), cs.Peers.Devices[0].Snapshot.Payload...)
+	tampered.Peers.Devices[0].Snapshot.Payload[len(tampered.Peers.Devices[0].Snapshot.Payload)/2] ^= 1
+	write(tampered, true)
 	e3, err := load("acme")
 	if err != nil {
 		t.Fatal(err)
@@ -114,13 +140,20 @@ func TestStateCache(t *testing.T) {
 		t.Fatal("tampered cached snapshot accepted")
 	}
 
-	// A cache whose CA bundle does not chain to the root is rejected outright.
-	cs.Bundle.CAPEM = ""
-	cs.Bundle.SnapshotKeys = nil
-	b, _ = json.Marshal(cs)
-	_ = os.WriteFile(path, b, 0o600)
+	// A signed cache whose bundle has no usable snapshot key is rejected outright.
+	nokeys := cs
+	nokeys.Bundle.CAPEM = ""
+	nokeys.Bundle.SnapshotKeys = nil
+	write(nokeys, true)
 	if _, err := load("acme"); err == nil {
 		t.Fatal("cache without snapshot keys accepted")
+	}
+
+	// A cache written by another Edge (another key) is refused.
+	write(cs, true)
+	other := newFixtureCfg(t, func(c *Config) { c.StateDir = state; c.TenantID = "acme" })
+	if _, err := other.e.loadState(); err == nil {
+		t.Fatal("cache signed by another edge accepted")
 	}
 }
 

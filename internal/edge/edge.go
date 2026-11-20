@@ -537,10 +537,12 @@ func (e *Edge) lookupDevice(ctx context.Context, id string) *device {
 // connectorAllowed reports whether a connector is in the peer feed, with the same
 // on-demand sync as lookupDevice, so a just-enrolled connector does not wait for the next
 // periodic sync. Negative entries are keyed apart from device IDs.
-func (e *Edge) connectorAllowed(ctx context.Context, id pki.Identity) bool {
-	return e.findAfterSync(ctx, "connector:"+id.TenantID+"/"+id.ConnectorID, func() bool {
-		_, ok := e.hub.isAllowed(id)
-		return ok
+// serial is the presented certificate's serial: only the connector's current certificate is
+// accepted (ST-04).
+func (e *Edge) connectorAllowed(ctx context.Context, id pki.Identity, serial string) bool {
+	return e.findAfterSync(ctx, "connector:"+id.TenantID+"/"+id.ConnectorID+"/"+serial, func() bool {
+		a, ok := e.hub.isAllowed(id)
+		return ok && a.CertSerial != "" && a.CertSerial == serial
 	})
 }
 

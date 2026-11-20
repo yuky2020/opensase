@@ -108,6 +108,8 @@ func TestRenew(t *testing.T) {
 	if resp, _ := e.do(cur, "GET", "/v1/snapshot", nil, nil); resp.StatusCode != 200 {
 		t.Fatalf("renewed cert: %d", resp.StatusCode)
 	}
+	// The renewed cert is in use, so the superseded one can no longer renew (ST-02).
+	renew(old, 403)
 	// Renewing with the newest cert moves "previous" forward: the first cert is now dead.
 	newest, _ := renew(cur, 200)
 	renew(old, 403)

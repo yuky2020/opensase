@@ -50,6 +50,9 @@ type fakeCP struct {
 	reported [][]string
 
 	reportedConnectors [][]string
+	// serials holds the current cert serial per device/connector ID, as issued by the
+	// fixture; Peers fills it into entries that have none (the CP sends it, ST-01/ST-04).
+	serials map[string]string
 }
 
 func (f *fakeCP) ReportSessions(_ context.Context, s api.EdgeSessions) error {
@@ -70,7 +73,18 @@ func (f *fakeCP) Peers(context.Context) (api.EdgePeers, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.peerGets++
-	return f.peers, nil
+	p := api.EdgePeers{Devices: append([]api.EdgeDevice(nil), f.peers.Devices...), Connectors: append([]api.EdgeConnector(nil), f.peers.Connectors...)}
+	for i := range p.Devices {
+		if p.Devices[i].CertSerial == "" {
+			p.Devices[i].CertSerial = f.serials[p.Devices[i].DeviceID]
+		}
+	}
+	for i := range p.Connectors {
+		if p.Connectors[i].CertSerial == "" {
+			p.Connectors[i].CertSerial = f.serials["connector:"+p.Connectors[i].ConnectorID]
+		}
+	}
+	return p, nil
 }
 
 func (f *fakeCP) Decide(_ context.Context, d string, fl policy.Flow) (api.DecideResponse, error) {
@@ -249,7 +263,19 @@ func (fx *fixture) deviceCertValid(tenant, id string, validity time.Duration) tl
 	if err != nil {
 		fx.t.Fatal(err)
 	}
+	fx.setSerial(id, c)
 	return c
+}
+
+// setSerial records cert as the current certificate of key in the fake CP feed.
+func (fx *fixture) setSerial(key string, cert tls.Certificate) {
+	fx.t.Helper()
+	fx.cp.mu.Lock()
+	defer fx.cp.mu.Unlock()
+	if fx.cp.serials == nil {
+		fx.cp.serials = map[string]string{}
+	}
+	fx.cp.serials[key] = cert.Leaf.SerialNumber.String()
 }
 
 func (fx *fixture) sessionServer() *httptest.Server {

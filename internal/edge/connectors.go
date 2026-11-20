@@ -284,10 +284,10 @@ func (e *Edge) acceptConnector(ctx context.Context, tc *tls.Conn) {
 	}
 	// Enrolled after the last peer sync? Refresh on demand (rate-limited, negative cache).
 	sctx, cancel := context.WithTimeout(ctx, minSyncInterval+5*time.Second)
-	allowed := e.connectorAllowed(sctx, id)
+	allowed := e.connectorAllowed(sctx, id, cs.VerifiedChains[0][0].SerialNumber.String())
 	cancel()
 	if !allowed {
-		e.log.Info("connector refused: not in the peer feed (unknown, revoked or other tenant)", "remote", remote, "connector", id.ConnectorID, "tenant", id.TenantID)
+		e.log.Info("connector refused: not in the peer feed (unknown, revoked, other tenant or superseded certificate)", "remote", remote, "connector", id.ConnectorID, "tenant", id.TenantID)
 		_ = tc.Close()
 		return
 	}

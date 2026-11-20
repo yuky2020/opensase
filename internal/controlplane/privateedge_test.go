@@ -135,3 +135,28 @@ func TestPrivateEdgeScope(t *testing.T) {
 		t.Fatalf("admin edges %+v", edges)
 	}
 }
+
+// TestEnrollRateLimit checks ST-05: failed enroll attempts from one source are capped with
+// 429; successful enrollments do not count.
+func TestEnrollRateLimit(t *testing.T) {
+	e := newEnvCfg(t, func(c *Config) { c.EnrollRate = 5 })
+	key := e.setupTenant(10)
+	for range 7 {
+		e.enroll(key) // 7 successes > the limit of 5: not throttled
+	}
+	codes := map[int]int{}
+	for range 8 {
+		resp, _ := e.do(e.admin, "POST", "/v1/enroll", api.EnrollRequest{ProvisioningKey: "osk_wrong", DeviceName: "x", Platform: "linux"}, nil)
+		codes[resp.StatusCode]++
+		if resp.StatusCode == http.StatusTooManyRequests && resp.Header.Get("Retry-After") == "" {
+			t.Fatal("429 without Retry-After")
+		}
+	}
+	if codes[http.StatusTooManyRequests] != 3 {
+		t.Fatalf("codes %v, want 5 refusals then 3x 429", codes)
+	}
+	// Connector enroll shares the budget.
+	if resp, _ := e.do(e.admin, "POST", "/v1/connector/enroll", api.ConnectorEnrollRequest{ProvisioningKey: "osc_wrong"}, nil); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("connector enroll: %d", resp.StatusCode)
+	}
+}

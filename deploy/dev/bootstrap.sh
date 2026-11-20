@@ -40,6 +40,7 @@ set_env OPENSASE_GID "$(id -g)"
 [ -n "${UPSTREAM_DNS:-}" ] && set_env UPSTREAM_DNS "$UPSTREAM_DNS"
 
 mkdir -p pki data
+chmod 700 data # every tenant's policies and flows (ST-09)
 log "building images"
 docker compose build controlplane edge connector
 

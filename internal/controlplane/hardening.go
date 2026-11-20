@@ -3,6 +3,7 @@ package controlplane
 import (
 	"crypto"
 	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -210,6 +211,45 @@ func (l *pollLimiter) release(id string) {
 	}
 }
 
+// limitEnroll caps FAILED enrollment attempts per source IP and in total (ST-05):
+// provisioning keys are high-entropy, but unlimited guessing still costs CPU (CSR checks)
+// and log volume. Successful enrollments are free, so many devices behind one NAT can enroll
+// at once. Over the limit: 429 with Retry-After. The source is the TCP peer (no proxy
+// headers trusted).
+func (s *Server) limitEnroll(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr
+		}
+		global := s.cfg.EnrollRate * enrollGlobalFactor
+		if !s.enrollLimit.has(ip, s.cfg.EnrollRate) || !s.enrollLimit.has("*", global) {
+			if s.enrollLimit.take("log:"+ip, 1) == 1 {
+				s.log.WarnContext(r.Context(), "enroll rate limit hit", "remote", ip)
+			}
+			w.Header().Set("Retry-After", "60")
+			writeErr(w, http.StatusTooManyRequests, "too many failed enrollment attempts; retry later")
+			return
+		}
+		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		if sw.code >= 400 && sw.code < 500 {
+			s.enrollLimit.takeKeys(1, global, ip, "*")
+		}
+	})
+}
+
+// statusWriter records the response status code.
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.code = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // rateLimiter is a fixed-window counter per key (device ID).
 type rateLimiter struct {
 	limit  int
@@ -245,6 +285,38 @@ func (l *rateLimiter) take(key string, n int) int {
 	}
 	w.n += got
 	return got
+}
+
+// has reports whether key still has room under limit in its current window.
+func (l *rateLimiter) has(key string, limit int) bool {
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	w, ok := l.m[key]
+	return !ok || now.Sub(w.start) >= l.window || w.n < limit
+}
+
+// takeKeys reserves n units on the per-source key and on the global key (limit global)
+// atomically: both or neither.
+func (l *rateLimiter) takeKeys(n, global int, key, globalKey string) bool {
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	win := func(k string) *rateWindow {
+		w, ok := l.m[k]
+		if !ok || now.Sub(w.start) >= l.window {
+			w = &rateWindow{start: now}
+			l.m[k] = w
+		}
+		return w
+	}
+	wk, wg := win(key), win(globalKey)
+	if wk.n+n > l.limit || wg.n+n > global {
+		return false
+	}
+	wk.n += n
+	wg.n += n
+	return true
 }
 
 // prune forgets expired windows.

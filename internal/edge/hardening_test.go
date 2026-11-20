@@ -215,12 +215,12 @@ func TestSessionExpiresWithCertificate(t *testing.T) {
 		return base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())
 	}
 	short := fx.deviceCertValid("acme", "d1", time.Hour)
-	renewed := fx.deviceCertValid("acme", "d1", 24*time.Hour)
 	k1 := wgKey()
 	code, sr, _ := postSession(t, fx.client(&short), srv.URL, api.SessionRequest{WGPublicKey: k1})
 	if code != 200 {
 		t.Fatal(code)
 	}
+	renewed := fx.deviceCertValid("acme", "d1", 24*time.Hour) // the CP now lists its serial
 	other := fx.deviceCertValid("acme", "d2", time.Hour)
 	if code, _, _ := postSession(t, fx.client(&other), srv.URL, api.SessionRequest{WGPublicKey: wgKey()}); code != 200 {
 		t.Fatal(code)
@@ -320,4 +320,40 @@ func TestReportSessions(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// TestSupersededCertRefused checks ST-01 and ST-04: only the current certificate serial in
+// the peer feed may set up a session or a broker link; a superseded or never-delivered
+// certificate is refused even though it chains to the tenant CA.
+func TestSupersededCertRefused(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	_ = fx.e.syncPeers(context.Background())
+	srv := fx.sessionServer()
+	wgKey := func() string {
+		k, _ := ecdh.X25519().GenerateKey(rand.Reader)
+		return base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())
+	}
+	old := fx.deviceCert("acme", "d1")
+	cur := fx.deviceCert("acme", "d1") // renewal: the feed now lists this serial
+	if code, _, _ := postSession(t, fx.client(&old), srv.URL, api.SessionRequest{WGPublicKey: wgKey()}); code != 403 {
+		t.Fatalf("superseded cert: %d", code)
+	}
+	if code, _, _ := postSession(t, fx.client(&cur), srv.URL, api.SessionRequest{WGPublicKey: wgKey()}); code != 200 {
+		t.Fatalf("current cert: %d", code)
+	}
+	// Connectors: same rule on the broker allow-list.
+	fx.cp.mu.Lock()
+	fx.cp.peers.Connectors = []api.EdgeConnector{{ConnectorID: "c1", TenantID: "acme", Group: "default"}}
+	fx.cp.mu.Unlock()
+	oldC := fx.connectorCert("acme", "c1")
+	curC := fx.connectorCert("acme", "c1")
+	_ = fx.e.syncPeers(context.Background())
+	id := pki.Identity{Kind: pki.PeerConnector, TenantID: "acme", ConnectorID: "c1"}
+	if fx.e.connectorAllowed(context.Background(), id, oldC.Leaf.SerialNumber.String()) {
+		t.Fatal("superseded connector cert allowed")
+	}
+	if !fx.e.connectorAllowed(context.Background(), id, curC.Leaf.SerialNumber.String()) {
+		t.Fatal("current connector cert refused")
+	}
 }

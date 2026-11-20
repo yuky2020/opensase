@@ -49,6 +49,23 @@ func (s *Store) renewCert(ctx context.Context, table, id, presented, newSerial s
 	})
 }
 
+// ForgetPrevDeviceSerial drops the superseded serial of a device once its current serial has
+// authenticated: the renewal response evidently arrived, so the old certificate may no
+// longer retry POST /v1/renew (ST-02).
+func (s *Store) ForgetPrevDeviceSerial(ctx context.Context, id, current string) error {
+	return s.forgetPrev(ctx, "devices", id, current)
+}
+
+// ForgetPrevConnectorSerial is ForgetPrevDeviceSerial for connectors.
+func (s *Store) ForgetPrevConnectorSerial(ctx context.Context, id, current string) error {
+	return s.forgetPrev(ctx, "connectors", id, current)
+}
+
+func (s *Store) forgetPrev(ctx context.Context, table, id, current string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE `+table+` SET prev_cert_serial = '' WHERE id = ? AND cert_serial = ? AND prev_cert_serial != ''`, id, current) //nolint:gosec // G202: table is a constant from the callers
+	return mapErr(err)
+}
+
 // Edge is a row of the edges table.
 type Edge struct {
 	ID        string

@@ -58,12 +58,15 @@ type registry struct {
 	used    map[uint32]bool
 	next    uint32
 	byIP    atomic.Pointer[map[netip.Addr]*device]
+	serials atomic.Pointer[map[string]string] // device ID -> current cert serial (ST-01)
 }
 
 func newRegistry() *registry {
 	r := &registry{devices: map[string]*device{}, used: map[uint32]bool{}, next: 2}
 	empty := map[netip.Addr]*device{}
 	r.byIP.Store(&empty)
+	noSerials := map[string]string{}
+	r.serials.Store(&noSerials)
 	return r
 }
 
@@ -71,6 +74,9 @@ func newRegistry() *registry {
 func (r *registry) byTunnelIP(ip netip.Addr) *device {
 	return (*r.byIP.Load())[ip.Unmap()]
 }
+
+// serial returns the current certificate serial of a device from the last feed ("" if none).
+func (r *registry) serial(id string) string { return (*r.serials.Load())[id] }
 
 // get returns a device by ID (nil if unknown).
 func (r *registry) get(id string) *device {
@@ -142,6 +148,11 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		snap *policy.Snapshot
 		c    *policy.Compiled
 	}
+	serials := make(map[string]string, len(peers.Devices))
+	for _, p := range peers.Devices {
+		serials[p.DeviceID] = p.CertSerial
+	}
+	r.serials.Store(&serials)
 	// Verify and compile outside the lock.
 	fresh := make(map[string]compiled, len(peers.Devices))
 	var res syncResult

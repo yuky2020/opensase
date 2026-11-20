@@ -198,6 +198,9 @@ type EdgeConnector struct {
 	ConnectorID string `json:"connectorId"`
 	TenantID    string `json:"tenantId"`
 	Group       string `json:"group"`
+	// CertSerial is the connector's current certificate serial (decimal). Edges accept only
+	// that certificate on the broker (ST-04).
+	CertSerial string `json:"certSerial"`
 }
 
 // EdgeDevice is a device an Edge may accept, with its signed policy snapshot.
@@ -205,6 +208,9 @@ type EdgeDevice struct {
 	DeviceID string          `json:"deviceId"`
 	TenantID string          `json:"tenantId"`
 	Snapshot policy.Envelope `json:"snapshot"`
+	// CertSerial is the device's current certificate serial (decimal). Edges set up sessions
+	// only with that certificate, so a superseded or never-delivered one is refused (ST-01).
+	CertSerial string `json:"certSerial"`
 }
 
 // AdminTenant is a tenant in the admin API.

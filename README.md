@@ -131,6 +131,7 @@ flowchart LR
 | Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
+| Pinned control URL for enrollment QR codes (`GET /v1/admin/info`), policy ETags against lost updates | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list, HTTP/2 ([ADR-0018](docs/adr/0018-tls-inspection.md), [ADR-0023](docs/adr/0023-http2-inspected-path.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
@@ -290,10 +291,9 @@ Planned work and known limitations are tracked as [GitHub issues](https://github
 
 1. **DLP, next slice:** exact data match and fingerprints ([#15](https://github.com/yuky2020/opensase/issues/15)).
 2. OIDC sign-in for the portal ([#17](https://github.com/yuky2020/opensase/issues/17)), and audit shipping to an append-only store ([#18](https://github.com/yuky2020/opensase/issues/18)).
-3. Control Plane `GET /v1/admin/info` and policy ETags ([#19](https://github.com/yuky2020/opensase/issues/19)).
-4. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).
-5. Workload Gateway for the cloud: GENEVE ingress, per-workload identity ([#21](https://github.com/yuky2020/opensase/issues/21)).
-6. CI for the container images, the e2e and the security suite ([#28](https://github.com/yuky2020/opensase/issues/28)).
+3. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).
+4. Workload Gateway for the cloud: GENEVE ingress, per-workload identity ([#21](https://github.com/yuky2020/opensase/issues/21)).
+5. CI for the container images, the e2e and the security suite ([#28](https://github.com/yuky2020/opensase/issues/28)).
 
 ## Contributing and security
 

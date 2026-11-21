@@ -99,6 +99,8 @@ type Server struct {
 	enrollLimit *rateLimiter // failed enroll attempts per source IP (ST-05)
 
 	cats atomic.Pointer[catState] // web category list (ADR-0022)
+
+	policyMu sync.Mutex // serialises If-Match checks and policy writes (issue #19)
 }
 
 // New validates cfg and returns a Server.
@@ -207,6 +209,7 @@ func (s *Server) Handler() http.Handler {
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Use(short, s.requireAdmin, s.auditAdmin)
 		r.Get("/whoami", s.handleWhoami)
+		r.Get("/info", s.handleAdminInfo)
 		r.Get("/saas/catalog", s.handleSaaSCatalog)
 		r.Get("/categories", s.handleCategories)
 		r.Get("/tenants", s.handleListTenants) // filtered to the caller's tenant

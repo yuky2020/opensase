@@ -154,6 +154,9 @@ class TenantPolicy {
   /// Force safe search and restricted video modes (ADR-0025).
   bool safeSearch;
 
+  /// The ETag the policy was read at; sent as If-Match when saving. Not part of the JSON.
+  String etag = '';
+
   factory TenantPolicy.fromJson(Json j) {
     final apps = objOrEmpty(j, 'apps');
     return TenantPolicy(
@@ -194,7 +197,7 @@ class TenantPolicy {
     return j;
   }
 
-  TenantPolicy copy() => TenantPolicy.fromJson(toJson());
+  TenantPolicy copy() => TenantPolicy.fromJson(toJson())..etag = etag;
 }
 
 class FlowRecord {
@@ -831,5 +834,24 @@ class WebCategory {
     domains: integer(j, 'domains'),
     urls: integer(j, 'urls'),
     aliases: strList(j, 'aliases'),
+  );
+}
+
+/// api.AdminInfo (GET /v1/admin/info).
+class AdminInfo {
+  AdminInfo({this.controlUrl = '', this.rootSha256 = '', this.version = '', List<String>? features})
+    : features = features ?? [];
+
+  /// The control URL devices enroll with, including the #sha256= root pin.
+  String controlUrl;
+  String rootSha256;
+  String version;
+  List<String> features;
+
+  factory AdminInfo.fromJson(Json j) => AdminInfo(
+    controlUrl: str(j, 'controlUrl'),
+    rootSha256: str(j, 'rootSha256'),
+    version: str(j, 'version'),
+    features: strList(j, 'features'),
   );
 }

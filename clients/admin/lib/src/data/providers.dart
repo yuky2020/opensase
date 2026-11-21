@@ -21,6 +21,17 @@ class ControlUrlNotifier extends Notifier<String> {
 
 final controlUrlProvider = NotifierProvider<ControlUrlNotifier, String>(ControlUrlNotifier.new);
 
+/// The Control Plane's own description (issue #19).
+final adminInfoProvider = FutureProvider<AdminInfo>((ref) => ref.watch(apiProvider).info());
+
+/// The control URL for enrollment QR codes: the admin's setting if any, else the pinned URL the
+/// Control Plane reports.
+final effectiveControlUrlProvider = Provider<String>((ref) {
+  final set = ref.watch(controlUrlProvider);
+  if (set.isNotEmpty) return set;
+  return ref.watch(adminInfoProvider).value?.controlUrl ?? '';
+});
+
 /// The tenant the per-tenant screens show.
 class SelectedTenantNotifier extends Notifier<String?> {
   @override

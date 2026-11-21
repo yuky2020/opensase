@@ -52,5 +52,12 @@ automation needs non-interactive credentials anyway.
   access to the database can alter it. Shipping it to an append-only store (the observability
   pipeline) is future work.
 - Still to come:
-  - roles inside a tenant (read-only, policy editor);
   - OIDC or SAML sign-in for the portal, mapping IdP groups to these scopes.
+- Added later:
+  - roles inside a tenant (ADR-0027);
+  - `GET /v1/admin/info` and policy ETags (issue #19). `info` returns the control URL with the
+    `#sha256=` root pin, so the portal builds enrollment QR codes without the admin typing the
+    pin. `GET .../policy` sets an ETag. A `PUT .../policy` with `If-Match` is refused with 412
+    when someone else saved in between. The check and the write are one critical section. The
+    portal sends `If-Match` on every policy save. Requests without `If-Match` (the CLI's
+    `policy set`) stay unconditional.

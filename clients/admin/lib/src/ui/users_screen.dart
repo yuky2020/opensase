@@ -181,7 +181,7 @@ class _ProvisioningKeyDialogState extends ConsumerState<ProvisioningKeyDialog> {
 
   Widget _result(BuildContext context, ProvisioningKey key) {
     final l = context.l10n;
-    final control = ref.watch(controlUrlProvider);
+    final control = ref.watch(effectiveControlUrlProvider);
     final controlOk = controlUrlError(control) == null;
     final link = controlOk ? enrollLink(controlUrl: control, key: key.key) : null;
     return Column(

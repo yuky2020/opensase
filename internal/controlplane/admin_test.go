@@ -297,3 +297,52 @@ func TestTenantRoles(t *testing.T) {
 		t.Fatalf("refusals audited: %d", refused)
 	}
 }
+
+// TestAdminInfoAndPolicyETag covers issue #19.
+func TestAdminInfoAndPolicyETag(t *testing.T) {
+	e := newEnvCfg(t, func(c *Config) { c.ControlURL = "https://cp.example:9443" })
+	e.setupTenant(1)
+	var info api.AdminInfo
+	_ = json.Unmarshal(e.adminDo("GET", "/v1/admin/info", nil, 200), &info)
+	if len(info.RootSHA256) != 64 || info.ControlURL != "https://cp.example:9443#sha256="+info.RootSHA256 || info.Version == "" {
+		t.Fatalf("info %+v", info)
+	}
+
+	auth := map[string]string{"Authorization": "Bearer " + testToken}
+	resp, _ := e.do(e.admin, "GET", "/v1/admin/tenants/acme/policy", nil, auth)
+	etag := resp.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag")
+	}
+	changed := examplePolicy()
+	changed.DecideBlockDomains = append(changed.DecideBlockDomains, "etag.example")
+	put := func(ifMatch string) *http.Response {
+		h := map[string]string{"Authorization": "Bearer " + testToken}
+		if ifMatch != "" {
+			h["If-Match"] = ifMatch
+		}
+		resp, _ := e.do(e.admin, "PUT", "/v1/admin/tenants/acme/policy", changed, h)
+		return resp
+	}
+	// Admin 1 saves with the ETag it read: accepted, new ETag.
+	r1 := put(etag)
+	if r1.StatusCode != 204 || r1.Header.Get("ETag") == "" {
+		t.Fatalf("first save: %d", r1.StatusCode)
+	}
+	// Admin 2 still holds the old ETag: refused, with the current one.
+	tp := examplePolicy()
+	tp.Lockdown = true
+	h := map[string]string{"Authorization": "Bearer " + testToken, "If-Match": etag}
+	if resp, _ := e.do(e.admin, "PUT", "/v1/admin/tenants/acme/policy", tp, h); resp.StatusCode != http.StatusPreconditionFailed || resp.Header.Get("ETag") != r1.Header.Get("ETag") {
+		t.Fatalf("stale save: %d %q", resp.StatusCode, resp.Header.Get("ETag"))
+	}
+	// Without If-Match the write is unconditional (CLI, older clients).
+	if r := put(""); r.StatusCode != 204 {
+		t.Fatalf("unconditional save: %d", r.StatusCode)
+	}
+	// GET ETag matches what PUT returned for the same content.
+	resp, _ = e.do(e.admin, "GET", "/v1/admin/tenants/acme/policy", nil, auth)
+	if resp.Header.Get("ETag") != r1.Header.Get("ETag") {
+		t.Fatalf("ETag after GET %q vs PUT %q", resp.Header.Get("ETag"), r1.Header.Get("ETag"))
+	}
+}

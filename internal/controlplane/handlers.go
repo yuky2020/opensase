@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -542,10 +544,30 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	for i := range tp.Rules {
 		tp.Rules[i].Source = policy.SourceTenant
 	}
-	if err := s.cfg.Store.PutTenantPolicy(r.Context(), t, tp); err != nil {
+	// Optimistic concurrency (issue #19): with If-Match, the policy must not have changed
+	// since the client read it. The check and the write are one critical section.
+	s.policyMu.Lock()
+	if want := r.Header.Get("If-Match"); want != "" && want != "*" {
+		cur, err := s.tenantPolicy(r.Context(), t)
+		if err != nil {
+			s.policyMu.Unlock()
+			s.internalErr(w, r, "load policy", err)
+			return
+		}
+		if policyETag(cur) != want {
+			s.policyMu.Unlock()
+			w.Header().Set("ETag", policyETag(cur))
+			writeErr(w, http.StatusPreconditionFailed, "the policy changed since it was read; reload it and apply the change again")
+			return
+		}
+	}
+	err = s.cfg.Store.PutTenantPolicy(r.Context(), t, tp)
+	s.policyMu.Unlock()
+	if err != nil {
 		s.internalErr(w, r, "store policy", err)
 		return
 	}
+	w.Header().Set("ETag", policyETag(tp))
 	s.invalidateDecide(t)
 	s.notify.notify(notifyTenant(t)) // connector configs (ADR-0013)
 	devs, err := s.cfg.Store.ListDevices(r.Context(), store.DeviceFilter{TenantID: t})
@@ -570,7 +592,52 @@ func (s *Server) handleGetPolicy(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "load policy", err)
 		return
 	}
+	w.Header().Set("ETag", policyETag(tp))
 	writeJSON(w, http.StatusOK, tp)
+}
+
+// policyETag is a strong validator of a tenant policy: a hash of its JSON form.
+func policyETag(tp api.TenantPolicy) string {
+	b, _ := json.Marshal(tp)
+	sum := sha256.Sum256(b)
+	return `"` + hex.EncodeToString(sum[:12]) + `"`
+}
+
+// handleAdminInfo describes the Control Plane to admin clients (issue #19): the control URL
+// with the root pin that enrollment QR codes need, and the build version.
+func (s *Server) handleAdminInfo(w http.ResponseWriter, _ *http.Request) {
+	sum := sha256.Sum256(s.cfg.Authority.Root.Cert.Raw)
+	pin := hex.EncodeToString(sum[:])
+	control := s.cfg.ControlURL
+	if i := strings.IndexByte(control, '#'); i >= 0 {
+		control = control[:i]
+	}
+	if control != "" {
+		control += "#sha256=" + pin
+	}
+	info := api.AdminInfo{ControlURL: control, RootSHA256: pin, Version: buildVersion()}
+	if s.categoryState() != nil {
+		info.Features = append(info.Features, "categories")
+	}
+	info.Features = append(info.Features, "tenant-roles", "policy-etag")
+	writeJSON(w, http.StatusOK, info)
+}
+
+// buildVersion is the VCS revision of the binary, or "dev".
+func buildVersion() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 12 {
+			return s.Value[:12]
+		}
+	}
+	if bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
 }
 
 func (s *Server) handleListFlows(w http.ResponseWriter, r *http.Request) {

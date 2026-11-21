@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -11,12 +13,17 @@ import 'package:opensase_admin/src/ui/policy_screen.dart';
 import 'helpers.dart';
 import 'models_test.dart' show tenantPolicyJson;
 
-Future<FakeControlPlane> _pump(WidgetTester t, {Object? putBody}) async {
+Future<FakeControlPlane> _pump(WidgetTester t, {Object? putBody, String etag = ''}) async {
   desktopView(t);
   final cp = FakeControlPlane()..json('GET /v1/admin/tenants/acme/policy', jsonDecode(tenantPolicyJson) as Object);
-  cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) => putBody == null ? http204() : http400(putBody);
+  cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) {
+    if (etag.isNotEmpty && r.headers['If-Match'] != etag) {
+      return http.Response(jsonEncode({'error': 'the policy changed since it was read'}), 412);
+    }
+    return putBody == null ? http204() : http400(putBody);
+  };
   final tab = overridesFor(cp);
-  final initial = TenantPolicy.fromJson(jsonDecode(tenantPolicyJson) as Map<String, dynamic>);
+  final initial = TenantPolicy.fromJson(jsonDecode(tenantPolicyJson) as Map<String, dynamic>)..etag = etag;
   await t.pumpWidget(
     ProviderScope(
       retry: (_, _) => null,
@@ -122,5 +129,36 @@ void main() {
     expect(e.dirty, isTrue);
     e.markSaved();
     expect(e.dirty, isFalse);
+  });
+
+  test('the draft keeps its ETag through JSON edits and copies (issue #19)', () {
+    final p = TenantPolicy(defaultAction: 'allow')..etag = '"abc"';
+    final ed = PolicyEditor(p);
+    expect(ed.policy.etag, '"abc"');
+    ed.setJson('{"defaultAction":"block","decideDefault":"allow"}');
+    expect(ed.policy.etag, '"abc"');
+    expect(ed.policy.toJson().containsKey('etag'), isFalse);
+  });
+
+  testWidgets('save sends If-Match; a 412 conflict is shown (issue #19)', (t) async {
+    final cp = await _pump(t, etag: '"v1"');
+    await t.tap(find.byKey(const Key('lockdown')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('policy_save')));
+    await t.pumpAndSettle();
+    final put = cp.requests.singleWhere((r) => r.method == 'PUT');
+    expect(put.headers['If-Match'], '"v1"');
+    expect(find.byKey(const Key('policy_server_error')), findsNothing);
+  });
+
+  testWidgets('a stale ETag gets the conflict message', (t) async {
+    final cp = await _pump(t, etag: '"v2"');
+    cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) =>
+        http.Response(jsonEncode({'error': 'the policy changed since it was read'}), 412);
+    await t.tap(find.byKey(const Key('lockdown')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('policy_save')));
+    await t.pumpAndSettle();
+    expect(find.textContaining('changed since it was read'), findsOneWidget);
   });
 }

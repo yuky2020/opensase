@@ -56,6 +56,8 @@
 //	POST /v1/admin/tenants/{t}/connectors/{c}/revoke   -> 204 | 404
 //	GET  /v1/admin/tenants                -> []AdminTenant (a tenant admin sees only its tenant)
 //	GET  /v1/admin/whoami                 -> AdminIdentity
+//	GET  /v1/admin/info                   -> AdminInfo (pinned control URL for enrollment QR codes, version)
+//	GET  /v1/admin/tenants/{t}/policy sets ETag; PUT accepts If-Match and answers 412 if the policy changed
 //	GET  /v1/admin/saas/catalog           -> []SaaSApp (the built-in catalog, ADR-0017)
 //	POST /v1/admin/tenants/{t}/admin-tokens            AdminTokenRequest -> AdminTokenCreated (token shown once)
 //	GET  /v1/admin/tenants/{t}/admin-tokens            -> []AdminToken
@@ -464,4 +466,13 @@ type WebCategory struct {
 	Domains     int      `json:"domains"`
 	URLs        int      `json:"urls,omitempty"` // URL (path) entries, enforced on the inspected path
 	Aliases     []string `json:"aliases,omitempty"`
+}
+
+// AdminInfo describes the Control Plane to admin clients (GET /v1/admin/info).
+type AdminInfo struct {
+	// ControlURL is the URL devices enroll with, including the "#sha256=<root pin>" fragment.
+	ControlURL string   `json:"controlUrl,omitempty"`
+	RootSHA256 string   `json:"rootSha256"`
+	Version    string   `json:"version"`
+	Features   []string `json:"features,omitempty"`
 }

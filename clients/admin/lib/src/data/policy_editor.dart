@@ -45,7 +45,8 @@ class PolicyEditor extends ChangeNotifier {
     try {
       final v = jsonDecode(text);
       if (v is! Map) throw const FormatException('the policy must be a JSON object');
-      policy = TenantPolicy.fromJson(v.cast<String, dynamic>());
+      // Keep the ETag the draft is based on: the JSON tab edits content, not provenance.
+      policy = TenantPolicy.fromJson(v.cast<String, dynamic>())..etag = policy.etag;
       jsonError = null;
     } on FormatException catch (e) {
       jsonError = e.message;

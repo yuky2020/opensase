@@ -45,7 +45,20 @@ class AdminApi {
   };
 
   Future<Object?> _send(String method, String path, {Object? body, Map<String, String>? query}) async {
+    final (v, _) = await _sendH(method, path, body: body, query: query);
+    return v;
+  }
+
+  /// [_send] that also returns the response headers.
+  Future<(Object?, Map<String, String>)> _sendH(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) async {
     final req = http.Request(method, _uri(path, query))..headers.addAll(_headers);
+    if (headers != null) req.headers.addAll(headers);
     if (body != null) req.body = jsonEncode(body);
     final resp = await http.Response.fromStream(await client.send(req));
     final text = utf8.decode(resp.bodyBytes, allowMalformed: true);
@@ -64,8 +77,8 @@ class AdminApi {
       if (msg.isEmpty) msg = resp.reasonPhrase ?? 'request failed';
       throw ApiException(resp.statusCode, msg, field: field);
     }
-    if (text.trim().isEmpty) return null;
-    return jsonDecode(text);
+    if (text.trim().isEmpty) return (null, resp.headers);
+    return (jsonDecode(text), resp.headers);
   }
 
   /// GET of a non-JSON body (PEM).
@@ -116,11 +129,26 @@ class AdminApi {
 
   // --- policy ---
 
-  Future<TenantPolicy> getPolicy(String tenant) async =>
-      TenantPolicy.fromJson(obj(await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/policy'), 'policy'));
+  /// The tenant policy, with the ETag it was read at (issue #19).
+  Future<TenantPolicy> getPolicy(String tenant) async {
+    final (v, h) = await _sendH('GET', '/v1/admin/tenants/${_seg(tenant)}/policy');
+    return TenantPolicy.fromJson(obj(v, 'policy'))..etag = h['etag'] ?? '';
+  }
 
-  Future<void> putPolicy(String tenant, TenantPolicy p) async =>
-      _send('PUT', '/v1/admin/tenants/${_seg(tenant)}/policy', body: p.toJson());
+  /// Saves the policy. With [p.etag] set, the server refuses (412) if someone else changed
+  /// the policy since it was read.
+  Future<void> putPolicy(String tenant, TenantPolicy p) async {
+    final (_, h) = await _sendH(
+      'PUT',
+      '/v1/admin/tenants/${_seg(tenant)}/policy',
+      body: p.toJson(),
+      headers: p.etag.isEmpty ? null : {'If-Match': p.etag},
+    );
+    p.etag = h['etag'] ?? '';
+  }
+
+  /// Control Plane description: the pinned control URL for enrollment QR codes (issue #19).
+  Future<AdminInfo> info() async => AdminInfo.fromJson(obj(await _send('GET', '/v1/admin/info'), 'info'));
 
   // --- flows ---
 

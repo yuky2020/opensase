@@ -132,6 +132,7 @@ commands:
   admin-token revoke -tenant ID -id ID
   whoami
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
+  info                                    (pinned control URL for enrollment, version)
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
@@ -192,6 +193,13 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return audit(ctx, g, rest)
 	case "categories":
 		return listCategories(ctx, g, rest)
+	case "info":
+		var info api.AdminInfo
+		if err := g.do(ctx, http.MethodGet, "/v1/admin/info", nil, &info); err != nil {
+			return err
+		}
+		fmt.Printf("control URL  %s\nroot sha256  %s\nversion      %s\nfeatures     %s\n", info.ControlURL, info.RootSHA256, info.Version, strings.Join(info.Features, ", "))
+		return nil
 	case "inspection-ca":
 		return inspectionCA(ctx, g, rest)
 	case "pq-check":

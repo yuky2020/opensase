@@ -5,8 +5,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -474,6 +476,37 @@ func TestTenantIsolation(t *testing.T) {
 			if got := as(c.tok, c.method, c.path, c.body); got != c.want {
 				return fmt.Errorf("%s %s %s: %d want %d", c.who, c.method, c.path, got, c.want)
 			}
+		}
+		return nil
+	})
+
+	// Lost updates (issue #19): a write based on a stale read is refused; /info pins the
+	// real root.
+	check(t, "SEC-IN-021", "policy If-Match refuses stale writes; /admin/info pins the real root", "", func(t *testing.T) error {
+		r := f.admin("GET", "/tenants/"+f.tA+"/policy", nil)
+		if r.code != 200 || r.hdr.Get("ETag") == "" {
+			return fmt.Errorf("read policy: %s", r)
+		}
+		var tp api.TenantPolicy
+		if err := json.Unmarshal(r.body, &tp); err != nil {
+			return err
+		}
+		stale := `"000000000000000000000000"`
+		w := do(f.anon(), "PUT", f.cpURL+"/v1/admin/tenants/"+f.tA+"/policy", tp, map[string]string{"Authorization": "Bearer " + f.token, "If-Match": stale})
+		if w.code != http.StatusPreconditionFailed {
+			return fmt.Errorf("stale If-Match: %s", w)
+		}
+		info, err := decode[api.AdminInfo](f.admin("GET", "/info", nil))
+		if err != nil {
+			return err
+		}
+		root, err := f.rootCA()
+		if err != nil {
+			return skipf("root CA: %v", err)
+		}
+		sum := sha256.Sum256(root.Cert.Raw)
+		if info.RootSHA256 != hex.EncodeToString(sum[:]) || !strings.HasSuffix(info.ControlURL, "#sha256="+info.RootSHA256) {
+			return fmt.Errorf("info pin %q / %q does not match the root", info.RootSHA256, info.ControlURL)
 		}
 		return nil
 	})

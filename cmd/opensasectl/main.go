@@ -46,6 +46,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -128,6 +129,7 @@ commands:
   admin-token list -tenant ID
   admin-token revoke -tenant ID -id ID
   whoami
+  audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
   pq-check [-edge-id ID]
 
 global flags:
@@ -182,6 +184,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return adminTokenRevoke(ctx, g, rest)
 	case "whoami":
 		return whoami(ctx, g)
+	case "audit":
+		return audit(ctx, g, rest)
 	case "pq-check":
 		return pqCheck(ctx, g, rest)
 	}
@@ -690,6 +694,37 @@ func whoami(ctx context.Context, g *globals) error {
 	}
 	fmt.Printf("tenant admin of %s (token %s)\n", id.TenantID, id.TokenID)
 	return nil
+}
+
+func audit(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("audit", flag.ExitOnError)
+	tenant := fs.String("tenant", "", "tenant ID (default: every tenant, super-admin only)")
+	limit := fs.Int("limit", 100, "maximum entries (at most 1000)")
+	asJSON := fs.Bool("json", false, "print JSON")
+	_ = fs.Parse(args)
+	path := "/v1/admin/audit"
+	if *tenant != "" {
+		path = "/v1/admin/tenants/" + url.PathEscape(*tenant) + "/audit"
+	}
+	var es []api.AuditEntry
+	if err := g.do(ctx, http.MethodGet, path+"?limit="+strconv.Itoa(*limit), nil, &es); err != nil {
+		return err
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(es)
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "TIME\tACTOR\tTENANT\tMETHOD\tPATH\tSTATUS")
+	for _, e := range es {
+		tn := e.TenantID
+		if tn == "" {
+			tn = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\n", e.At.Local().Format(time.DateTime), e.Actor, tn, e.Method, e.Path, e.Status)
+	}
+	return tw.Flush()
 }
 
 // writeNewSecret writes v to a new file with mode 0600; it refuses to overwrite.

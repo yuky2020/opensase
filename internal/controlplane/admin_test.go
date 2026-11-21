@@ -3,6 +3,7 @@ package controlplane
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -145,5 +146,93 @@ func TestAdminTokenExpiry(t *testing.T) {
 	_ = json.Unmarshal(e.adminDo("POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: "long", ValidFor: 10 * 365 * 86400}, 201), &c)
 	if d := c.ExpiresAt.Sub(c.CreatedAt); d != maxAdminTokenValid {
 		t.Fatalf("capped validity %v", d)
+	}
+}
+
+// TestAdminAudit checks that every admin write is recorded with its actor and outcome, that
+// reads are not, and that a tenant admin sees only its tenant's trail.
+func TestAdminAudit(t *testing.T) {
+	e := newEnv(t)
+	e.setupTenant(1)
+	e.adminDo("POST", "/v1/admin/tenants", api.AdminTenant{ID: "beta", Name: "Beta"}, 201)
+	var c api.AdminTokenCreated
+	_ = json.Unmarshal(e.adminDo("POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: "ops"}, 201), &c)
+	as := func(method, path string, body any) int {
+		resp, _ := e.do(e.admin, method, path, body, map[string]string{"Authorization": "Bearer " + c.Token})
+		return resp.StatusCode
+	}
+	as("POST", "/v1/admin/tenants/acme/users", api.AdminUser{ID: "u7", Email: "u7@acme"}) // 201
+	as("GET", "/v1/admin/tenants/acme/users", nil)                                        // read: not recorded
+	as("PUT", "/v1/admin/tenants/beta/policy", examplePolicy())                           // 404, recorded under beta
+	as("POST", "/v1/admin/edges", AdminEdge{ID: "x"})                                     // 403, global
+
+	var mine []api.AuditEntry
+	resp, b := e.do(e.admin, "GET", "/v1/admin/tenants/acme/audit", nil, map[string]string{"Authorization": "Bearer " + c.Token})
+	_ = json.Unmarshal(b, &mine)
+	if resp.StatusCode != 200 {
+		t.Fatalf("tenant audit %d %s", resp.StatusCode, b)
+	}
+	actor := "token:" + c.ID
+	if len(mine) == 0 || mine[0].Actor != actor || mine[0].Method != "POST" || mine[0].Path != "/v1/admin/tenants/acme/users" || mine[0].Status != 201 {
+		t.Fatalf("newest acme entry %+v", mine)
+	}
+	for _, x := range mine {
+		if x.TenantID != "acme" || x.Method == "GET" {
+			t.Fatalf("tenant audit leaks or records reads: %+v", x)
+		}
+	}
+	if code := as("GET", "/v1/admin/tenants/beta/audit", nil); code != 404 {
+		t.Fatalf("beta audit via acme token: %d", code)
+	}
+	if code := as("GET", "/v1/admin/audit", nil); code != 403 {
+		t.Fatalf("global audit via tenant token: %d", code)
+	}
+
+	var all []api.AuditEntry
+	_ = json.Unmarshal(e.adminDo("GET", "/v1/admin/audit?limit=50", nil, 200), &all)
+	seen := map[string]bool{}
+	for _, x := range all {
+		seen[x.Actor+" "+x.Method+" "+x.Path+" "+strconv.Itoa(x.Status)] = true
+		if strings.Contains(x.Path, c.Token) {
+			t.Fatal("audit contains a token")
+		}
+	}
+	for _, want := range []string{
+		"super POST /v1/admin/tenants 201",
+		"super POST /v1/admin/tenants/acme/admin-tokens 201",
+		actor + " PUT /v1/admin/tenants/beta/policy 404",
+		actor + " POST /v1/admin/edges 403",
+	} {
+		if !seen[want] {
+			t.Errorf("missing audit entry %q in %v", want, seen)
+		}
+	}
+	var beta []api.AuditEntry
+	_ = json.Unmarshal(e.adminDo("GET", "/v1/admin/audit?tenant=beta", nil, 200), &beta)
+	if len(beta) != 1 || beta[0].Status != 404 {
+		t.Fatalf("beta audit %+v", beta)
+	}
+	e.adminDo("GET", "/v1/admin/audit?limit=0", nil, 400)
+}
+
+// TestPolicyNullBody checks that a JSON null (or a non-object) cannot wipe a tenant policy.
+func TestPolicyNullBody(t *testing.T) {
+	e := newEnv(t)
+	e.setupTenant(1)
+	before := e.adminDo("GET", "/v1/admin/tenants/acme/policy", nil, 200)
+	for _, body := range []string{"null", " null ", "[]", "\"x\"", "", "{} {}"} {
+		req, _ := http.NewRequest("PUT", e.srv.URL+"/v1/admin/tenants/acme/policy", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		resp, err := e.admin.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("body %q: %d", body, resp.StatusCode)
+		}
+	}
+	if after := e.adminDo("GET", "/v1/admin/tenants/acme/policy", nil, 200); string(after) != string(before) {
+		t.Fatal("policy changed")
 	}
 }

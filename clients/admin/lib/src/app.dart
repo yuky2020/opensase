@@ -14,6 +14,7 @@ import 'ui/policy_screen.dart';
 import 'ui/private_apps_screen.dart';
 import 'ui/settings_screen.dart';
 import 'ui/admin_tokens_screen.dart';
+import 'ui/audit_screen.dart';
 import 'ui/tenants_screen.dart';
 import 'ui/theme.dart';
 import 'ui/users_screen.dart';
@@ -77,6 +78,7 @@ final _dests = <_Dest>[
     AdminTokensScreen.new,
     perTenant: true,
   ),
+  _Dest('/audit', Icons.history_outlined, Icons.history, (c) => c.l10n.navAudit, AuditScreen.new, perTenant: true),
   _Dest(
     '/edges',
     Icons.cell_tower_outlined,

@@ -102,8 +102,9 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, infrastructure, admin tokens, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
+| Admin audit log: every admin write, with its actor and result | ✅ |
 | SWG / CASB / DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
@@ -157,6 +158,7 @@ make portal          # Flutter web build, bundled (no CDN)
 opensasectl admin-token add -tenant acme -name "acme ops" -valid-for 720h -token-out acme.token
 OPENSASE_ADMIN_TOKEN=$(cat acme.token) opensasectl whoami     # tenant admin of acme
 opensasectl admin-token list -tenant acme
+opensasectl audit -tenant acme                                # who changed what
 ```
 </details>
 
@@ -214,7 +216,7 @@ Coverage areas:
 - the offline cache;
 - container hardening.
 
-Latest run ([report](docs/security/sectest-2026-11-20.md)): **101 pass · 0 fail · 0 known
+Latest run ([report](docs/security/sectest-2026-11-20.md)): **103 pass · 0 fail · 0 known
 failures**. The run found 10 issues, ST-01 to ST-10, and all of them are fixed. The earlier review
 is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md).
 
@@ -244,7 +246,7 @@ docs/           architecture, component specs, ADRs, security reports
 ## Roadmap
 
 1. **SWG and CASB** on the Edge.
-2. Admin audit log per actor, roles inside a tenant, OIDC sign-in for the portal.
+2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).
 5. Workload Gateway for the cloud: GENEVE ingress, metadata-based identity, per-workload flows.

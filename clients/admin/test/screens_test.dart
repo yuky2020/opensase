@@ -7,6 +7,7 @@ import 'package:opensase_admin/src/data/browser_storage.dart';
 import 'package:opensase_admin/src/data/providers.dart';
 import 'package:opensase_admin/src/data/session.dart';
 import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
+import 'package:opensase_admin/src/ui/audit_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
 import 'package:opensase_admin/src/ui/tenants_screen.dart';
 import 'package:opensase_admin/src/ui/users_screen.dart';
@@ -145,5 +146,45 @@ void main() {
     expect(find.text('osa_secret'), findsOneWidget);
     final post = cp.requests.lastWhere((r) => r.method == 'POST');
     expect(jsonDecode(post.body), {'name': 'ops', 'validForSeconds': 30 * 86400});
+  });
+
+  testWidgets('audit shows token names and results', (t) async {
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/tenants/acme/admin-tokens', [
+        {
+          'id': 't1',
+          'tenantId': 'acme',
+          'name': 'ops team',
+          'createdAt': '2026-11-20T09:00:00Z',
+          'expiresAt': '2027-02-18T09:00:00Z',
+          'revoked': false,
+        },
+      ])
+      ..json('GET /v1/admin/tenants/acme/audit', [
+        {
+          'id': 2,
+          'at': '2026-11-20T09:30:00Z',
+          'actor': 'token:t1',
+          'tenantId': 'acme',
+          'method': 'PUT',
+          'path': '/v1/admin/tenants/acme/policy',
+          'status': 204,
+        },
+        {
+          'id': 1,
+          'at': '2026-11-20T09:00:00Z',
+          'actor': 'super',
+          'tenantId': 'acme',
+          'method': 'POST',
+          'path': '/v1/admin/tenants/acme/admin-tokens',
+          'status': 201,
+        },
+      ]);
+    await _pump(t, cp, const AuditScreen());
+    expect(find.text('ops team'), findsOneWidget);
+    expect(find.text('super-admin'), findsOneWidget);
+    expect(find.text('204'), findsOneWidget);
+    expect(find.text('/v1/admin/tenants/acme/policy'), findsOneWidget);
   });
 }

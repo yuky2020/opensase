@@ -445,3 +445,45 @@ class AdminTokenCreated {
   factory AdminTokenCreated.fromJson(Json j) =>
       AdminTokenCreated(adminToken: AdminToken.fromJson(j), token: str(j, 'token'));
 }
+
+/// One admin write (ADR-0016 audit log).
+class AuditEntry {
+  AuditEntry({
+    required this.id,
+    this.at,
+    required this.actor,
+    this.tenantId = '',
+    required this.method,
+    required this.path,
+    required this.status,
+  });
+
+  int id;
+  DateTime? at;
+  String actor;
+  String tenantId;
+  String method;
+  String path;
+  int status;
+
+  bool get ok => status >= 200 && status < 300;
+
+  factory AuditEntry.fromJson(Json j) => AuditEntry(
+    id: integer(j, 'id'),
+    at: time(j, 'at'),
+    actor: str(j, 'actor'),
+    tenantId: str(j, 'tenantId'),
+    method: str(j, 'method'),
+    path: str(j, 'path'),
+    status: integer(j, 'status'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{'id': id, 'at': goTime(at), 'actor': actor};
+    putOmit(j, 'tenantId', tenantId);
+    j['method'] = method;
+    j['path'] = path;
+    j['status'] = status;
+    return j;
+  }
+}

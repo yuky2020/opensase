@@ -64,6 +64,8 @@ final isSuperProvider = Provider<bool>((ref) => ref.watch(identityProvider).valu
 
 final edgesProvider = FutureProvider<List<AdminEdge>>((ref) => ref.watch(apiProvider).listEdges());
 
+final auditProvider = FutureProvider.family<List<AuditEntry>, String>((ref, t) => ref.watch(apiProvider).listAudit(t));
+
 final adminTokensProvider = FutureProvider.family<List<AdminToken>, String>(
   (ref, t) => ref.watch(apiProvider).listAdminTokens(t),
 );

@@ -56,7 +56,9 @@
 //	POST /v1/admin/tenants/{t}/admin-tokens            AdminTokenRequest -> AdminTokenCreated (token shown once)
 //	GET  /v1/admin/tenants/{t}/admin-tokens            -> []AdminToken
 //	POST /v1/admin/tenants/{t}/admin-tokens/{id}/revoke -> 204 | 404
-//	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants and /v1/admin/edges*.
+//	GET  /v1/admin/tenants/{t}/audit?limit=   -> []AuditEntry (admin writes on that tenant, newest first)
+//	GET  /v1/admin/audit?limit=&tenant=       -> []AuditEntry (super-admin: every entry, or one tenant)
+//	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
 //
 // Admin portal: the Control Plane serves the static Flutter web build at /admin/ (flag -portal-dir).
@@ -256,6 +258,18 @@ type AdminToken struct {
 type AdminTokenCreated struct {
 	AdminToken
 	Token string `json:"token"`
+}
+
+// AuditEntry is one admin write (POST, PUT, DELETE under /v1/admin), recorded whatever its
+// outcome. Actor is "super" or "token:<admin token ID>"; secrets are never recorded.
+type AuditEntry struct {
+	ID       int64     `json:"id"`
+	At       time.Time `json:"at"`
+	Actor    string    `json:"actor"`
+	TenantID string    `json:"tenantId,omitempty"`
+	Method   string    `json:"method"`
+	Path     string    `json:"path"`
+	Status   int       `json:"status"`
 }
 
 // AdminUser is a user in the admin API.

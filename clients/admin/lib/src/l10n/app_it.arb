@@ -189,5 +189,14 @@
   "revokeConfirmAdminToken": "Il token smette di funzionare subito. L'operazione non si può annullare.",
   "fieldExpires": "Scade",
   "fieldLastUsed": "Ultimo uso",
-  "statusExpired": "Scaduto"
+  "statusExpired": "Scaduto",
+  "navAudit": "Audit",
+  "auditEmpty": "Nessuna modifica admin registrata per questo tenant",
+  "auditHelp": "Ogni modifica admin su questo tenant, chi l'ha fatta e con quale esito. Conservata per 365 giorni.",
+  "fieldActor": "Autore",
+  "fieldMethod": "Azione",
+  "fieldPath": "Percorso",
+  "fieldResult": "Esito",
+  "auditActorSuper": "super-admin",
+  "fieldTime": "Ora"
 }

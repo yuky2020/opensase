@@ -77,6 +77,12 @@ void main() {
     AdminToken.fromJson,
     (v) => v.toJson(),
   );
+  roundTrip(
+    'AuditEntry',
+    '{"id":7,"at":"2026-11-21T10:00:00Z","actor":"token:t1","tenantId":"acme","method":"PUT","path":"/v1/admin/tenants/acme/policy","status":204}',
+    AuditEntry.fromJson,
+    (v) => v.toJson(),
+  );
   roundTrip('AdminUser', '{"id":"u1","email":"a@b.c","name":"A"}', AdminUser.fromJson, (v) => v.toJson());
   roundTrip(
     'ProvisioningKeyRequest',

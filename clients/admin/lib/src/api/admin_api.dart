@@ -139,6 +139,12 @@ class AdminApi {
   Future<void> revokeAdminToken(String tenant, String id) async =>
       _send('POST', '/v1/admin/tenants/${_seg(tenant)}/admin-tokens/${_seg(id)}/revoke');
 
+  /// Admin writes on [tenant], newest first.
+  Future<List<AuditEntry>> listAudit(String tenant, {int limit = 500}) async => _list(
+    await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/audit', query: {'limit': '$limit'}),
+    AuditEntry.fromJson,
+  );
+
   // --- edges ---
 
   Future<List<AdminEdge>> listEdges() async => _list(await _send('GET', '/v1/admin/edges'), AdminEdge.fromJson);

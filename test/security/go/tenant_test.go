@@ -305,6 +305,50 @@ func TestTenantIsolation(t *testing.T) {
 		}
 		return nil
 	})
+	check(t, "SEC-TEN-025", "admin audit records tenant admin writes and stays tenant-scoped", "", func(t *testing.T) error {
+		if e := ready(); e != nil {
+			return e
+		}
+		// A refused cross-tenant write must be on record under the target tenant.
+		asA("PUT", "/tenants/"+f.tB+"/policy", api.TenantPolicy{DefaultAction: policy.ActionAllow})
+		es, e := decode[[]api.AuditEntry](f.admin("GET", "/audit?tenant="+f.tB+"&limit=20", nil))
+		if e != nil {
+			return fmt.Errorf("super audit: %w", e)
+		}
+		found := false
+		for _, x := range es {
+			if x.Actor == "token:"+tokA.ID && x.Method == "PUT" && x.Status == http.StatusNotFound {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("refused cross-tenant write by tenant A's admin is not in the audit log")
+		}
+		if r := asA("GET", "/tenants/"+f.tB+"/audit", nil); r.code != http.StatusNotFound {
+			return fmt.Errorf("tenant A's admin reads tenant B's audit: %s", r)
+		}
+		if r := asA("GET", "/audit", nil); r.code != http.StatusForbidden {
+			return fmt.Errorf("tenant admin reads the global audit: %s", r)
+		}
+		if r := f.admin("GET", "/audit?limit=200", nil); bytes.Contains(r.body, []byte(tokA.Token)) || bytes.Contains(r.body, []byte(f.token)) {
+			return errors.New("the audit log contains an admin token")
+		}
+		return nil
+	})
+	check(t, "SEC-IN-020", "JSON null body cannot wipe a tenant policy", "", func(t *testing.T) error {
+		before := f.admin("GET", "/tenants/"+f.tA+"/policy", nil)
+		if before.code != http.StatusOK {
+			return fmt.Errorf("positive control: get policy: %s", before)
+		}
+		r := do(f.anon(), "PUT", f.cpURL+"/v1/admin/tenants/"+f.tA+"/policy", []byte("null"), map[string]string{"Authorization": "Bearer " + f.token})
+		if r.code != http.StatusBadRequest {
+			return fmt.Errorf("PUT policy null: %s", r)
+		}
+		if after := f.admin("GET", "/tenants/"+f.tA+"/policy", nil); !bytes.Equal(after.body, before.body) {
+			return errors.New("tenant policy changed after a null body")
+		}
+		return nil
+	})
 	check(t, "SEC-TEN-023", "revoked tenant admin token is refused at once", "", func(t *testing.T) error {
 		if e := ready(); e != nil {
 			return e

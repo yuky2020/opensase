@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,4 +198,62 @@ func (a adminScope) actor() string {
 		return "super"
 	}
 	return "token:" + a.tokenID
+}
+
+// auditAdmin records every admin write (anything but GET and HEAD) with its actor, route
+// tenant and outcome, after the handler ran. Reads are not recorded. A failed audit write is
+// logged but does not fail the request, which has already been answered.
+func (s *Server) auditAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		code := sw.code
+		if code == 0 {
+			code = http.StatusOK
+		}
+		tenant := ""
+		if rc := chi.RouteContext(r.Context()); rc != nil {
+			tenant = rc.URLParam("t")
+		}
+		e := store.AuditEntry{At: s.now(), Actor: adminFrom(r).actor(), TenantID: tenant, Method: r.Method, Path: r.URL.Path, Status: code}
+		if err := s.cfg.Store.AddAudit(context.WithoutCancel(r.Context()), e); err != nil {
+			s.log.ErrorContext(r.Context(), "admin audit write failed", "err", err, "method", e.Method, "path", e.Path, "actor", e.Actor)
+		}
+	})
+}
+
+// handleListAudit serves /v1/admin/tenants/{t}/audit (that tenant) and /v1/admin/audit
+// (super-admin: everything, or ?tenant=).
+func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
+	f := store.AuditFilter{AllTenants: true}
+	if t := chi.URLParam(r, "t"); t != "" {
+		if _, ok := s.tenantParam(w, r); !ok {
+			return
+		}
+		f = store.AuditFilter{TenantID: t}
+	} else if t := r.URL.Query().Get("tenant"); t != "" {
+		f = store.AuditFilter{TenantID: t}
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil || n < 1 {
+			writeErr(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		f.Limit = n
+	}
+	es, err := s.cfg.Store.ListAudit(r.Context(), f)
+	if err != nil {
+		s.internalErr(w, r, "list audit", err)
+		return
+	}
+	out := make([]api.AuditEntry, 0, len(es))
+	for _, e := range es {
+		out = append(out, api.AuditEntry{ID: e.ID, At: e.At.UTC(), Actor: e.Actor, TenantID: e.TenantID, Method: e.Method, Path: e.Path, Status: e.Status})
+	}
+	writeJSON(w, http.StatusOK, out)
 }

@@ -4,12 +4,14 @@
 package controlplane
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -37,9 +39,11 @@ const (
 
 	DefaultMaxConns      = 4096
 	DefaultFlowRetention = 7 * 24 * time.Hour
-	DefaultFlowRate      = 1000 // flow records per device per minute
-	DefaultEnrollRate    = 30   // enrollment attempts per source IP per minute (ST-05)
-	maxLongPollsPerDev   = 2
+	// DefaultAuditRetention is how long admin audit entries are kept.
+	DefaultAuditRetention = 365 * 24 * time.Hour
+	DefaultFlowRate       = 1000 // flow records per device per minute
+	DefaultEnrollRate     = 30   // enrollment attempts per source IP per minute (ST-05)
+	maxLongPollsPerDev    = 2
 
 	// Per-route deadlines (security review #8). The snapshot long-poll gets wait+10s.
 	routeTimeout      = 30 * time.Second
@@ -53,21 +57,22 @@ const (
 
 // Config configures a Server.
 type Config struct {
-	Store         *store.Store
-	Authority     *pki.Authority
-	SigningKey    ed25519.PrivateKey
-	SigningKeyID  string
-	AdminToken    string // required; compared in constant time
-	Edges         []api.EdgeInfo
-	ControlURL    string
-	SnapshotTTL   time.Duration    // default 24h
-	MaxConns      int              // concurrent connections, default 4096
-	FlowRetention time.Duration    // flow records older than this are deleted, default 7 days
-	FlowRate      int              // flow records accepted per device per minute, default 1000
-	EnrollRate    int              // enroll attempts (devices + connectors) per source IP per minute, default 30
-	PortalDir     string           // if set, the admin portal (static Flutter web build) is served at /admin/
-	Logger        *slog.Logger     // default slog.Default()
-	Now           func() time.Time // default time.Now
+	Store          *store.Store
+	Authority      *pki.Authority
+	SigningKey     ed25519.PrivateKey
+	SigningKeyID   string
+	AdminToken     string // required; compared in constant time
+	Edges          []api.EdgeInfo
+	ControlURL     string
+	SnapshotTTL    time.Duration    // default 24h
+	MaxConns       int              // concurrent connections, default 4096
+	FlowRetention  time.Duration    // flow records older than this are deleted, default 7 days
+	AuditRetention time.Duration    // admin audit entries older than this are deleted, default 365 days
+	FlowRate       int              // flow records accepted per device per minute, default 1000
+	EnrollRate     int              // enroll attempts (devices + connectors) per source IP per minute, default 30
+	PortalDir      string           // if set, the admin portal (static Flutter web build) is served at /admin/
+	Logger         *slog.Logger     // default slog.Default()
+	Now            func() time.Time // default time.Now
 }
 
 // Server is the Control Plane. Create it with New.
@@ -104,6 +109,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = DefaultMaxConns
+	}
+	if cfg.AuditRetention <= 0 {
+		cfg.AuditRetention = DefaultAuditRetention
 	}
 	if cfg.FlowRetention <= 0 {
 		cfg.FlowRetention = DefaultFlowRetention
@@ -187,7 +195,7 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/v1/edge/sessions", s.handleEdgeSessions)
 	})
 	r.Route("/v1/admin", func(r chi.Router) {
-		r.Use(short, s.requireAdmin)
+		r.Use(short, s.requireAdmin, s.auditAdmin)
 		r.Get("/whoami", s.handleWhoami)
 		r.Get("/tenants", s.handleListTenants) // filtered to the caller's tenant
 		r.Group(func(r chi.Router) {
@@ -197,6 +205,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/edges", s.handleCreateEdge)
 			r.Get("/edges", s.handleListEdges)
 			r.Post("/edges/{e}/revoke", s.handleRevokeEdge)
+			r.Get("/audit", s.handleListAudit)
 		})
 		r.Route("/tenants/{t}", func(r chi.Router) {
 			r.Use(requireTenantScope)
@@ -214,6 +223,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/admin-tokens", s.handleCreateAdminToken)
 			r.Get("/admin-tokens", s.handleListAdminTokens)
 			r.Post("/admin-tokens/{id}/revoke", s.handleRevokeAdminToken)
+			r.Get("/audit", s.handleListAudit)
 		})
 	})
 	if s.cfg.PortalDir != "" {
@@ -296,6 +306,9 @@ func (s *Server) maintain(ctx context.Context) {
 		} else if n > 0 {
 			s.log.Info("old flow records deleted", "count", n, "retention", s.cfg.FlowRetention)
 		}
+		if _, err := s.cfg.Store.DeleteAuditBefore(ctx, s.now().Add(-s.cfg.AuditRetention)); err != nil && ctx.Err() == nil {
+			s.log.Warn("audit retention failed", "err", err)
+		}
 		s.flowLimit.prune()
 		s.enrollLimit.prune()
 		select {
@@ -346,11 +359,26 @@ func writeValidationErr(w http.ResponseWriter, err error) {
 	writeJSON(w, http.StatusBadRequest, body)
 }
 
+// decodeJSON decodes exactly one JSON object. A body of `null` is refused: it would decode
+// to the zero value and, on PUT policy, silently wipe the tenant policy. So is trailing data.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return false
+	}
+	if t := bytes.TrimSpace(b); len(t) == 0 || t[0] != '{' {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: a JSON object is required")
+		return false
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return false
+	}
+	if dec.More() {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: trailing data")
 		return false
 	}
 	return true

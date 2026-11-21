@@ -1231,6 +1231,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Expired'**
   String get statusExpired;
+
+  /// No description provided for @navAudit.
+  ///
+  /// In en, this message translates to:
+  /// **'Audit'**
+  String get navAudit;
+
+  /// No description provided for @auditEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No admin changes recorded for this tenant yet'**
+  String get auditEmpty;
+
+  /// No description provided for @auditHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Every admin change on this tenant, by whom and with what result. Kept for 365 days.'**
+  String get auditHelp;
+
+  /// No description provided for @fieldActor.
+  ///
+  /// In en, this message translates to:
+  /// **'Actor'**
+  String get fieldActor;
+
+  /// No description provided for @fieldMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Action'**
+  String get fieldMethod;
+
+  /// No description provided for @fieldPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Path'**
+  String get fieldPath;
+
+  /// No description provided for @fieldResult.
+  ///
+  /// In en, this message translates to:
+  /// **'Result'**
+  String get fieldResult;
+
+  /// No description provided for @auditActorSuper.
+  ///
+  /// In en, this message translates to:
+  /// **'super-admin'**
+  String get auditActorSuper;
+
+  /// No description provided for @fieldTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get fieldTime;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

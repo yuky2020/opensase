@@ -33,15 +33,24 @@ automation needs non-interactive credentials anyway.
   - `GET /v1/admin/tenants` lists only the caller's tenant.
 - `GET /v1/admin/whoami` returns the role, so the portal can hide what a tenant admin cannot use
   (tenant creation, Edges). It is the same check `opensasectl whoami` makes.
-- Token creation and revocation are logged with the actor (`by=super` or `by=token:<id>`), never
-  with the token itself.
+- **Audit log** (`admin_audit`, migration 0006):
+  - Every admin write (any method but GET and HEAD) is recorded after the handler ran, whatever
+    its outcome, with the time, the actor (`super` or `token:<id>`), the route tenant, the method,
+    the path and the status. Refused attempts (403, 404) are recorded too.
+  - Tokens and bodies are never recorded.
+  - `GET /v1/admin/tenants/{t}/audit` serves one tenant's trail and is available to its admins.
+    `GET /v1/admin/audit[?tenant=]` serves every entry and is super-admin only.
+  - Entries are kept 365 days (`Config.AuditRetention`).
+  - Also exposed through `opensasectl audit` and the portal's Audit page.
 
 ## Consequences
 
 - A leaked tenant admin token exposes one tenant only, for at most its validity.
 - A tenant admin can mint more tokens for its own tenant. This is no escalation, and revocation
   handles a compromise. A token cannot be minted for another tenant (404).
+- The audit log lives in the same database as the data it describes, so an attacker with write
+  access to the database can alter it. Shipping it to an append-only store (the observability
+  pipeline) is future work.
 - Still to come:
-  - an audit log of every admin write per actor (today only token writes record the actor);
   - roles inside a tenant (read-only, policy editor);
   - OIDC or SAML sign-in for the portal, mapping IdP groups to these scopes.

@@ -283,5 +283,14 @@
   "revokeConfirmAdminToken": "The token stops working at once. This cannot be undone.",
   "fieldExpires": "Expires",
   "fieldLastUsed": "Last used",
-  "statusExpired": "Expired"
+  "statusExpired": "Expired",
+  "navAudit": "Audit",
+  "auditEmpty": "No admin changes recorded for this tenant yet",
+  "auditHelp": "Every admin change on this tenant, by whom and with what result. Kept for 365 days.",
+  "fieldActor": "Actor",
+  "fieldMethod": "Action",
+  "fieldPath": "Path",
+  "fieldResult": "Result",
+  "auditActorSuper": "super-admin",
+  "fieldTime": "Time"
 }

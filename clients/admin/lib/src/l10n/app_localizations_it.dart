@@ -620,4 +620,32 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get statusExpired => 'Scaduto';
+
+  @override
+  String get navAudit => 'Audit';
+
+  @override
+  String get auditEmpty => 'Nessuna modifica admin registrata per questo tenant';
+
+  @override
+  String get auditHelp =>
+      'Ogni modifica admin su questo tenant, chi l\'ha fatta e con quale esito. Conservata per 365 giorni.';
+
+  @override
+  String get fieldActor => 'Autore';
+
+  @override
+  String get fieldMethod => 'Azione';
+
+  @override
+  String get fieldPath => 'Percorso';
+
+  @override
+  String get fieldResult => 'Esito';
+
+  @override
+  String get auditActorSuper => 'super-admin';
+
+  @override
+  String get fieldTime => 'Ora';
 }

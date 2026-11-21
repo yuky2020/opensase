@@ -560,10 +560,16 @@ class SaasApp {
 
 /// policy.WebPolicy: TLS inspection, URL rules and injected request headers (ADR-0018).
 class WebPolicy {
-  WebPolicy({this.inspect = false, List<String>? bypass, List<WebRule>? rules, List<WebHeader>? headers})
-    : bypass = bypass ?? [],
-      rules = rules ?? [],
-      headers = headers ?? [];
+  WebPolicy({
+    this.inspect = false,
+    List<String>? bypass,
+    List<WebRule>? rules,
+    List<WebHeader>? headers,
+    List<DlpRule>? dlp,
+  }) : bypass = bypass ?? [],
+       rules = rules ?? [],
+       headers = headers ?? [],
+       dlp = dlp ?? [];
 
   /// Decrypt TLS at the Edge. Without it, rules and headers apply to plain HTTP only.
   bool inspect;
@@ -575,13 +581,17 @@ class WebPolicy {
   List<WebRule> rules;
   List<WebHeader> headers;
 
-  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty;
+  /// Request body scanning (ADR-0019).
+  List<DlpRule> dlp;
+
+  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty;
 
   factory WebPolicy.fromJson(Json j) => WebPolicy(
     inspect: boolean(j, 'inspect'),
     bypass: strList(j, 'bypass'),
     rules: objList(j, 'rules', WebRule.fromJson),
     headers: objList(j, 'headers', WebHeader.fromJson),
+    dlp: objList(j, 'dlp', DlpRule.fromJson),
   );
 
   Json toJson() {
@@ -590,6 +600,7 @@ class WebPolicy {
     putOmit(j, 'bypass', bypass);
     putOmit(j, 'rules', [for (final r in rules) r.toJson()]);
     putOmit(j, 'headers', [for (final h in headers) h.toJson()]);
+    putOmit(j, 'dlp', [for (final d in dlp) d.toJson()]);
     return j;
   }
 }
@@ -642,4 +653,56 @@ class WebHeader {
       WebHeader(domains: strList(j, 'domains'), name: str(j, 'name'), value: str(j, 'value'));
 
   Json toJson() => {'domains': domains, 'name': name, 'value': value};
+}
+
+/// policy.DLPRule: sensitive data in request bodies on the inspected path (ADR-0019).
+class DlpRule {
+  DlpRule({
+    required this.id,
+    List<String>? domains,
+    List<String>? detectors,
+    List<String>? patterns,
+    this.minMatches = 0,
+    this.action = 'block',
+    this.blockUnscanned = false,
+  }) : domains = domains ?? [],
+       detectors = detectors ?? [],
+       patterns = patterns ?? [];
+
+  /// Built-in detectors of pkg/dlp.
+  static const builtinDetectors = ['credit-card', 'iban', 'private-key', 'it-tax-code', 'email'];
+
+  String id;
+
+  /// Empty: every inspected host.
+  List<String> domains;
+  List<String> detectors;
+  List<String> patterns;
+
+  /// 0 means 1.
+  int minMatches;
+
+  /// block | allow (record only).
+  String action;
+  bool blockUnscanned;
+
+  factory DlpRule.fromJson(Json j) => DlpRule(
+    id: str(j, 'id'),
+    domains: strList(j, 'domains'),
+    detectors: strList(j, 'detectors'),
+    patterns: strList(j, 'patterns'),
+    minMatches: integer(j, 'minMatches'),
+    action: str(j, 'action'),
+    blockUnscanned: boolean(j, 'blockUnscanned'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{'id': id, 'action': action};
+    putOmit(j, 'domains', domains);
+    putOmit(j, 'detectors', detectors);
+    putOmit(j, 'patterns', patterns);
+    if (minMatches > 0) j['minMatches'] = minMatches;
+    if (blockUnscanned) j['blockUnscanned'] = true;
+    return j;
+  }
 }

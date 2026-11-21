@@ -768,4 +768,51 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get webRootHelp =>
       'Installa questo certificato come root attendibile sui dispositivi del tenant (MDM, archivio di sistema). I dispositivi che non lo considerano attendibile non possono aprire i siti ispezionati.';
+
+  @override
+  String get webDlp => 'Prevenzione perdita di dati (DLP)';
+
+  @override
+  String get webDlpHelp =>
+      'Analizza il contenuto degli upload sul percorso ispezionato (fino a 8 MiB). Vengono registrate le corrispondenze, mai i dati. Interruttore: blocca anche i contenuti non analizzabili (troppo grandi o compressi).';
+
+  @override
+  String get webAddDlp => 'Aggiungi regola DLP';
+
+  @override
+  String get webDlpDetectors => 'Rilevatori (separati da virgola)';
+
+  @override
+  String webDlpDetectorsHelp(String list) {
+    return 'Rilevatori integrati: $list. Numeri di carta, IBAN e codici fiscali sono verificati col checksum.';
+  }
+
+  @override
+  String get webDlpUnknown => 'Rilevatore sconosciuto';
+
+  @override
+  String get webDlpPatterns => 'Pattern personalizzati (espressioni regolari, uno per riga)';
+
+  @override
+  String get webDlpDomains => 'Domini (vuoto = tutti gli host ispezionati)';
+
+  @override
+  String get webDlpMin => 'Corrispondenze necessarie';
+
+  @override
+  String get webDlpMinInvalid => 'Almeno 1';
+
+  @override
+  String get webDlpLog => 'Registra';
+
+  @override
+  String get webDlpAllHosts => 'tutti gli host';
+
+  @override
+  String webDlpPatternCount(int n) {
+    return '$n pattern';
+  }
+
+  @override
+  String get webDlpBlockUnscanned => 'Blocca i contenuti non analizzabili';
 }

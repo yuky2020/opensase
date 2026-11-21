@@ -3,6 +3,18 @@
 ## Purpose
 OpenSASE Data Loss Prevention (DLP) is a shared content inspection engine that detects, classifies, and controls sensitive data in transit and at rest. It provides deep payload inspection for inline HTTP/HTTPS flows intercepted by the Edge SWG and out-of-band SaaS assets monitored by CASB API. The engine evaluates pattern matching, dictionary lookups, algorithmic validators, and compound document text extraction against Policy Rules to prevent unauthorized data exposure.
 
+## Current implementation
+
+The first slice is in place (ADR-0019). It scans request bodies on the Edge's inspected path
+(ADR-0018).
+- **Detectors** (`pkg/dlp`): `credit-card` (Luhn), `iban` (mod-97), `private-key`,
+  `it-tax-code` (check character), `email`, plus tenant RE2 patterns.
+- **Policy:** `web.dlp` rules with domains, a match threshold and `block` or `allow` (record only).
+  `blockUnscanned` also blocks bodies larger than 8 MiB or with a Content-Encoding.
+- **Privacy:** only match counts are computed, and records hold the rule, never the data.
+
+Not built yet: document and archive parsing, downloads, exact data match, OCR, API-mode DLP.
+
 ## Responsibilities
 - Evaluate extracted plain text and file metadata from HTTP request/response payloads (POST/PUT uploads, file downloads) and SaaS storage objects against DLP Policy Rules.
 - Parse multipart/form-data and chunked transfer encodings in streaming HTTP sessions to isolate discrete file attachments and form parameters.

@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/netip"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -520,7 +522,67 @@ func (w *webFlow) handle(rw http.ResponseWriter, r *http.Request, rp *httputil.R
 		blockPage(rw, http.StatusForbidden, w.host, "blocked by your organisation's web policy (rule "+rule+")")
 		return
 	}
+	if checks := w.c.DLPChecks(w.host); len(checks) > 0 && r.Body != nil && r.Body != http.NoBody {
+		if rule, ok := w.scanBody(r, checks); !ok {
+			blockPage(rw, http.StatusForbidden, w.host, "the upload contains data your organisation's policy does not allow (rule "+rule+")")
+			return
+		}
+	}
 	rp.ServeHTTP(rw, r)
+}
+
+// maxDLPScan is how much of a request body DLP scans (ADR-0019). Larger bodies are
+// "unscanned": they pass, unless a rule has BlockUnscanned.
+const maxDLPScan = 8 << 20
+
+// scanBody runs the DLP checks on the request body. It returns false and the rule when the
+// request must be blocked. The body is replaced so that the scanned bytes are still sent.
+// Matches are recorded, but never what matched.
+func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck) (string, bool) {
+	head, err := io.ReadAll(io.LimitReader(r.Body, maxDLPScan+1))
+	if err != nil {
+		return "dlp:read-error", false
+	}
+	complete := len(head) <= maxDLPScan
+	if complete {
+		r.Body = io.NopCloser(bytes.NewReader(head))
+	} else {
+		r.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(head), r.Body), r.Body}
+	}
+	enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding")))
+	scannable := complete && (enc == "" || enc == "identity")
+	text := head
+	if scannable && strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
+		// Form values carry "+" for spaces and percent-escapes; scan the decoded form.
+		if dec, err := url.QueryUnescape(string(head)); err == nil {
+			text = []byte(dec)
+		}
+	}
+	for _, ch := range checks {
+		rule := "dlp:" + ch.ID
+		hit := false
+		if !scannable {
+			hit = ch.BlockUnscanned
+			rule += ":unscanned"
+		} else {
+			n := 0
+			for _, c := range ch.Matcher.Counts(text) {
+				n += c
+			}
+			hit = n >= ch.MinMatches
+		}
+		if !hit {
+			continue
+		}
+		w.record(ch.Action, rule)
+		if ch.Action == policy.ActionBlock {
+			return rule, false
+		}
+	}
+	return "", true
 }
 
 // normHost lowercases host and strips a port and a trailing dot.
@@ -532,12 +594,15 @@ func normHost(h string) string {
 }
 
 // block records a request (or connection) refused on the inspection path.
-func (w *webFlow) block(rule, _ string) {
+func (w *webFlow) block(rule, _ string) { w.record(policy.ActionBlock, rule) }
+
+// record adds a flow record for a decision on the inspection path.
+func (w *webFlow) record(act policy.Action, rule string) {
 	now := time.Now()
 	w.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: w.d.id,
 		Flow:     policy.Flow{Protocol: "tcp", DstIP: w.dst.Addr().String(), DstPort: w.dst.Port(), Domain: w.host},
-		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: LayerWeb, Log: true},
+		Decision: policy.Decision{Action: act, RuleID: rule, Layer: LayerWeb, Log: true},
 	})
 }
 

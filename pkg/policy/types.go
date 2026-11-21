@@ -75,6 +75,23 @@ type WebPolicy struct {
 	// Headers are set on every request to a matching host, replacing any value the client
 	// sent (for example a header that limits a SaaS login to the company's own tenant).
 	Headers []WebHeader `json:"headers,omitempty"`
+	// DLP rules scan request bodies on the inspected path (ADR-0019), after Rules allowed
+	// the request.
+	DLP []DLPRule `json:"dlp,omitempty"`
+}
+
+// DLPRule finds sensitive data in request bodies (pkg/dlp).
+type DLPRule struct {
+	ID         string   `json:"id"`
+	Domains    []string `json:"domains,omitempty"`    // empty = every host on the inspected path
+	Detectors  []string `json:"detectors,omitempty"`  // built-in detectors (pkg/dlp.Detectors)
+	Patterns   []string `json:"patterns,omitempty"`   // RE2 regular expressions, case-insensitive
+	MinMatches int      `json:"minMatches,omitempty"` // matches needed to trigger; 0 means 1
+	// Action is block (403) or allow (the request goes through and is recorded).
+	Action Action `json:"action"`
+	// BlockUnscanned treats a body the Edge cannot scan (larger than the scan limit, or with a
+	// Content-Encoding) as a match. Otherwise such bodies pass this rule unscanned.
+	BlockUnscanned bool `json:"blockUnscanned,omitempty"`
 }
 
 // WebRule matches requests by host, path and method.

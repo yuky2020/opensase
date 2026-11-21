@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/http/httpguts"
+
+	"github.com/yuky2020/opensase/pkg/dlp"
 )
 
 // Web inspection policy (ADR-0018): compiled form and request evaluation.
@@ -16,6 +18,7 @@ const (
 	maxWebRules    = 1000
 	maxWebHeaders  = 64
 	maxHeaderValue = 4096
+	maxDLPRules    = 64
 )
 
 // reservedHeaders are request headers a WebHeader may not set: they frame the request or
@@ -31,6 +34,22 @@ type compiledWeb struct {
 	bypass  domainSet
 	rules   []compiledWebRule
 	headers []compiledWebHeader
+	dlp     []compiledDLP
+}
+
+type compiledDLP struct {
+	check DLPCheck
+	all   bool // no Domains: every host
+	hosts domainSet
+}
+
+// DLPCheck is one DLP rule that applies to a host.
+type DLPCheck struct {
+	ID             string
+	Action         Action
+	MinMatches     int
+	BlockUnscanned bool
+	Matcher        *dlp.Matcher
 }
 
 type compiledWebRule struct {
@@ -114,7 +133,49 @@ func compileWeb(w *WebPolicy) (*compiledWeb, error) {
 		}
 		cw.headers = append(cw.headers, ch)
 	}
+	if len(w.DLP) > maxDLPRules {
+		return nil, verr("web.dlp", "more than %d rules", maxDLPRules)
+	}
+	for i, r := range w.DLP {
+		field := fmt.Sprintf("web.dlp[%d]", i)
+		if r.ID == "" || len(r.ID) > 64 || strings.ContainsAny(r.ID, " \t\r\n") {
+			return nil, verr(field+".id", "must be 1..64 characters without spaces")
+		}
+		if seen["dlp:"+r.ID] {
+			return nil, verr(field+".id", "duplicate %q", r.ID)
+		}
+		seen["dlp:"+r.ID] = true
+		if r.Action != ActionAllow && r.Action != ActionBlock {
+			return nil, verr(field+".action", "must be allow or block, got %q", r.Action)
+		}
+		if r.MinMatches < 0 || r.MinMatches > 100000 {
+			return nil, verr(field+".minMatches", "must be 0..100000")
+		}
+		m, err := dlp.Compile(r.Detectors, r.Patterns)
+		if err != nil {
+			return nil, verr(field, "%v", err)
+		}
+		cd := compiledDLP{all: len(r.Domains) == 0, check: DLPCheck{ID: r.ID, Action: r.Action, MinMatches: max(r.MinMatches, 1), BlockUnscanned: r.BlockUnscanned, Matcher: m}}
+		if cd.hosts, err = buildSet(r.Domains, "", field+".domains"); err != nil {
+			return nil, err
+		}
+		cw.dlp = append(cw.dlp, cd)
+	}
 	return cw, nil
+}
+
+// DLPChecks returns the DLP rules that apply to requests to host, in policy order.
+func (c *Compiled) DLPChecks(host string) []DLPCheck {
+	if c.web == nil {
+		return nil
+	}
+	var out []DLPCheck
+	for i := range c.web.dlp {
+		if d := &c.web.dlp[i]; d.all || d.hosts.has(host) {
+			out = append(out, d.check)
+		}
+	}
+	return out
 }
 
 // normalizePath resolves dot segments and collapses duplicate slashes, so "/a/../admin" and
@@ -152,9 +213,10 @@ func (c *Compiled) Inspects(host string) bool {
 // bypassed).
 func (c *Compiled) InspectEnabled() bool { return c.web != nil && c.web.inspect }
 
-// HasWebRules reports whether requests need to be evaluated at all (any rule or header).
+// HasWebRules reports whether requests need to be evaluated at all (any rule, header or DLP
+// rule).
 func (c *Compiled) HasWebRules() bool {
-	return c.web != nil && (len(c.web.rules) > 0 || len(c.web.headers) > 0)
+	return c.web != nil && (len(c.web.rules) > 0 || len(c.web.headers) > 0 || len(c.web.dlp) > 0)
 }
 
 // WebDecide returns the action for one request and the ID of the rule that decided it ("" if

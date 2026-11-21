@@ -253,7 +253,7 @@ func Compile(s *Snapshot) (*Compiled, error) {
 	if err := c.compilePrivateApps(s.PrivateApps); err != nil {
 		return nil, err
 	}
-	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 {
+	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 || len(s.Web.DLP) > 0 {
 		w, err := compileWeb(&s.Web)
 		if err != nil {
 			return nil, err

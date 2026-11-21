@@ -21,7 +21,8 @@
 #      same request naming the address's own host completes.
 #  12. TLS inspection (ADR-0018): with web.inspect on, HTTPS is served with a certificate from
 #      the tenant's inspection root (trusted only with that root), a URL rule blocks one path
-#      with 403, a bypassed domain keeps the server's own certificate; then the example
+#      with 403, a DLP rule refuses an upload with a card number (ADR-0019), a bypassed
+#      domain keeps the server's own certificate; then the example
 #      policy is restored.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
@@ -275,7 +276,7 @@ esac
 log "inspection: enabling web.inspect for $TENANT"
 ctl inspection-ca -tenant "$TENANT" >.e2e-inspect.crt
 cexec sh -c 'cat >/tmp/inspect.crt' <.e2e-inspect.crt
-jq '.web = {inspect: true, bypass: ["example.org"], rules: [{id: "e2e-no-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}]}' \
+jq '.web = {inspect: true, bypass: ["example.org"], rules: [{id: "e2e-no-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "e2e-pci", detectors: ["credit-card"], action: "block"}]}' \
   policy.example.json >.e2e-policy-web.json
 ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-web.json
 issuer=""
@@ -306,14 +307,20 @@ case "$issuer" in
   *"web inspection"*) ko "bypassed example.org was intercepted" ;;
   *) ok "bypass: example.org keeps its own certificate ($issuer)" ;;
 esac
+# DLP (ADR-0019): an upload with a card number is refused, a clean one reaches the server.
+code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' --data 'note=pay with 4111 1111 1111 1111' https://example.com/ 2>/dev/null || true)"
+if [ "$code" = 403 ]; then ok "DLP: upload with a card number refused with 403"; else ko "DLP card upload: HTTP $code"; fi
+code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' --data 'note=hello' https://example.com/ 2>/dev/null || true)"
+case "$code" in 000 | 403) ko "DLP: clean upload refused or failed (HTTP $code)" ;; *) ok "DLP: clean upload reaches the server (HTTP $code)" ;; esac
 i=0
 while :; do
-  ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | grep -q '"ruleId": "url:e2e-no-blocked"' && break
+  f="$(ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null || true)"
+  echo "$f" | grep -q '"ruleId": "url:e2e-no-blocked"' && echo "$f" | grep -q '"ruleId": "dlp:e2e-pci"' && break
   i=$((i + 1))
   [ "$i" -ge 10 ] && break
   sleep 3
 done
-if [ "$i" -lt 10 ]; then ok "URL block recorded (layer web, rule url:e2e-no-blocked)"; else ko "no url:e2e-no-blocked flow record"; fi
+if [ "$i" -lt 10 ]; then ok "URL and DLP blocks recorded (rules url:e2e-no-blocked, dlp:e2e-pci)"; else ko "no url:e2e-no-blocked or dlp:e2e-pci flow record"; fi
 ctl policy set -tenant "$TENANT" -f /work/policy.example.json
 rm -f .e2e-policy-web.json .e2e-inspect.crt
 # Wait until the Edge enforces the restored policy (and caches it, for the offline section):

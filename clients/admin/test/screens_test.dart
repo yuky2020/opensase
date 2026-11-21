@@ -263,6 +263,13 @@ void main() {
           'value': 'acme',
         },
       ],
+      'dlp': [
+        {
+          'id': 'pci',
+          'action': 'block',
+          'detectors': ['credit-card'],
+        },
+      ],
     };
     final cp = FakeControlPlane()
       ..json('GET /v1/admin/whoami', {'role': 'super'})
@@ -276,8 +283,22 @@ void main() {
     expect(find.text('X-Allowed-Tenant: acme'), findsOneWidget);
     await t.tap(find.byKey(const Key('web_inspect')));
     await t.pumpAndSettle();
+    await t.ensureVisible(find.byKey(const Key('web_dlp_unscanned_pci')));
+    await t.tap(find.byKey(const Key('web_dlp_unscanned_pci')));
+    await t.pumpAndSettle();
     await t.tap(find.byKey(const Key('web_save')));
     await t.pumpAndSettle();
-    expect((put! as Map)['web'], {'inspect': true, ...web});
+    expect((put! as Map)['web'], {
+      'inspect': true,
+      ...web,
+      'dlp': [
+        {
+          'id': 'pci',
+          'action': 'block',
+          'detectors': ['credit-card'],
+          'blockUnscanned': true,
+        },
+      ],
+    });
   });
 }

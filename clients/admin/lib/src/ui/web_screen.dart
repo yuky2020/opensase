@@ -145,6 +145,56 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
     _edit(() => _p.headers.add(WebHeader(domains: _split(v['domains']!), name: v['name']!, value: v['value']!)));
   }
 
+  Future<void> _addDlp() async {
+    final l = context.l10n;
+    final v = await showFieldsDialog(
+      context,
+      title: l.webAddDlp,
+      description: l.webDlpDetectorsHelp(DlpRule.builtinDetectors.join(', ')),
+      fields: [
+        FieldSpec('id', l.fieldId, validator: (s) => s.isEmpty || s.contains(' ') ? l.fieldRequired : null),
+        FieldSpec(
+          'detectors',
+          l.webDlpDetectors,
+          initial: 'credit-card',
+          validator: (s) => _split(s).any((d) => !DlpRule.builtinDetectors.contains(d)) ? l.webDlpUnknown : null,
+        ),
+        FieldSpec('patterns', l.webDlpPatterns),
+        FieldSpec('domains', l.webDlpDomains),
+        FieldSpec(
+          'min',
+          l.webDlpMin,
+          initial: '1',
+          validator: (s) => (int.tryParse(s) ?? 0) < 1 ? l.webDlpMinInvalid : null,
+        ),
+        FieldSpec(
+          'action',
+          l.webAction,
+          initial: 'block',
+          validator: (s) => s == 'block' || s == 'allow' ? null : 'allow | block',
+        ),
+      ],
+    );
+    if (v == null) return;
+    final patterns = [
+      for (final p in v['patterns']!.split('\n'))
+        if (p.trim().isNotEmpty) p.trim(),
+    ];
+    if (_split(v['detectors']!).isEmpty && patterns.isEmpty) return;
+    _edit(
+      () => _p.dlp.add(
+        DlpRule(
+          id: v['id']!,
+          detectors: _split(v['detectors']!),
+          patterns: patterns,
+          domains: _split(v['domains']!),
+          minMatches: int.parse(v['min']!) == 1 ? 0 : int.parse(v['min']!),
+          action: v['action']!,
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRoot() async {
     final l = context.l10n;
     try {
@@ -270,6 +320,65 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
                         tooltip: l.actionDelete,
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () => _edit(() => _p.rules.removeAt(i)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(l.webDlp, style: text.titleMedium)),
+                      TextButton.icon(
+                        key: const Key('web_add_dlp'),
+                        onPressed: _addDlp,
+                        icon: const Icon(Icons.add),
+                        label: Text(l.webAddDlp),
+                      ),
+                    ],
+                  ),
+                  Text(l.webDlpHelp, style: text.bodySmall),
+                  for (final (i, d) in _p.dlp.indexed)
+                    ListTile(
+                      key: Key('web_dlp_${d.id}'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: StatusChip(
+                        label: d.action == 'allow' ? l.webDlpLog : l.statusBlocked,
+                        color: d.action == 'allow' ? context.verdicts.allow : context.verdicts.block,
+                      ),
+                      title: Text(
+                        '${d.id} · ${[...d.detectors, if (d.patterns.isNotEmpty) l.webDlpPatternCount(d.patterns.length)].join(', ')}',
+                      ),
+                      subtitle: Text(
+                        [
+                          d.domains.isEmpty ? l.webDlpAllHosts : d.domains.join(', '),
+                          if (d.minMatches > 1) '≥ ${d.minMatches}',
+                        ].join(' · '),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Tooltip(
+                            message: l.webDlpBlockUnscanned,
+                            child: Switch(
+                              key: Key('web_dlp_unscanned_${d.id}'),
+                              value: d.blockUnscanned,
+                              onChanged: (v) => _edit(() => d.blockUnscanned = v),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: l.actionDelete,
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => _edit(() => _p.dlp.removeAt(i)),
+                          ),
+                        ],
                       ),
                     ),
                 ],

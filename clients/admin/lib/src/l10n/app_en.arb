@@ -336,5 +336,33 @@
   "webHeaderValue": "Value",
   "webRootButton": "Inspection root",
   "webRootTitle": "Tenant inspection root",
-  "webRootHelp": "Install this certificate as a trusted root on the tenant's devices (MDM, system store). Devices that do not trust it cannot open inspected sites."
+  "webRootHelp": "Install this certificate as a trusted root on the tenant's devices (MDM, system store). Devices that do not trust it cannot open inspected sites.",
+  "webDlp": "Data loss prevention",
+  "webDlpHelp": "Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).",
+  "webAddDlp": "Add DLP rule",
+  "webDlpDetectors": "Detectors (comma-separated)",
+  "webDlpDetectorsHelp": "Built-in detectors: {list}. Card numbers, IBANs and tax codes are checksum-validated.",
+  "webDlpUnknown": "Unknown detector",
+  "webDlpPatterns": "Custom patterns (regular expressions, one per line)",
+  "webDlpDomains": "Domains (empty = every inspected host)",
+  "webDlpMin": "Matches needed",
+  "webDlpMinInvalid": "At least 1",
+  "webDlpLog": "Log",
+  "webDlpAllHosts": "every host",
+  "webDlpPatternCount": "{n} patterns",
+  "webDlpBlockUnscanned": "Block bodies that cannot be scanned",
+  "@webDlpDetectorsHelp": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "@webDlpPatternCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -235,5 +235,19 @@
   "webHeaderValue": "Valore",
   "webRootButton": "Root di ispezione",
   "webRootTitle": "Root di ispezione del tenant",
-  "webRootHelp": "Installa questo certificato come root attendibile sui dispositivi del tenant (MDM, archivio di sistema). I dispositivi che non lo considerano attendibile non possono aprire i siti ispezionati."
+  "webRootHelp": "Installa questo certificato come root attendibile sui dispositivi del tenant (MDM, archivio di sistema). I dispositivi che non lo considerano attendibile non possono aprire i siti ispezionati.",
+  "webDlp": "Prevenzione perdita di dati (DLP)",
+  "webDlpHelp": "Analizza il contenuto degli upload sul percorso ispezionato (fino a 8 MiB). Vengono registrate le corrispondenze, mai i dati. Interruttore: blocca anche i contenuti non analizzabili (troppo grandi o compressi).",
+  "webAddDlp": "Aggiungi regola DLP",
+  "webDlpDetectors": "Rilevatori (separati da virgola)",
+  "webDlpDetectorsHelp": "Rilevatori integrati: {list}. Numeri di carta, IBAN e codici fiscali sono verificati col checksum.",
+  "webDlpUnknown": "Rilevatore sconosciuto",
+  "webDlpPatterns": "Pattern personalizzati (espressioni regolari, uno per riga)",
+  "webDlpDomains": "Domini (vuoto = tutti gli host ispezionati)",
+  "webDlpMin": "Corrispondenze necessarie",
+  "webDlpMinInvalid": "Almeno 1",
+  "webDlpLog": "Registra",
+  "webDlpAllHosts": "tutti gli host",
+  "webDlpPatternCount": "{n} pattern",
+  "webDlpBlockUnscanned": "Blocca i contenuti non analizzabili"
 }

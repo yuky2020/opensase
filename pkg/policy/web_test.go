@@ -88,3 +88,35 @@ func TestWebPolicyValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestDLPRules(t *testing.T) {
+	c, err := Compile(webSnapshot(WebPolicy{Inspect: true, DLP: []DLPRule{
+		{ID: "pci", Detectors: []string{"credit-card"}, Action: ActionBlock, BlockUnscanned: true},
+		{ID: "bulk-mail", Domains: []string{"*.share.example"}, Detectors: []string{"email"}, MinMatches: 50, Action: ActionAllow},
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.DLPChecks("www.example"); len(got) != 1 || got[0].ID != "pci" || got[0].MinMatches != 1 || !got[0].BlockUnscanned {
+		t.Fatalf("checks for other host %+v", got)
+	}
+	if got := c.DLPChecks("x.share.example"); len(got) != 2 || got[1].MinMatches != 50 || got[1].Action != ActionAllow {
+		t.Fatalf("checks %+v", got)
+	}
+	if !c.HasWebRules() {
+		t.Fatal("DLP rules do not count as web rules")
+	}
+	for name, r := range map[string]DLPRule{
+		"no id":        {Detectors: []string{"iban"}, Action: ActionBlock},
+		"bad action":   {ID: "x", Detectors: []string{"iban"}, Action: ActionAsk},
+		"unknown":      {ID: "x", Detectors: []string{"ssn"}, Action: ActionBlock},
+		"nothing":      {ID: "x", Action: ActionBlock},
+		"bad pattern":  {ID: "x", Patterns: []string{"("}, Action: ActionBlock},
+		"bad domain":   {ID: "x", Domains: []string{"a b"}, Detectors: []string{"iban"}, Action: ActionBlock},
+		"negative min": {ID: "x", Detectors: []string{"iban"}, MinMatches: -1, Action: ActionBlock},
+	} {
+		if _, err := Compile(webSnapshot(WebPolicy{DLP: []DLPRule{r}})); err == nil || !strings.Contains(err.Error(), "web.dlp[0]") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

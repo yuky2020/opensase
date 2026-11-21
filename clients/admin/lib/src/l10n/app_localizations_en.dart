@@ -762,4 +762,51 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get webRootHelp =>
       'Install this certificate as a trusted root on the tenant\'s devices (MDM, system store). Devices that do not trust it cannot open inspected sites.';
+
+  @override
+  String get webDlp => 'Data loss prevention';
+
+  @override
+  String get webDlpHelp =>
+      'Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).';
+
+  @override
+  String get webAddDlp => 'Add DLP rule';
+
+  @override
+  String get webDlpDetectors => 'Detectors (comma-separated)';
+
+  @override
+  String webDlpDetectorsHelp(String list) {
+    return 'Built-in detectors: $list. Card numbers, IBANs and tax codes are checksum-validated.';
+  }
+
+  @override
+  String get webDlpUnknown => 'Unknown detector';
+
+  @override
+  String get webDlpPatterns => 'Custom patterns (regular expressions, one per line)';
+
+  @override
+  String get webDlpDomains => 'Domains (empty = every inspected host)';
+
+  @override
+  String get webDlpMin => 'Matches needed';
+
+  @override
+  String get webDlpMinInvalid => 'At least 1';
+
+  @override
+  String get webDlpLog => 'Log';
+
+  @override
+  String get webDlpAllHosts => 'every host';
+
+  @override
+  String webDlpPatternCount(int n) {
+    return '$n patterns';
+  }
+
+  @override
+  String get webDlpBlockUnscanned => 'Block bodies that cannot be scanned';
 }

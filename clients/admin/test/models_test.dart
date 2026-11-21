@@ -56,7 +56,11 @@ const tenantPolicyJson = '''
       {"id": "no-admin", "domains": ["app.example"], "action": "block", "pathPrefixes": ["/admin"], "methods": ["POST"]},
       {"id": "all", "domains": ["*.example"], "action": "allow"}
     ],
-    "headers": [{"domains": ["*.saas.example"], "name": "X-Allowed-Tenant", "value": "acme"}]
+    "headers": [{"domains": ["*.saas.example"], "name": "X-Allowed-Tenant", "value": "acme"}],
+    "dlp": [
+      {"id": "pci", "action": "block", "detectors": ["credit-card", "iban"], "blockUnscanned": true},
+      {"id": "words", "action": "allow", "domains": ["*.share.example"], "patterns": ["project +falcon"], "minMatches": 3}
+    ]
   },
   "decideBlockDomains": ["*.casino.example"],
   "decideBlockCidrs": ["203.0.113.0/24"],

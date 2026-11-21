@@ -34,6 +34,10 @@ type inspectFixture struct {
 func newInspectFixture(t *testing.T, web policy.WebPolicy) *inspectFixture {
 	t.Helper()
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if len(b) > 0 {
+			_, _ = fmt.Fprintf(w, "body=%d ", len(b))
+		}
 		_, _ = fmt.Fprintf(w, "path=%s tenant=%s", r.URL.Path, r.Header.Get("X-Allowed-Tenant"))
 	}))
 	t.Cleanup(up.Close)
@@ -103,10 +107,14 @@ func get(t *testing.T, c net.Conn, method, host, path string) (int, string) {
 }
 
 func (z *inspectFixture) hasRecord(rule string) bool {
+	return z.hasRecordAction(rule, policy.ActionBlock)
+}
+
+func (z *inspectFixture) hasRecordAction(rule string, act policy.Action) bool {
 	z.e.flows.mu.Lock()
 	defer z.e.flows.mu.Unlock()
 	for _, r := range z.e.flows.recs {
-		if r.Decision.RuleID == rule && r.Decision.Layer == LayerWeb && r.Decision.Action == policy.ActionBlock && r.DeviceID == "d1" {
+		if r.Decision.RuleID == rule && r.Decision.Layer == LayerWeb && r.Decision.Action == act && r.DeviceID == "d1" {
 			return true
 		}
 	}
@@ -233,6 +241,72 @@ func TestWebBlockRule(t *testing.T) {
 	} {
 		if got := webBlockRule(tc.c, tc.proto, tc.dst, tc.port); got != tc.want {
 			t.Errorf("%d %s:%d = %q want %q", tc.proto, tc.dst, tc.port, got, tc.want)
+		}
+	}
+}
+
+// post sends one request with a body over c.
+func post(t *testing.T, c net.Conn, hdr, body string) (int, string) {
+	t.Helper()
+	if _, err := fmt.Fprintf(c, "POST /up HTTP/1.1\r\nHost: example.com\r\n%sContent-Length: %d\r\n\r\n%s", hdr, len(body), body); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+// TestInspectionDLP checks ADR-0019: request bodies on the inspected path are scanned; a
+// block rule refuses the upload, a log rule records it, unscannable bodies follow
+// BlockUnscanned, and clean bodies reach the server intact.
+func TestInspectionDLP(t *testing.T) {
+	web := testWeb
+	web.DLP = []policy.DLPRule{
+		{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock, BlockUnscanned: true},
+		{ID: "mail-log", Detectors: []string{"email"}, MinMatches: 2, Action: policy.ActionAllow},
+	}
+	z := newInspectFixture(t, web)
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	if code, body := post(t, c, "", "hello world"); code != 200 || body != "body=11 path=/up tenant=acme" {
+		t.Fatalf("clean upload: %d %q", code, body)
+	}
+	if code, _ := post(t, c, "", `{"card":"4111 1111 1111 1111"}`); code != http.StatusForbidden || !z.hasRecord("dlp:pci") {
+		t.Fatalf("card upload: %d", code)
+	}
+	if code, _ := post(t, c, "Content-Type: application/x-www-form-urlencoded\r\n", "pan=4111+1111+1111+1111&x=1"); code != http.StatusForbidden {
+		t.Fatalf("form-encoded card: %d", code)
+	}
+	if code, _ := post(t, c, "Content-Encoding: gzip\r\n", "\x1f\x8bnot-really-gzip"); code != http.StatusForbidden || !z.hasRecord("dlp:pci:unscanned") {
+		t.Fatalf("encoded body: %d", code)
+	}
+	if code, body := post(t, c, "", "a@x.example b@y.example"); code != 200 || !strings.HasPrefix(body, "body=23 ") || !z.hasRecordAction("dlp:mail-log", policy.ActionAllow) {
+		t.Fatalf("log-only rule: %d %q", code, body)
+	}
+}
+
+// TestInspectionDLPOversize: a body beyond the scan limit is forwarded intact unless the rule
+// blocks unscanned bodies.
+func TestInspectionDLPOversize(t *testing.T) {
+	big := strings.Repeat("x", maxDLPScan) + " 4111111111111111"
+	for _, blockUnscanned := range []bool{false, true} {
+		web := testWeb
+		web.DLP = []policy.DLPRule{{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock, BlockUnscanned: blockUnscanned}}
+		z := newInspectFixture(t, web)
+		c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+		_ = c.SetDeadline(time.Now().Add(30 * time.Second))
+		code, body := post(t, c, "", big)
+		if blockUnscanned {
+			if code != http.StatusForbidden || !z.hasRecord("dlp:pci:unscanned") {
+				t.Fatalf("blockUnscanned: %d", code)
+			}
+			continue
+		}
+		if code != 200 || !strings.HasPrefix(body, fmt.Sprintf("body=%d ", len(big))) {
+			t.Fatalf("oversize forwarded: %d %.60q", code, body)
 		}
 	}
 }

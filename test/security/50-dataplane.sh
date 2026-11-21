@@ -120,7 +120,7 @@ if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ]; then
   exit 0
 fi
 admin_get "/tenants/$T/inspection-ca" 2>/dev/null | cexec sh -c 'cat >/tmp/sec-inspect.crt'
-web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}]}')"
+web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}]}')"
 if [ "$(admin_code PUT "/tenants/$T/policy" "$web")" != 204 ]; then
   skip SEC-DP-120 "inspection: requests must match the connection's host" "could not enable inspection"
   exit 0
@@ -150,6 +150,24 @@ else
   case "$c" in 2??|3??|404) ;; *) bad="$bad control:/=$c" ;; esac
   [ -z "$bad" ] && pass SEC-DP-121 "inspection: URL rule holds against path encoding tricks" ||
     fail SEC-DP-121 "inspection: URL rule holds against path encoding tricks" "not refused:$bad"
+  # DLP evasion (ADR-0019): the same card number in shapes an exfiltrating client might use.
+  bad=""
+  card="4111 1111 1111 1111"
+  for shape in form json multipart chunked gzip iban; do
+    case "$shape" in
+      form) c="$(ins --data-urlencode "x=$card" https://example.com/)" ;;
+      json) c="$(ins -H 'Content-Type: application/json' --data "{\"pan\":\"4111-1111-1111-1111\"}" https://example.com/)" ;;
+      multipart) c="$(ins -F "file=$card;filename=a.txt" https://example.com/)" ;;
+      chunked) c="$(ins -H 'Transfer-Encoding: chunked' --data "$card" https://example.com/)" ;;
+      gzip) c="$(cexec sh -c 'printf "4111111111111111" | gzip | curl -s -m 12 --cacert /tmp/sec-inspect.crt -o /dev/null -w "%{http_code}" -H "Content-Encoding: gzip" --data-binary @- https://example.com/' 2>/dev/null || true)" ;;
+      iban) c="$(ins --data 'iban=IT60 X054 2811 1010 0000 0123 456' https://example.com/)" ;;
+    esac
+    [ "$c" = 403 ] || bad="$bad $shape=$c"
+  done
+  c="$(ins --data 'x=hello' https://example.com/)"
+  case "$c" in 403 | 000) bad="$bad control:clean=$c" ;; esac
+  [ -z "$bad" ] && pass SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" ||
+    fail SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" "not refused:$bad"
   # The Edge must not hide a bad server certificate: an SNI the server has no certificate for.
   c="$(ins --connect-to untrusted.opensase.test:443:example.com:443 https://untrusted.opensase.test/)"
   [ "$c" = 502 ] && pass SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" ||

@@ -1507,6 +1507,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Install this certificate as a trusted root on the tenant\'s devices (MDM, system store). Devices that do not trust it cannot open inspected sites.'**
   String get webRootHelp;
+
+  /// No description provided for @webDlp.
+  ///
+  /// In en, this message translates to:
+  /// **'Data loss prevention'**
+  String get webDlp;
+
+  /// No description provided for @webDlpHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).'**
+  String get webDlpHelp;
+
+  /// No description provided for @webAddDlp.
+  ///
+  /// In en, this message translates to:
+  /// **'Add DLP rule'**
+  String get webAddDlp;
+
+  /// No description provided for @webDlpDetectors.
+  ///
+  /// In en, this message translates to:
+  /// **'Detectors (comma-separated)'**
+  String get webDlpDetectors;
+
+  /// No description provided for @webDlpDetectorsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in detectors: {list}. Card numbers, IBANs and tax codes are checksum-validated.'**
+  String webDlpDetectorsHelp(String list);
+
+  /// No description provided for @webDlpUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown detector'**
+  String get webDlpUnknown;
+
+  /// No description provided for @webDlpPatterns.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom patterns (regular expressions, one per line)'**
+  String get webDlpPatterns;
+
+  /// No description provided for @webDlpDomains.
+  ///
+  /// In en, this message translates to:
+  /// **'Domains (empty = every inspected host)'**
+  String get webDlpDomains;
+
+  /// No description provided for @webDlpMin.
+  ///
+  /// In en, this message translates to:
+  /// **'Matches needed'**
+  String get webDlpMin;
+
+  /// No description provided for @webDlpMinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 1'**
+  String get webDlpMinInvalid;
+
+  /// No description provided for @webDlpLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Log'**
+  String get webDlpLog;
+
+  /// No description provided for @webDlpAllHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'every host'**
+  String get webDlpAllHosts;
+
+  /// No description provided for @webDlpPatternCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} patterns'**
+  String webDlpPatternCount(int n);
+
+  /// No description provided for @webDlpBlockUnscanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Block bodies that cannot be scanned'**
+  String get webDlpBlockUnscanned;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

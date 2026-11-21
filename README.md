@@ -49,6 +49,10 @@ exchange. There is no classic fallback.
   inspection root, to block URL paths and methods and to set request headers (for example to
   limit a SaaS login to the company's account). Bypass lists, fail-closed behaviour and
   7-day per-Edge intermediates ([ADR-0018](docs/adr/0018-tls-inspection.md)).
+- 🛡️ **DLP on uploads.** On the inspected path, request bodies are scanned for card numbers,
+  IBANs and Italian tax codes (all checksum-validated), private keys, bulk e-mail and custom
+  patterns. Uploads are blocked or recorded, without ever storing the data
+  ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)).
 - 🏷️ **Multi-tenant Control Plane.**
   - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
   - signed policy snapshots and flow logs;
@@ -118,7 +122,8 @@ flowchart LR
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](docs/adr/0018-tls-inspection.md)) | ✅ |
-| DLP, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
+| Malware scanning, DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -238,7 +243,7 @@ is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md)
 ```
 cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
 internal/       private logic: controlplane, edge, connector
-pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas
+pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp
 mobile/         gomobile bridge for the Android client
 clients/mobile  Flutter Android app (VpnService + Go core .aar)
 clients/admin   Flutter web admin portal
@@ -257,13 +262,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017 and 0018.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018 and 0019.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** DLP and malware scanning on the inspected path, URL categories, HTTP/2.
+1. **SWG and CASB, next slice:** malware scanning, DLP on downloads and documents, URL categories, HTTP/2.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

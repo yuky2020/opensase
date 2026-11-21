@@ -1,0 +1,103 @@
+# Documentation site (GitHub Pages): https://yuky2020.github.io/opensase/
+# Build locally: make docs-serve (needs python3). Files listed in scripts/docs-prepare.sh are
+# copied from the repository root into docs/ at build time and are not committed there.
+site_name: OpenSASE
+site_description: Open-source, post-quantum SASE platform
+site_url: https://yuky2020.github.io/opensase/
+repo_url: https://github.com/yuky2020/opensase
+repo_name: yuky2020/opensase
+edit_uri: edit/main/docs/
+copyright: Copyright 2026 The OpenSASE Authors · Apache-2.0
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/shield-lock-outline
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle: { icon: material/brightness-auto, name: Switch to light mode }
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: teal
+      toggle: { icon: material/weather-sunny, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: teal
+      toggle: { icon: material/weather-night, name: Switch to system preference }
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: { alternate_style: true }
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Architecture:
+      - Overview: architecture.md
+      - Glossary: glossary.md
+      - Android client: mobile-client.md
+      - Effort estimate: effort-estimate.md
+  - Components:
+      - Control Plane: components/control-plane.md
+      - Edge: components/edge.md
+      - Client: components/client.md
+      - Connector: components/connector.md
+      - Workload Gateway: components/workload-gateway.md
+      - Admin portal: components/admin-portal.md
+      - Policy engine: components/policy-engine.md
+      - SWG: components/swg.md
+      - FWaaS: components/fwaas.md
+      - CASB: components/casb.md
+      - DLP: components/dlp.md
+      - Observability: components/observability.md
+  - Decisions (ADRs):
+      - adr/README.md
+      - "0002 PQ client tunnel": adr/0002-client-tunnel-wireguard-pq-psk.md
+      - "0012 Android client first": adr/0012-android-client-first.md
+      - "0013 ZTNA Connector": adr/0013-ztna-connector.md
+      - "0014 Private Edge": adr/0014-private-edge.md
+      - "0015 Workload Gateway": adr/0015-workload-gateway-mvp.md
+      - "0016 Tenant admin tokens": adr/0016-tenant-admin-tokens.md
+  - Security:
+      - Security policy: security-policy.md
+      - Test suite: security/test-suite.md
+      - Security tester agent: security/security-tester-agent.md
+      - Test report 2026-11-20: security/sectest-2026-11-20.md
+      - Review 2026-11-19: security/review-2026-11-19.md
+  - Contributing:
+      - Contributing: contributing.md
+      - Code of Conduct: code-of-conduct.md

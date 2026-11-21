@@ -5,7 +5,7 @@ GOMOBILE ?= $(HOME)/go/bin/gomobile
 FLUTTER ?= $(shell command -v flutter 2>/dev/null || echo $(HOME)/opt/flutter/bin/flutter)
 AAR := clients/mobile/android/app/libs/opensase-core.aar
 
-.PHONY: test vet lint aar apk app-test portal portal-test bins dev-up dev-down e2e fmt sectest sectest-unit
+.PHONY: test vet lint aar apk app-test portal portal-test bins dev-up dev-down e2e fmt sectest sectest-unit docs docs-serve
 
 test:
 	go test -race ./...
@@ -55,6 +55,15 @@ sectest:
 
 sectest-unit:
 	go test -count=1 -race -v -run '^TestUnit' ./test/security/go/
+
+# Documentation site (GitHub Pages, mkdocs.yml). Needs: pip install -r docs/requirements.txt
+docs:
+	scripts/docs-prepare.sh
+	NO_MKDOCS_2_WARNING=1 mkdocs build --strict
+
+docs-serve:
+	scripts/docs-prepare.sh
+	NO_MKDOCS_2_WARNING=1 mkdocs serve
 
 fmt:
 	gofmt -w pkg cmd internal mobile

@@ -14,3 +14,12 @@ local.properties
 /deploy/dev/limit-watchdog.sh
 /deploy/dev/limit-watchdog.log
 /deploy/dev/.watchdog-disable
+
+# documentation site: copies made by scripts/docs-prepare.sh, and the build output
+/docs/glossary.md
+/docs/contributing.md
+/docs/code-of-conduct.md
+/docs/security-policy.md
+/docs/security/test-suite.md
+/docs/security/security-tester-agent.md
+/site/

@@ -5,11 +5,14 @@
 **Open-source, post-quantum SASE platform: zero-trust access, secure egress and policy in one stack.**
 
 [![CI](https://github.com/yuky2020/opensase/actions/workflows/ci.yml/badge.svg)](https://github.com/yuky2020/opensase/actions/workflows/ci.yml)
+[![Docs](https://github.com/yuky2020/opensase/actions/workflows/docs.yml/badge.svg)](https://yuky2020.github.io/opensase/)
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 ![Go](https://img.shields.io/badge/Go-control%20plane%20%7C%20edge%20%7C%20connector-00ADD8?logo=go&logoColor=white)
 ![Flutter](https://img.shields.io/badge/Flutter-Android%20%7C%20admin%20web-02569B?logo=flutter&logoColor=white)
 ![PQ](https://img.shields.io/badge/TLS%201.3-X25519MLKEM768%20only-6f42c1.svg)
+
+**📖 Documentation: [yuky2020.github.io/opensase](https://yuky2020.github.io/opensase/)**
 
 </div>
 
@@ -231,10 +234,15 @@ clients/mobile  Flutter Android app (VpnService + Go core .aar)
 clients/admin   Flutter web admin portal
 deploy/dev      Docker Compose dev stack, bootstrap.sh, e2e.sh
 test/security   repeatable security suite (shell + Go)
-docs/           architecture, component specs, ADRs, security reports
+docs/           architecture, component specs, ADRs, security reports (the docs site)
+mkdocs.yml      docs site config (GitHub Pages)
 ```
 
 ## Documentation
+
+Everything below is also published as a searchable site at
+**[yuky2020.github.io/opensase](https://yuky2020.github.io/opensase/)** (built from `docs/` by
+`.github/workflows/docs.yml`; preview locally with `make docs-serve`).
 
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.

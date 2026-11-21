@@ -1,6 +1,6 @@
 # OpenSASE — Architecture Overview (draft v0.1)
 
-Working name: **OpenSASE**. Status: design phase, no code yet.
+Working name: **OpenSASE**. Status: pre-alpha. The first slices run end to end (see "What works today" on the [home page](index.md)); the sections below are the target design.
 
 ## Goal
 

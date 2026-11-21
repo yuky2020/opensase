@@ -27,7 +27,8 @@ class OverviewScreen extends ConsumerWidget {
     final l = context.l10n;
     final now = ref.watch(clockProvider)();
     final tenant = ref.watch(currentTenantProvider);
-    final edges = ref.watch(edgesProvider);
+    final isSuper = ref.watch(isSuperProvider);
+    final edges = isSuper ? ref.watch(edgesProvider) : null;
     final devices = tenant == null ? null : ref.watch(devicesProvider(tenant));
     final connectors = tenant == null ? null : ref.watch(connectorsProvider(tenant));
     final flows = tenant == null ? null : ref.watch(flowsProvider(tenant));
@@ -49,12 +50,13 @@ class OverviewScreen extends ConsumerWidget {
         value: count<AdminConnector>(connectors, (c) => c.where((x) => x.isOnline(now)).length),
         detail: connectors?.value == null ? null : l.overviewOf(connectors!.value!.where((c) => !c.revoked).length),
       ),
-      _StatTile(
-        key: const Key('stat_edges'),
-        icon: Icons.cell_tower,
-        label: l.overviewEdges,
-        value: count<AdminEdge>(edges, (e) => e.where((x) => !x.revoked).length),
-      ),
+      if (isSuper)
+        _StatTile(
+          key: const Key('stat_edges'),
+          icon: Icons.cell_tower,
+          label: l.overviewEdges,
+          value: count<AdminEdge>(edges, (e) => e.where((x) => !x.revoked).length),
+        ),
       _StatTile(
         key: const Key('stat_blocks'),
         icon: Icons.block,
@@ -70,7 +72,7 @@ class OverviewScreen extends ConsumerWidget {
           tooltip: l.actionRefresh,
           icon: const Icon(Icons.refresh),
           onPressed: () {
-            ref.invalidate(edgesProvider);
+            if (isSuper) ref.invalidate(edgesProvider);
             if (tenant != null) {
               ref
                 ..invalidate(devicesProvider(tenant))

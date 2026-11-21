@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:opensase_admin/src/data/browser_storage.dart';
 import 'package:opensase_admin/src/data/providers.dart';
 import 'package:opensase_admin/src/data/session.dart';
+import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
+import 'package:opensase_admin/src/ui/tenants_screen.dart';
 import 'package:opensase_admin/src/ui/users_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -94,5 +98,52 @@ void main() {
     await t.tap(find.byKey(const Key('confirm_revoke')));
     await t.pumpAndSettle();
     expect(cp.requests.where((r) => r.method == 'POST').single.url.path, '/v1/admin/tenants/acme/connectors/c2/revoke');
+  });
+
+  testWidgets('a tenant admin cannot create tenants; the super-admin can (ST-03)', (t) async {
+    final tenantAdmin = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'tenant', 'tenantId': 'acme', 'tokenId': 't1'});
+    await _pump(t, tenantAdmin, const TenantsScreen());
+    expect(find.byKey(const Key('tenant_create')), findsNothing);
+
+    final superAdmin = FakeControlPlane()..json('GET /v1/admin/whoami', {'role': 'super'});
+    await _pump(t, superAdmin, const TenantsScreen());
+    expect(find.byKey(const Key('tenant_create')), findsOneWidget);
+  });
+
+  testWidgets('admin token is created with its validity and shown once', (t) async {
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'tenant', 'tenantId': 'acme', 'tokenId': 't1'})
+      ..json('GET /v1/admin/tenants/acme/admin-tokens', [
+        {
+          'id': 't1',
+          'tenantId': 'acme',
+          'name': 'me',
+          'createdAt': '2026-11-20T09:00:00Z',
+          'expiresAt': '2027-02-18T09:00:00Z',
+          'revoked': false,
+        },
+      ])
+      ..json('POST /v1/admin/tenants/acme/admin-tokens', {
+        'id': 't2',
+        'tenantId': 'acme',
+        'name': 'ops',
+        'createdAt': '2026-11-20T10:00:00Z',
+        'expiresAt': '2026-12-20T10:00:00Z',
+        'revoked': false,
+        'token': 'osa_secret',
+      }, status: 201);
+    await _pump(t, cp, const AdminTokensScreen());
+    expect(find.text('me (this session)'), findsOneWidget);
+    await t.tap(find.byKey(const Key('admin_token_create')));
+    await t.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await t.enterText(fields.at(0), 'ops');
+    await t.enterText(fields.at(1), '30');
+    await t.tap(find.text('Create'));
+    await t.pumpAndSettle();
+    expect(find.text('osa_secret'), findsOneWidget);
+    final post = cp.requests.lastWhere((r) => r.method == 'POST');
+    expect(jsonDecode(post.body), {'name': 'ops', 'validForSeconds': 30 * 86400});
   });
 }

@@ -55,7 +55,18 @@ final connectorsProvider = FutureProvider.family<List<AdminConnector>, String>(
   (ref, t) => ref.watch(apiProvider).listConnectors(t),
 );
 
+/// Who is signed in: the super-admin or a tenant admin (ST-03).
+final identityProvider = FutureProvider<AdminIdentity>((ref) => ref.watch(apiProvider).whoami());
+
+/// True once the Control Plane confirmed the super-admin. False while loading, so
+/// super-admin-only UI (tenant creation, Edges) never flashes for a tenant admin.
+final isSuperProvider = Provider<bool>((ref) => ref.watch(identityProvider).value?.isSuper ?? false);
+
 final edgesProvider = FutureProvider<List<AdminEdge>>((ref) => ref.watch(apiProvider).listEdges());
+
+final adminTokensProvider = FutureProvider.family<List<AdminToken>, String>(
+  (ref, t) => ref.watch(apiProvider).listAdminTokens(t),
+);
 
 /// Number of flow records the Activity and Overview screens fetch.
 const flowLimit = 500;

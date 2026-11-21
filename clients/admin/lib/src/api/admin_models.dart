@@ -366,3 +366,82 @@ class AdminConnectorCreated {
 
   Json toJson() => {'connector': connector.toJson(), 'provisioningKey': provisioningKey};
 }
+
+/// The signed-in admin (GET /v1/admin/whoami). A tenant admin (ST-03) sees only its tenant and
+/// cannot create tenants or manage Edges.
+class AdminIdentity {
+  AdminIdentity({required this.role, this.tenantId = '', this.tokenId = ''});
+
+  String role;
+  String tenantId;
+  String tokenId;
+
+  bool get isSuper => role == 'super';
+
+  factory AdminIdentity.fromJson(Json j) =>
+      AdminIdentity(role: str(j, 'role'), tenantId: str(j, 'tenantId'), tokenId: str(j, 'tokenId'));
+
+  Json toJson() {
+    final j = <String, dynamic>{'role': role};
+    putOmit(j, 'tenantId', tenantId);
+    putOmit(j, 'tokenId', tokenId);
+    return j;
+  }
+}
+
+/// A tenant admin token, without its secret.
+class AdminToken {
+  AdminToken({
+    required this.id,
+    required this.tenantId,
+    required this.name,
+    this.createdAt,
+    this.expiresAt,
+    this.revoked = false,
+    this.lastUsed,
+  });
+
+  String id;
+  String tenantId;
+  String name;
+  DateTime? createdAt;
+  DateTime? expiresAt;
+  bool revoked;
+  DateTime? lastUsed;
+
+  bool isExpired(DateTime now) => expiresAt != null && !now.isBefore(expiresAt!);
+
+  factory AdminToken.fromJson(Json j) => AdminToken(
+    id: str(j, 'id'),
+    tenantId: str(j, 'tenantId'),
+    name: str(j, 'name'),
+    createdAt: time(j, 'createdAt'),
+    expiresAt: time(j, 'expiresAt'),
+    revoked: boolean(j, 'revoked'),
+    lastUsed: time(j, 'lastUsed'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{
+      'id': id,
+      'tenantId': tenantId,
+      'name': name,
+      'createdAt': goTime(createdAt),
+      'expiresAt': goTime(expiresAt),
+      'revoked': revoked,
+    };
+    if (lastUsed != null) j['lastUsed'] = goTime(lastUsed);
+    return j;
+  }
+}
+
+/// The reply to admin token creation; [token] is shown only once.
+class AdminTokenCreated {
+  AdminTokenCreated({required this.adminToken, required this.token});
+
+  AdminToken adminToken;
+  String token;
+
+  factory AdminTokenCreated.fromJson(Json j) =>
+      AdminTokenCreated(adminToken: AdminToken.fromJson(j), token: str(j, 'token'));
+}

@@ -124,6 +124,10 @@ commands:
   connector revoke -tenant ID -id C
   app set -tenant ID -file apps.json      ([]api.TenantPrivateApp; replaces privateApps)
   app list -tenant ID
+  admin-token add -tenant ID -name N [-valid-for DUR] [-token-out FILE]
+  admin-token list -tenant ID
+  admin-token revoke -tenant ID -id ID
+  whoami
   pq-check [-edge-id ID]
 
 global flags:
@@ -134,7 +138,7 @@ global flags:
 
 func dispatch(ctx context.Context, g *globals, args []string) error {
 	cmd, rest := args[0], args[1:]
-	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app") && len(rest) > 0 {
+	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app" || cmd == "admin-token") && len(rest) > 0 {
 		cmd, rest = cmd+" "+rest[0], rest[1:]
 	}
 	switch cmd {
@@ -170,6 +174,14 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return appSet(ctx, g, rest)
 	case "app list":
 		return appList(ctx, g, rest)
+	case "admin-token add":
+		return adminTokenAdd(ctx, g, rest)
+	case "admin-token list":
+		return adminTokenList(ctx, g, rest)
+	case "admin-token revoke":
+		return adminTokenRevoke(ctx, g, rest)
+	case "whoami":
+		return whoami(ctx, g)
 	case "pq-check":
 		return pqCheck(ctx, g, rest)
 	}
@@ -596,6 +608,98 @@ func edgeRevoke(ctx context.Context, g *globals, args []string) error {
 		return errors.New("-id is required")
 	}
 	return g.do(ctx, http.MethodPost, "/v1/admin/edges/"+url.PathEscape(*id)+"/revoke", nil, nil)
+}
+
+// --- Tenant admin tokens (ST-03) ---
+
+func adminTokensPath(tenant string) string {
+	return "/v1/admin/tenants/" + url.PathEscape(tenant) + "/admin-tokens"
+}
+
+func adminTokenAdd(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("admin-token add", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	name := fs.String("name", "", "token name (who or what uses it)")
+	validFor := fs.Duration("valid-for", 0, "validity (default 90 days, at most 365)")
+	out := fs.String("token-out", "", "write the token to this file (mode 0600, must not exist) instead of stdout")
+	_ = fs.Parse(args)
+	if *name == "" {
+		return errors.New("-name is required")
+	}
+	var c api.AdminTokenCreated
+	if err := g.do(ctx, http.MethodPost, adminTokensPath(*tenant), api.AdminTokenRequest{Name: *name, ValidFor: int(validFor.Seconds())}, &c); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "admin token %s (%s) for tenant %s, valid until %s; it is shown only once\n",
+		c.ID, c.Name, c.TenantID, c.ExpiresAt.Local().Format(time.DateTime))
+	if *out != "" {
+		if err := writeNewSecret(*out, c.Token); err != nil {
+			return fmt.Errorf("admin token %s created, but writing it failed (revoke it and retry): %w", c.ID, err)
+		}
+		fmt.Fprintf(os.Stderr, "token written to %s\n", *out)
+		fmt.Printf("ADMIN_TOKEN_ID=%s\n", c.ID)
+		return nil
+	}
+	fmt.Printf("ADMIN_TOKEN_ID=%s\nADMIN_TOKEN=%s\n", c.ID, c.Token)
+	return nil
+}
+
+func adminTokenList(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("admin-token list", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	_ = fs.Parse(args)
+	var ts []api.AdminToken
+	if err := g.do(ctx, http.MethodGet, adminTokensPath(*tenant), nil, &ts); err != nil {
+		return err
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tREVOKED\tCREATED\tEXPIRES\tLAST USED")
+	for _, t := range ts {
+		used := "-"
+		if !t.LastUsed.IsZero() {
+			used = t.LastUsed.Local().Format(time.DateTime)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\t%s\t%s\n", t.ID, t.Name, t.Revoked, t.CreatedAt.Local().Format(time.DateTime), t.ExpiresAt.Local().Format(time.DateTime), used)
+	}
+	return tw.Flush()
+}
+
+func adminTokenRevoke(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("admin-token revoke", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	id := fs.String("id", "", "admin token ID")
+	_ = fs.Parse(args)
+	if *id == "" {
+		return errors.New("-id is required")
+	}
+	if err := g.do(ctx, http.MethodPost, adminTokensPath(*tenant)+"/"+url.PathEscape(*id)+"/revoke", nil, nil); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "admin token %s revoked\n", *id)
+	return nil
+}
+
+func whoami(ctx context.Context, g *globals) error {
+	var id api.AdminIdentity
+	if err := g.do(ctx, http.MethodGet, "/v1/admin/whoami", nil, &id); err != nil {
+		return err
+	}
+	if id.Role == "super" {
+		fmt.Println("super-admin (all tenants, Edge registry)")
+		return nil
+	}
+	fmt.Printf("tenant admin of %s (token %s)\n", id.TenantID, id.TokenID)
+	return nil
+}
+
+// writeNewSecret writes v to a new file with mode 0600; it refuses to overwrite.
+func writeNewSecret(path, v string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: operator-chosen output path, created exclusively
+	if err != nil {
+		return err
+	}
+	_, werr := fmt.Fprintln(f, v)
+	return errors.Join(werr, f.Close())
 }
 
 // --- Connectors and private apps (ADR-0013) ---

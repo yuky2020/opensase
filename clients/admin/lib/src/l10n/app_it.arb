@@ -173,5 +173,21 @@
   "verdictAllow": "Consentito",
   "verdictBlock": "Bloccato",
   "verdictOther": "Altro",
-  "msgSettingsSaved": "Impostazioni salvate"
+  "msgSettingsSaved": "Impostazioni salvate",
+  "navAdminTokens": "Token admin",
+  "adminTokensCreate": "Nuovo token admin",
+  "adminTokensCreateHelp": "Un token admin amministra solo questo tenant: utenti, policy, app private, connector, dispositivi e attività. Non vede gli altri tenant, non crea tenant e non gestisce gli Edge.",
+  "adminTokensNameHint": "chi o cosa lo usa, ad es. team ops",
+  "adminTokensFieldDays": "Validità (giorni)",
+  "adminTokensFieldDaysHelp": "Da 1 a 365 giorni",
+  "adminTokensCreated": "Token admin {name} creato",
+  "adminTokensShownOnce": "Questo token viene mostrato una sola volta. Copialo ora e salvalo in un password manager.",
+  "adminTokensUseHelp": "Usalo per accedere al portale, oppure con opensasectl (-token-file o $OPENSASE_ADMIN_TOKEN).",
+  "adminTokensEmpty": "Nessun token admin per questo tenant",
+  "adminTokensThisSession": "(questa sessione)",
+  "adminTokensRevokeOwn": "È il token della sessione corrente: verrai disconnesso.",
+  "revokeConfirmAdminToken": "Il token smette di funzionare subito. L'operazione non si può annullare.",
+  "fieldExpires": "Scade",
+  "fieldLastUsed": "Ultimo uso",
+  "statusExpired": "Scaduto"
 }

@@ -53,7 +53,7 @@ stays readable. Describe the fix in the report. The lead fixes the product.
    - a revoked device, Edge or connector;
    - a just-superseded certificate used outside `/v1/renew`.
 2. **Tenant isolation:**
-   - tenant A's admin, device or connector reaching tenant B data (flows, policy, peers, private
+   - tenant A's admin (a tenant admin token, ADR-0016), device or connector reaching tenant B data (flows, policy, peers, private
      apps);
    - a Private Edge (ADR-0014) receiving another tenant's devices, decisions or flows.
 3. **PKI and TLS:**

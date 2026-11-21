@@ -1135,6 +1135,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings saved'**
   String get msgSettingsSaved;
+
+  /// No description provided for @navAdminTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin tokens'**
+  String get navAdminTokens;
+
+  /// No description provided for @adminTokensCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'New admin token'**
+  String get adminTokensCreate;
+
+  /// No description provided for @adminTokensCreateHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'An admin token administers this tenant only: users, policy, private apps, connectors, devices and activity. It cannot see other tenants, create tenants or manage Edges.'**
+  String get adminTokensCreateHelp;
+
+  /// No description provided for @adminTokensNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'who or what uses it, e.g. ops team'**
+  String get adminTokensNameHint;
+
+  /// No description provided for @adminTokensFieldDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for (days)'**
+  String get adminTokensFieldDays;
+
+  /// No description provided for @adminTokensFieldDaysHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'From 1 to 365 days'**
+  String get adminTokensFieldDaysHelp;
+
+  /// No description provided for @adminTokensCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin token {name} created'**
+  String adminTokensCreated(String name);
+
+  /// No description provided for @adminTokensShownOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'This token is shown only once. Copy it now and store it in a password manager.'**
+  String get adminTokensShownOnce;
+
+  /// No description provided for @adminTokensUseHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to the portal with it, or use it with opensasectl (-token-file or \$OPENSASE_ADMIN_TOKEN).'**
+  String get adminTokensUseHelp;
+
+  /// No description provided for @adminTokensEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No admin tokens for this tenant yet'**
+  String get adminTokensEmpty;
+
+  /// No description provided for @adminTokensThisSession.
+  ///
+  /// In en, this message translates to:
+  /// **'(this session)'**
+  String get adminTokensThisSession;
+
+  /// No description provided for @adminTokensRevokeOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the token of the current session: you will be signed out.'**
+  String get adminTokensRevokeOwn;
+
+  /// No description provided for @revokeConfirmAdminToken.
+  ///
+  /// In en, this message translates to:
+  /// **'The token stops working at once. This cannot be undone.'**
+  String get revokeConfirmAdminToken;
+
+  /// No description provided for @fieldExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires'**
+  String get fieldExpires;
+
+  /// No description provided for @fieldLastUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Last used'**
+  String get fieldLastUsed;
+
+  /// No description provided for @statusExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get statusExpired;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

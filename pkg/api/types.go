@@ -11,7 +11,10 @@
 // spiffe://opensase/controlplane for the Control Plane, spiffe://opensase/edge/<EdgeInfo.ID>
 // for an Edge session URL (pkg/pki.ParseURI). Each server certificate has its own SANs.
 // Device certificates are short-lived (24h); devices renew at 50% of the lifetime.
-// Admin endpoints use "Authorization: Bearer <admin token>".
+// Admin endpoints use "Authorization: Bearer <admin token>". The token configured on the
+// Control Plane is the super-admin: every tenant, tenant creation and the Edge registry. A
+// tenant admin token (AdminTokenCreated.Token, prefix "osa_") administers only its tenant
+// (ST-03): other tenants answer 404 as if they did not exist, and super-admin routes 403.
 //
 // Control Plane endpoints:
 //
@@ -48,7 +51,12 @@
 //	POST /v1/admin/tenants/{t}/connectors              AdminConnectorRequest -> AdminConnectorCreated (one-time provisioning key)
 //	GET  /v1/admin/tenants/{t}/connectors              -> []AdminConnector
 //	POST /v1/admin/tenants/{t}/connectors/{c}/revoke   -> 204 | 404
-//	GET  /v1/admin/tenants                -> []AdminTenant
+//	GET  /v1/admin/tenants                -> []AdminTenant (a tenant admin sees only its tenant)
+//	GET  /v1/admin/whoami                 -> AdminIdentity
+//	POST /v1/admin/tenants/{t}/admin-tokens            AdminTokenRequest -> AdminTokenCreated (token shown once)
+//	GET  /v1/admin/tenants/{t}/admin-tokens            -> []AdminToken
+//	POST /v1/admin/tenants/{t}/admin-tokens/{id}/revoke -> 204 | 404
+//	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants and /v1/admin/edges*.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
 //
 // Admin portal: the Control Plane serves the static Flutter web build at /admin/ (flag -portal-dir).
@@ -217,6 +225,37 @@ type EdgeDevice struct {
 type AdminTenant struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
+}
+
+// AdminIdentity is the reply to GET /v1/admin/whoami.
+type AdminIdentity struct {
+	// Role is "super" (the configured token) or "tenant" (an admin token of TenantID).
+	Role     string `json:"role"`
+	TenantID string `json:"tenantId,omitempty"`
+	TokenID  string `json:"tokenId,omitempty"`
+}
+
+// AdminTokenRequest creates a tenant admin token. ValidFor defaults to 90 days, at most 365.
+type AdminTokenRequest struct {
+	Name     string `json:"name"`
+	ValidFor int    `json:"validForSeconds"`
+}
+
+// AdminToken is a tenant admin token in the admin API, without its secret.
+type AdminToken struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Revoked   bool      `json:"revoked"`
+	LastUsed  time.Time `json:"lastUsed,omitzero"`
+}
+
+// AdminTokenCreated is the reply to admin token creation. Token is shown only once.
+type AdminTokenCreated struct {
+	AdminToken
+	Token string `json:"token"`
 }
 
 // AdminUser is a user in the admin API.

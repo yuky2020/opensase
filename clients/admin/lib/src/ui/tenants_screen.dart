@@ -45,12 +45,13 @@ class TenantsScreen extends ConsumerWidget {
           onPressed: () => ref.invalidate(tenantsProvider),
           icon: const Icon(Icons.refresh),
         ),
-        FilledButton.icon(
-          key: const Key('tenant_create'),
-          onPressed: () => _create(context, ref),
-          icon: const Icon(Icons.add),
-          label: Text(l.tenantsCreate),
-        ),
+        if (ref.watch(isSuperProvider))
+          FilledButton.icon(
+            key: const Key('tenant_create'),
+            onPressed: () => _create(context, ref),
+            icon: const Icon(Icons.add),
+            label: Text(l.tenantsCreate),
+          ),
       ],
       child: AsyncBody(
         value: tenants,

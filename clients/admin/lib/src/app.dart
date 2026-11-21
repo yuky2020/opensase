@@ -13,12 +13,21 @@ import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
 import 'ui/private_apps_screen.dart';
 import 'ui/settings_screen.dart';
+import 'ui/admin_tokens_screen.dart';
 import 'ui/tenants_screen.dart';
 import 'ui/theme.dart';
 import 'ui/users_screen.dart';
 
 class _Dest {
-  const _Dest(this.path, this.icon, this.selectedIcon, this.label, this.builder, {this.perTenant = false});
+  const _Dest(
+    this.path,
+    this.icon,
+    this.selectedIcon,
+    this.label,
+    this.builder, {
+    this.perTenant = false,
+    this.superOnly = false,
+  });
 
   final String path;
   final IconData icon;
@@ -26,6 +35,9 @@ class _Dest {
   final String Function(BuildContext) label;
   final Widget Function() builder;
   final bool perTenant;
+
+  /// Shown only to the super-admin (ST-03): a tenant admin cannot manage Edges.
+  final bool superOnly;
 }
 
 final _dests = <_Dest>[
@@ -57,7 +69,22 @@ final _dests = <_Dest>[
     DevicesScreen.new,
     perTenant: true,
   ),
-  _Dest('/edges', Icons.cell_tower_outlined, Icons.cell_tower, (c) => c.l10n.navEdges, EdgesScreen.new),
+  _Dest(
+    '/admin-tokens',
+    Icons.key_outlined,
+    Icons.key,
+    (c) => c.l10n.navAdminTokens,
+    AdminTokensScreen.new,
+    perTenant: true,
+  ),
+  _Dest(
+    '/edges',
+    Icons.cell_tower_outlined,
+    Icons.cell_tower,
+    (c) => c.l10n.navEdges,
+    EdgesScreen.new,
+    superOnly: true,
+  ),
   _Dest(
     '/activity',
     Icons.list_alt_outlined,
@@ -136,17 +163,19 @@ class AdminShell extends ConsumerWidget {
   final String location;
   final Widget child;
 
-  int get _index {
-    final i = _dests.indexWhere((d) => location.startsWith(d.path));
-    return i < 0 ? 0 : i;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = context.l10n;
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= 900;
-    final dest = _dests[_index];
+    final isSuper = ref.watch(isSuperProvider);
+    final dests = [
+      for (final d in _dests)
+        if (!d.superOnly || isSuper) d,
+    ];
+    final found = dests.indexWhere((d) => location.startsWith(d.path));
+    final index = found < 0 ? 0 : found;
+    final dest = dests[index];
     final appBar = AppBar(
       title: Text(l.appTitle),
       actions: [
@@ -160,12 +189,12 @@ class AdminShell extends ConsumerWidget {
         const SizedBox(width: 8),
       ],
     );
-    void go(int i) => context.go(_dests[i].path);
+    void go(int i) => context.go(dests[i].path);
     if (!wide) {
       return Scaffold(
         appBar: appBar,
         drawer: NavigationDrawer(
-          selectedIndex: _index,
+          selectedIndex: index,
           onDestinationSelected: (i) {
             Navigator.pop(context);
             go(i);
@@ -175,7 +204,7 @@ class AdminShell extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(28, 16, 16, 10),
               child: Text(l.appTitle, style: Theme.of(context).textTheme.titleSmall),
             ),
-            for (final d in _dests)
+            for (final d in dests)
               NavigationDrawerDestination(
                 icon: Icon(d.icon),
                 selectedIcon: Icon(d.selectedIcon),
@@ -197,10 +226,10 @@ class AdminShell extends ConsumerWidget {
                 child: NavigationRail(
                   extended: width >= 1280,
                   labelType: width >= 1280 ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-                  selectedIndex: _index,
+                  selectedIndex: index,
                   onDestinationSelected: go,
                   destinations: [
-                    for (final d in _dests)
+                    for (final d in dests)
                       NavigationRailDestination(
                         icon: Icon(d.icon),
                         selectedIcon: Icon(d.selectedIcon),

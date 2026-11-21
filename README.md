@@ -38,8 +38,11 @@ exchange. There is no classic fallback.
 - 🖥️ **Workload Gateway.** A headless Linux client in gateway mode puts whole subnets (VPCs, server
   LANs) behind the PQ tunnel, with DNS diverted to the Edge and a fail-closed kill switch
   ([ADR-0015](docs/adr/0015-workload-gateway-mvp.md)).
-- 🏷️ **Multi-tenant Control Plane.** A per-tenant intermediate CA, 24h certificates with SPIFFE
-  IDs, signed policy snapshots, flow logs and an admin portal (Flutter web, served at `/admin/`).
+- 🏷️ **Multi-tenant Control Plane.**
+  - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
+  - signed policy snapshots and flow logs;
+  - a super-admin plus tenant-scoped admin tokens ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md));
+  - an admin portal (Flutter web, served at `/admin/`).
 - 🛡️ **Repeatable security suite.** A dedicated security-tester agent attacks the stack. Every
   attack is saved as a test that runs with `make sectest`.
 
@@ -99,8 +102,8 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, infrastructure, activity) | ✅ |
-| Tenant-scoped admin credentials (security finding ST-03) | 🚧 next |
+| Admin portal (tenants, users, policy, private apps, infrastructure, admin tokens, activity) | ✅ |
+| Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | SWG / CASB / DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
@@ -143,6 +146,17 @@ adb install clients/mobile/build/app/outputs/flutter-apk/app-debug.apk
 ```bash
 make portal          # Flutter web build, bundled (no CDN)
 # served by the Control Plane at https://<control-host>/admin/
+```
+</details>
+
+<details>
+<summary><b>Tenant admin tokens</b></summary>
+
+```bash
+# As the super-admin: give tenant acme its own admin (token written to a 0600 file)
+opensasectl admin-token add -tenant acme -name "acme ops" -valid-for 720h -token-out acme.token
+OPENSASE_ADMIN_TOKEN=$(cat acme.token) opensasectl whoami     # tenant admin of acme
+opensasectl admin-token list -tenant acme
 ```
 </details>
 
@@ -200,10 +214,9 @@ Coverage areas:
 - the offline cache;
 - container hardening.
 
-Latest run ([report](docs/security/sectest-2026-11-20.md)): **95 pass · 0 fail**. The run found
-10 issues, ST-01 to ST-10. All are fixed except **ST-03**: today one admin token covers every
-tenant, and tenant-scoped admin credentials are the next piece of work. The earlier review is in
-[`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md).
+Latest run ([report](docs/security/sectest-2026-11-20.md)): **101 pass · 0 fail · 0 known
+failures**. The run found 10 issues, ST-01 to ST-10, and all of them are fixed. The earlier review
+is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md).
 
 ## Repository layout
 
@@ -224,14 +237,14 @@ docs/           architecture, component specs, ADRs, security reports
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014 and 0015.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015 and 0016.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **Tenant-scoped admin** (ST-03): per-tenant admin credentials plus a super-admin.
-2. **SWG and CASB** on the Edge.
+1. **SWG and CASB** on the Edge.
+2. Admin audit log per actor, roles inside a tenant, OIDC sign-in for the portal.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).
 5. Workload Gateway for the cloud: GENEVE ingress, metadata-based identity, per-workload flows.

@@ -563,4 +563,56 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get msgSettingsSaved => 'Settings saved';
+
+  @override
+  String get navAdminTokens => 'Admin tokens';
+
+  @override
+  String get adminTokensCreate => 'New admin token';
+
+  @override
+  String get adminTokensCreateHelp =>
+      'An admin token administers this tenant only: users, policy, private apps, connectors, devices and activity. It cannot see other tenants, create tenants or manage Edges.';
+
+  @override
+  String get adminTokensNameHint => 'who or what uses it, e.g. ops team';
+
+  @override
+  String get adminTokensFieldDays => 'Valid for (days)';
+
+  @override
+  String get adminTokensFieldDaysHelp => 'From 1 to 365 days';
+
+  @override
+  String adminTokensCreated(String name) {
+    return 'Admin token $name created';
+  }
+
+  @override
+  String get adminTokensShownOnce => 'This token is shown only once. Copy it now and store it in a password manager.';
+
+  @override
+  String get adminTokensUseHelp =>
+      'Sign in to the portal with it, or use it with opensasectl (-token-file or \$OPENSASE_ADMIN_TOKEN).';
+
+  @override
+  String get adminTokensEmpty => 'No admin tokens for this tenant yet';
+
+  @override
+  String get adminTokensThisSession => '(this session)';
+
+  @override
+  String get adminTokensRevokeOwn => 'This is the token of the current session: you will be signed out.';
+
+  @override
+  String get revokeConfirmAdminToken => 'The token stops working at once. This cannot be undone.';
+
+  @override
+  String get fieldExpires => 'Expires';
+
+  @override
+  String get fieldLastUsed => 'Last used';
+
+  @override
+  String get statusExpired => 'Expired';
 }

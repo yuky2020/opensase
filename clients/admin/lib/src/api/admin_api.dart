@@ -115,6 +115,30 @@ class AdminApi {
   Future<void> revokeDevice(String tenant, String device) async =>
       _send('POST', '/v1/admin/tenants/${_seg(tenant)}/devices/${_seg(device)}/revoke');
 
+  // --- admin identity and tenant admin tokens (ST-03) ---
+
+  Future<AdminIdentity> whoami() async =>
+      AdminIdentity.fromJson(obj(await _send('GET', '/v1/admin/whoami'), 'identity'));
+
+  Future<List<AdminToken>> listAdminTokens(String tenant) async =>
+      _list(await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/admin-tokens'), AdminToken.fromJson);
+
+  /// Creates a tenant admin token; [validFor] null means the server default (90 days).
+  Future<AdminTokenCreated> createAdminToken(String tenant, String name, {Duration? validFor}) async =>
+      AdminTokenCreated.fromJson(
+        obj(
+          await _send(
+            'POST',
+            '/v1/admin/tenants/${_seg(tenant)}/admin-tokens',
+            body: {'name': name, if (validFor != null) 'validForSeconds': validFor.inSeconds},
+          ),
+          'adminToken',
+        ),
+      );
+
+  Future<void> revokeAdminToken(String tenant, String id) async =>
+      _send('POST', '/v1/admin/tenants/${_seg(tenant)}/admin-tokens/${_seg(id)}/revoke');
+
   // --- edges ---
 
   Future<List<AdminEdge>> listEdges() async => _list(await _send('GET', '/v1/admin/edges'), AdminEdge.fromJson);

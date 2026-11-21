@@ -567,4 +567,57 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get msgSettingsSaved => 'Impostazioni salvate';
+
+  @override
+  String get navAdminTokens => 'Token admin';
+
+  @override
+  String get adminTokensCreate => 'Nuovo token admin';
+
+  @override
+  String get adminTokensCreateHelp =>
+      'Un token admin amministra solo questo tenant: utenti, policy, app private, connector, dispositivi e attività. Non vede gli altri tenant, non crea tenant e non gestisce gli Edge.';
+
+  @override
+  String get adminTokensNameHint => 'chi o cosa lo usa, ad es. team ops';
+
+  @override
+  String get adminTokensFieldDays => 'Validità (giorni)';
+
+  @override
+  String get adminTokensFieldDaysHelp => 'Da 1 a 365 giorni';
+
+  @override
+  String adminTokensCreated(String name) {
+    return 'Token admin $name creato';
+  }
+
+  @override
+  String get adminTokensShownOnce =>
+      'Questo token viene mostrato una sola volta. Copialo ora e salvalo in un password manager.';
+
+  @override
+  String get adminTokensUseHelp =>
+      'Usalo per accedere al portale, oppure con opensasectl (-token-file o \$OPENSASE_ADMIN_TOKEN).';
+
+  @override
+  String get adminTokensEmpty => 'Nessun token admin per questo tenant';
+
+  @override
+  String get adminTokensThisSession => '(questa sessione)';
+
+  @override
+  String get adminTokensRevokeOwn => 'È il token della sessione corrente: verrai disconnesso.';
+
+  @override
+  String get revokeConfirmAdminToken => 'Il token smette di funzionare subito. L\'operazione non si può annullare.';
+
+  @override
+  String get fieldExpires => 'Scade';
+
+  @override
+  String get fieldLastUsed => 'Ultimo uso';
+
+  @override
+  String get statusExpired => 'Scaduto';
 }

@@ -19,3 +19,4 @@ Status values: Proposed, Accepted, Superseded. Each ADR gets its own file `NNNN-
 | 0013 | ZTNA private access via Connector | **Accepted** | Synthetic DNS + Edge broker + outbound connector over inverted HTTP/2 |
 | 0014 | Private Edge | **Accepted** (2026-11-20) | Edge bound to one tenant by the Control Plane, local state cache for offline start, local flow log |
 | 0015 | Workload Gateway, first slice | **Accepted** (2026-11-20) | Linux client in gateway mode: subnet forwarded into the PQ tunnel, NAT, DNS diverted to the Edge, fail closed |
+| 0016 | Tenant-scoped admin credentials | **Accepted** (2026-11-21) | Configured token = super-admin; per-tenant `osa_` tokens (hashed, expiring, revocable) scoped by one middleware; other tenants answer 404 (ST-03) |

@@ -2,12 +2,9 @@ package controlplane
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/pki"
@@ -19,6 +16,7 @@ type ctxKey int
 
 const (
 	keyPeer ctxKey = iota
+	keyAdmin
 )
 
 // peer is the authenticated identity of a request.
@@ -210,19 +208,4 @@ func (s *Server) requireDevice(next http.Handler) http.Handler {
 func (s *Server) requireEdge(next http.Handler) http.Handler { return s.requireRole(roleEdge)(next) }
 func (s *Server) requireDeviceOrEdge(next http.Handler) http.Handler {
 	return s.requireRole(roleDevice | roleEdge)(next)
-}
-
-// requireAdmin checks "Authorization: Bearer <token>" in constant time.
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	want := sha256.Sum256([]byte(s.cfg.AdminToken))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		got := sha256.Sum256([]byte(tok))
-		if !ok || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="opensase-admin"`)
-			writeErr(w, http.StatusUnauthorized, "admin token required")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

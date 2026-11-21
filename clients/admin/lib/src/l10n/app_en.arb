@@ -260,5 +260,28 @@
   "verdictAllow": "Allowed",
   "verdictBlock": "Blocked",
   "verdictOther": "Other",
-  "msgSettingsSaved": "Settings saved"
+  "msgSettingsSaved": "Settings saved",
+  "navAdminTokens": "Admin tokens",
+  "adminTokensCreate": "New admin token",
+  "adminTokensCreateHelp": "An admin token administers this tenant only: users, policy, private apps, connectors, devices and activity. It cannot see other tenants, create tenants or manage Edges.",
+  "adminTokensNameHint": "who or what uses it, e.g. ops team",
+  "adminTokensFieldDays": "Valid for (days)",
+  "adminTokensFieldDaysHelp": "From 1 to 365 days",
+  "adminTokensCreated": "Admin token {name} created",
+  "@adminTokensCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "adminTokensShownOnce": "This token is shown only once. Copy it now and store it in a password manager.",
+  "adminTokensUseHelp": "Sign in to the portal with it, or use it with opensasectl (-token-file or $OPENSASE_ADMIN_TOKEN).",
+  "adminTokensEmpty": "No admin tokens for this tenant yet",
+  "adminTokensThisSession": "(this session)",
+  "adminTokensRevokeOwn": "This is the token of the current session: you will be signed out.",
+  "revokeConfirmAdminToken": "The token stops working at once. This cannot be undone.",
+  "fieldExpires": "Expires",
+  "fieldLastUsed": "Last used",
+  "statusExpired": "Expired"
 }

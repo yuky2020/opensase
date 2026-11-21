@@ -377,8 +377,12 @@ func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "list tenants", err)
 		return
 	}
+	a := adminFrom(r)
 	out := make([]api.AdminTenant, 0, len(ts))
 	for _, t := range ts {
+		if !a.super() && t.ID != a.tenant {
+			continue
+		}
 		out = append(out, api.AdminTenant{ID: t.ID, Name: t.Name})
 	}
 	writeJSON(w, http.StatusOK, out)

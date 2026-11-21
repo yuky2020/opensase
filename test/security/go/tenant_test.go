@@ -1,6 +1,7 @@
 package securitytest
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,12 +229,102 @@ func TestTenantIsolation(t *testing.T) {
 		return want(do(c, "POST", f.cpURL+"/v1/decide?device=../"+f.devB1.id, decideBody("x.test"), nil), "decide with traversal id", http.StatusForbidden)
 	})
 
-	// Admin model: one global token administers every tenant (no tenant-scoped admin).
-	// Recorded as a design finding: tenant A's admin IS tenant B's admin.
-	check(t, "SEC-TEN-020", "admin credential is scoped to one tenant", "ST-03", func(t *testing.T) error {
-		r := f.admin("GET", "/tenants/"+f.tB+"/devices", nil)
-		if r.code == 200 {
-			return errors.New("the single admin token reads every tenant's devices, flows and policy (no per-tenant admin)")
+	// ST-03: a tenant admin token (osa_...) administers only its tenant. The super-admin
+	// mints one for tenant A; with it, tenant B must look nonexistent (404, the same answer as
+	// for a tenant that does not exist), super-admin routes must be refused (403), and the
+	// token must die at once when revoked. Positive control: the token works on tenant A.
+	tokA, err := decode[api.AdminTokenCreated](f.admin("POST", "/tenants/"+f.tA+"/admin-tokens", api.AdminTokenRequest{Name: "sectest " + f.run, ValidFor: 3600}))
+	asA := func(method, path string, body any) resp {
+		return do(f.anon(), method, f.cpURL+"/v1/admin"+path, body, map[string]string{"Authorization": "Bearer " + tokA.Token})
+	}
+	revoked := false
+	defer func() {
+		if err == nil && !revoked {
+			f.admin("POST", "/tenants/"+f.tA+"/admin-tokens/"+tokA.ID+"/revoke", nil)
+		}
+	}()
+	ready := func() error {
+		if err != nil {
+			return fmt.Errorf("create tenant admin token: %w", err)
+		}
+		if r := asA("GET", "/tenants/"+f.tA+"/devices", nil); r.code != http.StatusOK {
+			return fmt.Errorf("positive control: tenant A's token on tenant A: %s", r)
+		}
+		return nil
+	}
+	check(t, "SEC-TEN-020", "admin credential is scoped to one tenant", "", func(t *testing.T) error {
+		if e := ready(); e != nil {
+			return e
+		}
+		for _, p := range []string{"/devices", "/flows", "/policy", "/users", "/connectors", "/admin-tokens"} {
+			if r := asA("GET", "/tenants/"+f.tB+p, nil); r.code != http.StatusNotFound {
+				return fmt.Errorf("tenant A's admin reads tenant B %s: %s", p, r)
+			}
+		}
+		if r := asA("PUT", "/tenants/"+f.tB+"/policy", api.TenantPolicy{DefaultAction: policy.ActionAllow}); r.code != http.StatusNotFound {
+			return fmt.Errorf("tenant A's admin writes tenant B's policy: %s", r)
+		}
+		return nil
+	})
+	check(t, "SEC-TEN-021", "tenant admin cannot escalate (mint for B, create tenants, manage Edges)", "", func(t *testing.T) error {
+		if e := ready(); e != nil {
+			return e
+		}
+		if r := asA("POST", "/tenants/"+f.tB+"/admin-tokens", api.AdminTokenRequest{Name: "escalate"}); r.code != http.StatusNotFound {
+			return fmt.Errorf("token for tenant B minted by tenant A: %s", r)
+		}
+		for _, c := range []struct {
+			method, path string
+			body         any
+		}{
+			{"POST", "/tenants", api.AdminTenant{ID: "sectest-" + f.run + "-esc", Name: "x"}},
+			{"GET", "/edges", nil},
+			{"POST", "/edges", api.AdminEdge{ID: "sectest-" + f.run + "-esc", TenantID: f.tA}},
+			{"POST", "/edges/" + f.pubEdge + "/revoke", nil},
+		} {
+			if r := asA(c.method, c.path, c.body); r.code != http.StatusForbidden {
+				return fmt.Errorf("%s %s as tenant admin: %s", c.method, c.path, r)
+			}
+		}
+		ts, e := decode[[]api.AdminTenant](asA("GET", "/tenants", nil))
+		if e != nil || len(ts) != 1 || ts[0].ID != f.tA {
+			return fmt.Errorf("tenant list for tenant admin: %v: %w", ts, e)
+		}
+		return nil
+	})
+	check(t, "SEC-TEN-022", "admin token list carries no secrets", "", func(t *testing.T) error {
+		if e := ready(); e != nil {
+			return e
+		}
+		r := f.admin("GET", "/tenants/"+f.tA+"/admin-tokens", nil)
+		if r.code != http.StatusOK {
+			return fmt.Errorf("list: %s", r)
+		}
+		if bytes.Contains(r.body, []byte(tokA.Token)) || bytes.Contains(r.body, []byte(`"token"`)) {
+			return errors.New("the admin token list returns token secrets")
+		}
+		return nil
+	})
+	check(t, "SEC-TEN-023", "revoked tenant admin token is refused at once", "", func(t *testing.T) error {
+		if e := ready(); e != nil {
+			return e
+		}
+		if r := f.admin("POST", "/tenants/"+f.tA+"/admin-tokens/"+tokA.ID+"/revoke", nil); r.code != http.StatusNoContent {
+			return fmt.Errorf("revoke: %s", r)
+		}
+		revoked = true
+		if r := asA("GET", "/tenants/"+f.tA+"/devices", nil); r.code != http.StatusUnauthorized {
+			return fmt.Errorf("revoked token still works: %s", r)
+		}
+		return nil
+	})
+	check(t, "SEC-TEN-024", "empty or malformed bearer is not an admin", "", func(t *testing.T) error {
+		// Variants are reported by index so that the token never reaches the log.
+		for i, h := range []string{"Bearer ", "Bearer", "Bearer osa_", "Bearer  " + f.token, "bearer " + f.token} {
+			r := do(f.anon(), "GET", f.cpURL+"/v1/admin/tenants", nil, map[string]string{"Authorization": h})
+			if r.code != http.StatusUnauthorized {
+				return fmt.Errorf("authorization header variant #%d accepted: %d", i, r.code)
+			}
 		}
 		return nil
 	})

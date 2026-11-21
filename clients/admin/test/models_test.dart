@@ -64,6 +64,19 @@ void roundTrip<T>(String name, String src, T Function(Json) from, Json Function(
 
 void main() {
   roundTrip('AdminTenant', '{"id":"acme","name":"Acme"}', AdminTenant.fromJson, (v) => v.toJson());
+  roundTrip(
+    'AdminIdentity',
+    '{"role":"tenant","tenantId":"acme","tokenId":"t1"}',
+    AdminIdentity.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip('AdminIdentity super', '{"role":"super"}', AdminIdentity.fromJson, (v) => v.toJson());
+  roundTrip(
+    'AdminToken',
+    '{"id":"t1","tenantId":"acme","name":"ops","createdAt":"2026-11-20T10:00:00Z","expiresAt":"2027-02-18T10:00:00Z","revoked":false,"lastUsed":"2026-11-21T08:30:00Z"}',
+    AdminToken.fromJson,
+    (v) => v.toJson(),
+  );
   roundTrip('AdminUser', '{"id":"u1","email":"a@b.c","name":"A"}', AdminUser.fromJson, (v) => v.toJson());
   roundTrip(
     'ProvisioningKeyRequest',

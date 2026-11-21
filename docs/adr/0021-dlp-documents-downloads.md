@@ -20,7 +20,9 @@ SaaS app.
 ### Text extraction (`pkg/dlp.Extract`, `pkg/dlp.Decode`)
 
 - **Content-Encoding** `gzip`, `x-gzip` and `deflate` (zlib or raw) are decoded before scanning.
-  `br` and `zstd` are not in the Go standard library and stay unscanned.
+  `br` and `zstd` were added later (issue #14), with `github.com/andybalholm/brotli` and
+  `github.com/klauspost/compress/zstd` (window capped at 8 MiB). The same 32 MiB output bound
+  applies.
 - **Containers are recognised by their magic bytes**, not by the declared type:
   - **ZIP** (and so `.docx`, `.xlsx`, `.pptx`, `.odt`, `.jar`): every entry is read. XML parts
     are reduced to their text. Other entries are extracted again if they are containers
@@ -60,10 +62,11 @@ SaaS app.
 ## Consequences
 
 - PDF extraction is best effort. Text drawn with custom-encoded fonts (CID fonts, common in
-  generated PDFs) shows glyph IDs, not characters, and is missed. Scanned documents need OCR,
-  which is not built.
-- Legacy Office formats (`.doc`, `.xls`, OLE2) are not parsed. Their text is often stored as
-  UTF-16, which the detectors do not match, so they are effectively unscanned.
+  generated PDFs) shows glyph IDs, not characters, and is missed. Scanned documents need OCR.
+  ADR-0024 and ADR-0026 add both.
+- Legacy Office formats (`.doc`, `.xls`, OLE2) were not parsed by this slice. Their text is
+  often stored as UTF-16. ADR-0024 adds them.
 - Download scanning holds file downloads until they are read (up to the larger of the DLP and
   malware limits) and adds the extraction time.
-- Not covered yet: OCR, OLE2 and RTF, exact data match and fingerprints, archive passwords.
+- Not covered by this slice: OCR, OLE2 and RTF (ADR-0024), exact data match and fingerprints,
+  archive passwords.

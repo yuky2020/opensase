@@ -3,8 +3,10 @@ module github.com/yuky2020/opensase
 go 1.27.3
 
 require (
+	github.com/andybalholm/brotli v1.3.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
+	github.com/klauspost/compress v1.20.5
 	github.com/miekg/dns v1.1.73
 	golang.org/x/net v0.63.0
 	golang.org/x/sync v0.25.0

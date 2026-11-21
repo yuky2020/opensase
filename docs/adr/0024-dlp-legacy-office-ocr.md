@@ -74,8 +74,7 @@ Robustness:
   applies to.
 - OCR quality is Tesseract's. Clean printed text is read well. Handwriting, low resolution and
   heavy noise are not.
-- Images embedded in PDF files are not extracted yet. Only the PDF's own text is read
-  (ADR-0021).
+- Images embedded in PDF files were not extracted by this slice; ADR-0026 adds them.
 - The OLE2 approach reads text runs, not document structure. Text split across Word's piece
   table fragments can be split in the output. Card numbers still match because of the
   group-tolerant detector, but a pattern spanning a fragment boundary may not.

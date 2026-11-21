@@ -188,7 +188,8 @@ flowchart LR
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](adr/0022-web-categories-ut1.md)) | ✅ |
 | DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
 | SafeSearch for Google, YouTube, Bing and DuckDuckGo, with bypass protection ([ADR-0025](adr/0025-safesearch.md)) | ✅ |
-| Images inside PDF for OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP on scanned PDFs (OCR) and PDFs with CID fonts ([ADR-0026](adr/0026-pdf-structure-cid-images.md)); brotli and zstd bodies | ✅ |
+| Exact data match, roles inside a tenant, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

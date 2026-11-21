@@ -139,7 +139,8 @@ flowchart LR
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](docs/adr/0022-web-categories-ut1.md)) | ✅ |
 | DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](docs/adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
 | SafeSearch for Google, YouTube, Bing and DuckDuckGo, with bypass protection ([ADR-0025](docs/adr/0025-safesearch.md)) | ✅ |
-| Images inside PDF for OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP on scanned PDFs (OCR) and PDFs with CID fonts ([ADR-0026](docs/adr/0026-pdf-structure-cid-images.md)); brotli and zstd bodies | ✅ |
+| Exact data match, roles inside a tenant, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -278,7 +279,7 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024 and 0025.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025 and 0026.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
@@ -286,7 +287,7 @@ Everything below is also published as a searchable site at
 
 Planned work and known limitations are tracked as [GitHub issues](https://github.com/yuky2020/opensase/issues). The main lines:
 
-1. **SWG and CASB, next slice:** images inside PDF files for OCR ([#12](https://github.com/yuky2020/opensase/issues/12)), text of PDF files with CID fonts ([#13](https://github.com/yuky2020/opensase/issues/13)).
+1. **DLP, next slice:** exact data match and fingerprints ([#15](https://github.com/yuky2020/opensase/issues/15)).
 2. Roles inside a tenant ([#16](https://github.com/yuky2020/opensase/issues/16)), OIDC sign-in for the portal ([#17](https://github.com/yuky2020/opensase/issues/17)), and audit shipping to an append-only store ([#18](https://github.com/yuky2020/opensase/issues/18)).
 3. Control Plane `GET /v1/admin/info` and policy ETags ([#19](https://github.com/yuky2020/opensase/issues/19)).
 4. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).

@@ -7,6 +7,9 @@ import (
 	"compress/zlib"
 	"fmt"
 	"testing"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 func zipOf(t *testing.T, files map[string][]byte) []byte {
@@ -122,8 +125,30 @@ func TestDecode(t *testing.T) {
 	if out, ok := Decode("deflate", z.Bytes()); !ok || string(out) != "hi" {
 		t.Fatalf("deflate: %q %v", out, ok)
 	}
-	if _, ok := Decode("br", []byte("x")); ok {
-		t.Fatal("br decoded")
+	var br bytes.Buffer
+	bw := brotli.NewWriter(&br)
+	_, _ = bw.Write([]byte("hi"))
+	_ = bw.Close()
+	if out, ok := Decode("br", br.Bytes()); !ok || string(out) != "hi" {
+		t.Fatalf("br: %q %v", out, ok)
+	}
+	zw, _ := zstd.NewWriter(nil)
+	if out, ok := Decode("zstd", zw.EncodeAll([]byte("hi"), nil)); !ok || string(out) != "hi" {
+		t.Fatalf("zstd: %q %v", out, ok)
+	}
+	// Decompression bombs stay bounded.
+	bw2 := new(bytes.Buffer)
+	bb := brotli.NewWriterLevel(bw2, 1)
+	_, _ = bb.Write(make([]byte, MaxExtract+1))
+	_ = bb.Close()
+	if _, ok := Decode("br", bw2.Bytes()); ok {
+		t.Fatal("brotli bomb decoded")
+	}
+	if _, ok := Decode("zstd", zw.EncodeAll(make([]byte, MaxExtract+1), nil)); ok {
+		t.Fatal("zstd bomb decoded")
+	}
+	if _, ok := Decode("compress", []byte("x")); ok {
+		t.Fatal("unknown encoding decoded")
 	}
 	if _, ok := Decode("gzip", gz(make([]byte, MaxExtract+1))); ok {
 		t.Fatal("oversized gzip decoded")

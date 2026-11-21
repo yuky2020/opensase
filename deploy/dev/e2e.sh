@@ -327,7 +327,7 @@ code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_co
 case "$code" in 000 | 403) ko "DLP: clean upload refused or failed (HTTP $code)" ;; *) ok "DLP: clean upload reaches the server (HTTP $code)" ;; esac
 # DLP on images and legacy Office (ADR-0024): the card number drawn in a PNG (read by the OCR
 # service) and stored in a legacy .doc.
-for f in card.png card.doc; do
+for f in card.png card.doc card-cid.pdf card-scan.pdf; do
   docker compose --profile e2e cp "../../test/security/fixtures/$f" "client:/tmp/$f" >/dev/null 2>&1
   out="$(cexec curl -s -m 60 --cacert /tmp/inspect.crt -F "file=@/tmp/$f" https://example.com/ 2>/dev/null || true)"
   case "$out" in *"rule dlp:e2e-pci)"*) ok "DLP: $f with a card number refused (text read, not unscanned)" ;; *) ko "DLP: $f not refused by dlp:e2e-pci" ;; esac

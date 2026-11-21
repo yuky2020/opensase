@@ -19,6 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/packet"
 	"github.com/yuky2020/opensase/pkg/policy"
@@ -646,5 +649,26 @@ func TestInspectionDLPImagesAndLegacy(t *testing.T) {
 	z.e.cfg.OCRURL = "http://127.0.0.1:1"
 	if code, _ := post(t, c, "", string(png)); code != http.StatusForbidden || !z.hasRecord("dlp:pci:unscanned") {
 		t.Fatalf("OCR down: %d", code)
+	}
+}
+
+// TestInspectionDLPBrotliZstd (issue #14): br and zstd bodies are decoded and scanned.
+func TestInspectionDLPBrotliZstd(t *testing.T) {
+	web := testWeb
+	web.DLP = []policy.DLPRule{{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock}}
+	z := newInspectFixture(t, web)
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	var br bytes.Buffer
+	bw := brotli.NewWriter(&br)
+	_, _ = bw.Write([]byte("pan 4111 1111 1111 1111"))
+	_ = bw.Close()
+	zw, _ := zstd.NewWriter(nil)
+	for name, up := range map[string]struct{ hdr, body string }{
+		"br":   {"Content-Encoding: br\r\n", br.String()},
+		"zstd": {"Content-Encoding: zstd\r\n", string(zw.EncodeAll([]byte("pan 4111 1111 1111 1111"), nil))},
+	} {
+		if code, body := post(t, c, up.hdr, up.body); code != http.StatusForbidden || !strings.Contains(body, "rule dlp:pci)") {
+			t.Errorf("%s: %d %q", name, code, body)
+		}
 	}
 }

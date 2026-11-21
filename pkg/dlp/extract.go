@@ -10,6 +10,9 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // Text extraction (ADR-0021). Detectors run on text, but uploads and downloads are often
@@ -70,8 +73,8 @@ func IsImage(b []byte) bool {
 	return bytes.HasPrefix(b, []byte("RIFF")) && len(b) >= 12 && string(b[8:12]) == "WEBP"
 }
 
-// Decode undoes a Content-Encoding (gzip, x-gzip, deflate) within MaxExtract. ok is false
-// for an unsupported encoding (br, zstd) or damaged or oversized data.
+// Decode undoes a Content-Encoding (gzip, x-gzip, deflate, br, zstd) within MaxExtract. ok
+// is false for an unsupported encoding or damaged or oversized data.
 func Decode(encoding string, b []byte) ([]byte, bool) {
 	switch strings.ToLower(strings.TrimSpace(encoding)) {
 	case "", "identity":
@@ -90,6 +93,16 @@ func Decode(encoding string, b []byte) ([]byte, bool) {
 			}
 		}
 		return readBounded(flate.NewReader(bytes.NewReader(b)), MaxExtract)
+	case "br":
+		return readBounded(brotli.NewReader(bytes.NewReader(b)), MaxExtract)
+	case "zstd":
+		// The window is capped so that a hostile frame cannot ask for a huge allocation.
+		d, err := zstd.NewReader(bytes.NewReader(b), zstd.WithDecoderMaxWindow(8<<20), zstd.WithDecoderMaxMemory(MaxExtract), zstd.WithDecoderConcurrency(1))
+		if err != nil {
+			return nil, false
+		}
+		defer d.Close()
+		return readBounded(d, MaxExtract)
 	}
 	return nil, false
 }
@@ -150,7 +163,9 @@ func (x *extractor) add(b []byte, depth int) {
 		}
 		x.add(out, depth+1)
 	case bytes.HasPrefix(b, []byte("%PDF-")):
-		x.pdf(b)
+		if !x.pdfDoc(b) {
+			x.pdf(b)
+		}
 	case bytes.HasPrefix(b, oleMagic):
 		// Legacy Office (.doc, .xls, .ppt, .msg): the text runs of every stream (ADR-0024).
 		streams, complete, err := oleStreams(b, x.budget)

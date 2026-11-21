@@ -8,4 +8,8 @@ inside containers. Each one holds the public test card number 4111 1111 1111 111
 - `card-nested.zip`: a ZIP inside a ZIP;
 - `card.doc`: a legacy Compound File (OLE2) document, the number stored as UTF-16LE
   (regenerate with `OPENSASE_WRITE_FIXTURES=$PWD/test/security/fixtures go test -run TestWriteLegacyFixture ./pkg/dlp`);
-- `card.png`: the number drawn as an image, for OCR (ADR-0024).
+- `card.png`: the number drawn as an image, for OCR (ADR-0024);
+- `card-cid.pdf`: the number drawn with a CID font through its ToUnicode CMap, the font
+  dictionary in a compressed object stream (issue #13);
+- `card-scan.pdf`: a "scanned" page, `card.png` as a JPEG image XObject, for OCR (issue #12).
+  Regenerate both with `OPENSASE_WRITE_FIXTURES=$PWD/test/security/fixtures go test -run TestWritePDFFixtures ./pkg/dlp`.

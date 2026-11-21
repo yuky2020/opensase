@@ -10,6 +10,7 @@ import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
 import 'package:opensase_admin/src/ui/audit_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
 import 'package:opensase_admin/src/ui/saas_screen.dart';
+import 'package:opensase_admin/src/ui/web_screen.dart';
 import 'package:opensase_admin/src/ui/tenants_screen.dart';
 import 'package:opensase_admin/src/ui/users_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -241,5 +242,42 @@ void main() {
       'blockCategories': ['ai-assistant'],
       'allowApps': ['claude'],
     });
+  });
+
+  testWidgets('Web inspection: rules and headers are kept, inspection is turned on and saved', (t) async {
+    Object? put;
+    final web = {
+      'bypass': ['*.bank.example'],
+      'rules': [
+        {
+          'id': 'no-admin',
+          'domains': ['app.example'],
+          'action': 'block',
+          'pathPrefixes': ['/admin'],
+        },
+      ],
+      'headers': [
+        {
+          'domains': ['*.saas.example'],
+          'name': 'X-Allowed-Tenant',
+          'value': 'acme',
+        },
+      ],
+    };
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/tenants/acme/policy', {'defaultAction': 'allow', 'decideDefault': 'allow', 'web': web});
+    cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) {
+      put = jsonDecode(r.body);
+      return http204();
+    };
+    await _pump(t, cp, const WebScreen());
+    expect(find.byKey(const Key('web_rule_no-admin')), findsOneWidget);
+    expect(find.text('X-Allowed-Tenant: acme'), findsOneWidget);
+    await t.tap(find.byKey(const Key('web_inspect')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('web_save')));
+    await t.pumpAndSettle();
+    expect((put! as Map)['web'], {'inspect': true, ...web});
   });
 }

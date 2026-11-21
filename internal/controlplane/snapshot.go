@@ -135,7 +135,7 @@ func validateTenantPolicy(tp api.TenantPolicy) error {
 	}
 	fw, dns := MergeLayers(tp, nil)
 	_, err := policy.Compile(&policy.Snapshot{SchemaVersion: policy.CurrentSchemaVersion, TenantID: "t", DeviceID: "d", Firewall: fw, DNS: dns,
-		PrivateApps: stripUsers(tp.PrivateApps)})
+		PrivateApps: stripUsers(tp.PrivateApps), Web: tp.Web})
 	return remapField(err, 0)
 }
 
@@ -305,6 +305,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 				Firewall:      fw,
 				DNS:           dns,
 				PrivateApps:   apps,
+				Web:           tp.Web,
 			}
 			env, err := policy.Sign(snap, s.cfg.SigningKeyID, s.cfg.SigningKey)
 			if err != nil {

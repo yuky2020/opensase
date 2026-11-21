@@ -13,8 +13,13 @@ decryption.
 - **Discovery:** the Control Plane tags each flow record with its SaaS app. The portal's "SaaS
   apps" page shows the apps seen and has the block switches.
 
-Not built yet: API-mode CASB (OAuth connectors to SaaS tenants), tenant restrictions (need
-interception) and activity-level controls such as upload or share.
+With TLS inspection (ADR-0018) a tenant can also:
+- restrict SaaS logins to its own account, with request headers the Edge sets on every request
+  to the app's domains (`web.headers`);
+- block activities that map to a path or a method, such as uploads (`web.rules`).
+
+Not built yet: API-mode CASB (OAuth connectors to SaaS tenants) and app-aware activity controls
+(share, download) beyond paths and methods.
 
 ## Responsibilities
 - Maintain an open, community-driven SaaS application catalog indexing signatures, domains, risk profiles, and compliance certifications.

@@ -15,6 +15,7 @@ EDGE_IP="100.64.0.1"
 EDGE_IP6="fd7a:5a5e::1"
 SYNTH="100.96.0.0/12"                  # synthetic PrivateApp addresses (ADR-0013)
 ZTNA_PORT="${EDGE_ZTNA_PORT:-15001}"  # must match -ztna-listen
+INSPECT_PORT="${EDGE_INSPECT_PORT:-}"  # TLS inspection (ADR-0018); empty = off; adds -inspect-listen
 ALLOW_PRIVATE="${EDGE_ALLOW_PRIVATE:-0}"
 EDGE_UID="${EDGE_UID:-1000}"
 EDGE_GID="${EDGE_GID:-1000}"
@@ -36,6 +37,13 @@ iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-m
 # process checks the same rule at startup (internal/edge redirectZTNA).
 iptables -t nat -C PREROUTING -i "$TUN" -d "$SYNTH" -p tcp -j REDIRECT --to-ports "$ZTNA_PORT" 2>/dev/null ||
   iptables -t nat -A PREROUTING -i "$TUN" -d "$SYNTH" -p tcp -j REDIRECT --to-ports "$ZTNA_PORT"
+
+# TLS inspection (ADR-0018): tunnel TCP to ports 80/443 goes to the inspection listener.
+# After the ZTNA rule, and synthetic addresses are excluded anyway.
+if [ -n "$INSPECT_PORT" ]; then
+  iptables -t nat -C PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports "$INSPECT_PORT" 2>/dev/null ||
+    iptables -t nat -A PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports "$INSPECT_PORT"
+fi
 
 # FORWARD: default drop, explicit accepts.
 iptables -P FORWARD DROP
@@ -66,6 +74,11 @@ iptables -A OSASE_IN -d "$EDGE_IP" -p tcp --dport 53 -j ACCEPT
 iptables -A OSASE_IN -d "$EDGE_IP" -p icmp -j ACCEPT
 # Only connections REDIRECTed from the synthetic prefix reach the broker port, never direct ones.
 iptables -A OSASE_IN -p tcp --dport "$ZTNA_PORT" -m conntrack --ctstate DNAT --ctorigdst "$SYNTH" -j ACCEPT
+if [ -n "$INSPECT_PORT" ]; then
+  # Only connections REDIRECTed from ports 80/443, never direct ones to the listener.
+  iptables -A OSASE_IN -p tcp --dport "$INSPECT_PORT" -m conntrack --ctstate DNAT --ctorigdstport 80 -j ACCEPT
+  iptables -A OSASE_IN -p tcp --dport "$INSPECT_PORT" -m conntrack --ctstate DNAT --ctorigdstport 443 -j ACCEPT
+fi
 iptables -A OSASE_IN -j DROP
 
 # --- IPv6 (no IPv6 NAT in dev: nothing is forwarded) ---
@@ -82,11 +95,14 @@ else
   log "ip6tables unavailable; IPv6 kernel rules skipped"
 fi
 
-log "NAT $POOL -> $WAN, FORWARD default DROP, tunnel INPUT limited to DNS/ICMP and ZTNA $SYNTH -> :$ZTNA_PORT (allow-private=$ALLOW_PRIVATE)"
+log "NAT $POOL -> $WAN, FORWARD default DROP, tunnel INPUT limited to DNS/ICMP and ZTNA $SYNTH -> :$ZTNA_PORT, inspection :${INSPECT_PORT:-off} (allow-private=$ALLOW_PRIVATE)"
 
 set -- /usr/local/bin/edge "$@"
 if [ "$ALLOW_PRIVATE" = 1 ]; then
   set -- "$@" -allow-private
+fi
+if [ -n "$INSPECT_PORT" ]; then
+  set -- "$@" -inspect-listen "0.0.0.0:$INSPECT_PORT"
 fi
 
 if [ "$EDGE_UID" = 0 ]; then

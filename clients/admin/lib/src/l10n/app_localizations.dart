@@ -1375,6 +1375,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Code hosting and paste sites'**
   String get saasCatCodeHosting;
+
+  /// No description provided for @navWeb.
+  ///
+  /// In en, this message translates to:
+  /// **'Web inspection'**
+  String get navWeb;
+
+  /// No description provided for @webHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrypt the tenant\'s HTTPS at the Edge to enforce URL rules and set request headers. Devices must trust the tenant\'s inspection root.'**
+  String get webHelp;
+
+  /// No description provided for @webInspect.
+  ///
+  /// In en, this message translates to:
+  /// **'Inspect TLS'**
+  String get webInspect;
+
+  /// No description provided for @webInspectHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The Edge terminates TLS with a certificate from the tenant\'s inspection root and checks every request. QUIC and IPv6 web traffic of these devices is refused, so browsers use inspected TCP.'**
+  String get webInspectHelp;
+
+  /// No description provided for @webBypass.
+  ///
+  /// In en, this message translates to:
+  /// **'Never decrypt'**
+  String get webBypass;
+
+  /// No description provided for @webBypassHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'One domain per line (*.bank.example). For certificate-pinned apps, banking and health sites.'**
+  String get webBypassHelp;
+
+  /// No description provided for @webRules.
+  ///
+  /// In en, this message translates to:
+  /// **'URL rules'**
+  String get webRules;
+
+  /// No description provided for @webRulesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Matched in order on each request; the first match decides, no match allows. Paths are normalized and case-insensitive.'**
+  String get webRulesHelp;
+
+  /// No description provided for @webAddRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Add rule'**
+  String get webAddRule;
+
+  /// No description provided for @webDomains.
+  ///
+  /// In en, this message translates to:
+  /// **'Domains (comma-separated)'**
+  String get webDomains;
+
+  /// No description provided for @webPaths.
+  ///
+  /// In en, this message translates to:
+  /// **'Path prefixes (empty = every path)'**
+  String get webPaths;
+
+  /// No description provided for @webPathsInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Each path must start with /'**
+  String get webPathsInvalid;
+
+  /// No description provided for @webMethods.
+  ///
+  /// In en, this message translates to:
+  /// **'Methods (empty = every method)'**
+  String get webMethods;
+
+  /// No description provided for @webAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Action (allow or block)'**
+  String get webAction;
+
+  /// No description provided for @webHeaders.
+  ///
+  /// In en, this message translates to:
+  /// **'Request headers'**
+  String get webHeaders;
+
+  /// No description provided for @webHeadersHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Set on every request to a matching host, replacing what the client sent, for example to restrict a SaaS login to the company\'s own account.'**
+  String get webHeadersHelp;
+
+  /// No description provided for @webAddHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Add header'**
+  String get webAddHeader;
+
+  /// No description provided for @webHeaderName.
+  ///
+  /// In en, this message translates to:
+  /// **'Header name'**
+  String get webHeaderName;
+
+  /// No description provided for @webHeaderValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Value'**
+  String get webHeaderValue;
+
+  /// No description provided for @webRootButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Inspection root'**
+  String get webRootButton;
+
+  /// No description provided for @webRootTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tenant inspection root'**
+  String get webRootTitle;
+
+  /// No description provided for @webRootHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Install this certificate as a trusted root on the tenant\'s devices (MDM, system store). Devices that do not trust it cannot open inspected sites.'**
+  String get webRootHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

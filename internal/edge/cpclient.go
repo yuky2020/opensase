@@ -27,6 +27,7 @@ type controlPlane interface {
 	Decide(ctx context.Context, deviceID string, f policy.Flow) (api.DecideResponse, error)
 	PostFlows(ctx context.Context, recs []api.FlowRecord) error
 	ReportSessions(ctx context.Context, s api.EdgeSessions) error
+	InspectionCA(ctx context.Context, req api.InspectionCARequest) (api.InspectionCAResponse, error)
 }
 
 // cpClient talks to the Control Plane over PQ TLS with the edge certificate.
@@ -108,6 +109,13 @@ func (c *cpClient) PostFlows(ctx context.Context, recs []api.FlowRecord) error {
 // broker connection (api.EdgeSessions).
 func (c *cpClient) ReportSessions(ctx context.Context, s api.EdgeSessions) error {
 	return c.do(ctx, http.MethodPost, "/v1/edge/sessions", s, nil)
+}
+
+// InspectionCA asks for the Edge's inspection intermediate of one tenant (ADR-0018).
+func (c *cpClient) InspectionCA(ctx context.Context, req api.InspectionCARequest) (api.InspectionCAResponse, error) {
+	var out api.InspectionCAResponse
+	err := c.do(ctx, http.MethodPost, "/v1/edge/inspection-ca", req, &out)
+	return out, err
 }
 
 // trust is the material from the PKI bundle: the pool that verifies device certificates and

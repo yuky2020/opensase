@@ -88,6 +88,8 @@ type Compiled struct {
 
 	privateApps []compiledPrivateApp
 	appIndex    appIndex // PrivateApp domain pattern -> indexes into privateApps
+
+	web *compiledWeb // ADR-0018; nil when the snapshot has no web policy
 }
 
 // compiledPrivateApp is a PrivateApp with normalized ports and a precomputed rule ID.
@@ -250,6 +252,13 @@ func Compile(s *Snapshot) (*Compiled, error) {
 	}
 	if err := c.compilePrivateApps(s.PrivateApps); err != nil {
 		return nil, err
+	}
+	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 {
+		w, err := compileWeb(&s.Web)
+		if err != nil {
+			return nil, err
+		}
+		c.web = w
 	}
 	return c, nil
 }

@@ -68,6 +68,28 @@ class AdminApi {
     return jsonDecode(text);
   }
 
+  /// GET of a non-JSON body (PEM).
+  Future<String> _getText(String path) async {
+    final req = http.Request('GET', _uri(path, null))
+      ..headers.addAll({..._headers, 'Accept': 'application/x-pem-file'});
+    final resp = await http.Response.fromStream(await client.send(req));
+    final text = utf8.decode(resp.bodyBytes, allowMalformed: true);
+    if (resp.statusCode < 200 || resp.statusCode > 299) {
+      var msg = text.trim();
+      try {
+        final j = jsonDecode(text);
+        if (j is Map && j['error'] is String) msg = j['error'] as String;
+      } on FormatException {
+        // Plain-text error body.
+      }
+      throw ApiException(resp.statusCode, msg.isEmpty ? (resp.reasonPhrase ?? 'request failed') : msg);
+    }
+    return text;
+  }
+
+  /// The tenant's web inspection root (PEM, ADR-0018), to install on its devices.
+  Future<String> inspectionRoot(String tenant) => _getText('/v1/admin/tenants/${_seg(tenant)}/inspection-ca');
+
   static List<T> _list<T>(Object? v, T Function(Json) f) {
     if (v == null) return <T>[];
     if (v is! List) throw const FormatException('expected a JSON array');

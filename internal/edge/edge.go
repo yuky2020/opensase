@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,7 +65,12 @@ type Config struct {
 	TenantID    string
 	StateDir    string
 	FlowLogPath string
-	Logger      *slog.Logger
+	// TLS inspection (ADR-0018): InspectListen receives the tunnel TCP to ports 80 and 443
+	// that the kernel REDIRECTs to it ("off", the default, disables inspection on this Edge).
+	// InspectRoots verifies upstream servers (nil = the system roots).
+	InspectListen string
+	InspectRoots  *x509.CertPool
+	Logger        *slog.Logger
 }
 
 func (c *Config) defaults() {
@@ -101,6 +107,9 @@ func (c *Config) defaults() {
 	if c.BrokerListen == "" {
 		c.BrokerListen = ":8444"
 	}
+	if c.InspectListen == "" {
+		c.InspectListen = listenOff
+	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()
 	}
@@ -128,6 +137,7 @@ type Edge struct {
 	guard *guard
 	synth *synthMap     // synthetic PrivateApp addresses (ADR-0013)
 	hub   *connectorHub // live Connector broker connections
+	insp  *inspector    // TLS inspection (ADR-0018); nil when InspectListen is off
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -166,6 +176,9 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		synth:    newSynthMap(SyntheticPrefix, maxSynthEnts, synthIdle),
 		hub:      newConnectorHub(cfg.Logger),
 		origDst:  originalDst,
+	}
+	if cfg.InspectListen != listenOff {
+		e.insp = newInspector(cp, cfg.InspectRoots)
 	}
 	copy(e.wgPub[:], k.PublicKey().Bytes())
 	e.dec = newDecider(ctx, cp, cfg.Logger)
@@ -269,6 +282,9 @@ func (e *Edge) run(ctx context.Context) error {
 	if err := e.startZTNA(ctx); err != nil {
 		return err
 	}
+	if err := e.startInspect(ctx); err != nil {
+		return err
+	}
 
 	// 5. Background loops.
 	if e.flows.local != nil {
@@ -332,7 +348,10 @@ func (e *Edge) configureInterface(ctx context.Context, name string) error {
 	} else {
 		e.ipv6 = true
 	}
-	return e.redirectZTNA(ctx, name)
+	if err := e.redirectZTNA(ctx, name); err != nil {
+		return err
+	}
+	return e.redirectInspect(ctx, name)
 }
 
 // redirectZTNA installs the REDIRECT of tunnel TCP to SyntheticPrefix to the broker
@@ -346,7 +365,27 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 	if err != nil {
 		return fmt.Errorf("edge: -ztna-listen %q: %w", e.cfg.ZTNAListen, err)
 	}
-	rule := []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port}
+	e.ensureRedirect(ctx, "ztna", []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port})
+	return nil
+}
+
+// redirectInspect installs the REDIRECT of tunnel TCP to ports 80 and 443 to the inspection
+// listener (ADR-0018). It comes after the ZTNA rule, and excludes synthetic addresses anyway.
+func (e *Edge) redirectInspect(ctx context.Context, tunName string) error {
+	if e.cfg.InspectListen == listenOff {
+		return nil
+	}
+	_, port, err := net.SplitHostPort(e.cfg.InspectListen)
+	if err != nil {
+		return fmt.Errorf("edge: -inspect-listen %q: %w", e.cfg.InspectListen, err)
+	}
+	e.ensureRedirect(ctx, "inspection", []string{"PREROUTING", "-i", tunName, "!", "-d", SyntheticPrefix.String(), "-p", "tcp", "-m", "multiport", "--dports", "80,443", "-j", "REDIRECT", "--to-ports", port})
+	return nil
+}
+
+// ensureRedirect checks a nat rule and appends it if missing. Failure is logged, not fatal:
+// the entrypoint may have installed it with privileges the Edge no longer has.
+func (e *Edge) ensureRedirect(ctx context.Context, what string, rule []string) {
 	ipt := func(op string) error {
 		args := append([]string{"-w", "5", "-t", "nat", op}, rule...)
 		out, err := exec.CommandContext(ctx, "iptables", args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args from Edge config and constants
@@ -356,14 +395,27 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 		return nil
 	}
 	if ipt("-C") == nil {
-		e.log.Info("ztna redirect present", "prefix", SyntheticPrefix, "port", port)
-		return nil
+		e.log.Info(what+" redirect present", "rule", strings.Join(rule, " "))
+		return
 	}
 	if err := ipt("-A"); err != nil {
-		e.log.Warn("ztna redirect not installed; private apps unreachable unless the entrypoint added it", "err", err)
+		e.log.Warn(what+" redirect not installed; unreachable unless the entrypoint added it", "err", err)
+		return
+	}
+	e.log.Info(what+" redirect installed", "rule", strings.Join(rule, " "))
+}
+
+// startInspect starts the TLS inspection listener (ADR-0018).
+func (e *Edge) startInspect(ctx context.Context) error {
+	if e.insp == nil {
 		return nil
 	}
-	e.log.Info("ztna redirect installed", "prefix", SyntheticPrefix, "port", port)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", e.cfg.InspectListen)
+	if err != nil {
+		return fmt.Errorf("edge: inspection listener: %w", err)
+	}
+	go e.serveInspect(ctx, ln)
+	e.log.Info("web inspection listening", "addr", e.cfg.InspectListen)
 	return nil
 }
 

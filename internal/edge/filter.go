@@ -256,6 +256,13 @@ func (f *Filter) outbound(pkt []byte) bool {
 		}
 		dec = cached
 	}
+	// Inspection (ADR-0018): web flows that would escape the inspection path are refused,
+	// so the browser falls back to TCP over IPv4.
+	if dec.Action == policy.ActionAllow && f.e.insp != nil {
+		if rule := webBlockRule(c, p.Protocol, dst, p.DstPort); rule != "" {
+			dec = policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: LayerWeb, Log: true}
+		}
+	}
 	cn := &conn{deviceID: d.id, proto: p.Protocol, flow: flow, decision: dec, start: now}
 	if dec.Action != policy.ActionAllow {
 		cn.blocked.Store(true)

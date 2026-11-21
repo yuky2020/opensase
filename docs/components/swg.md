@@ -5,15 +5,24 @@ The Secure Web Gateway (SWG) inspects, filters, and secures outbound internet tr
 
 ## Current implementation
 
-The first slice is in place (ADR-0017). It works without decryption:
-- the Edge reads the hostname of every allowed TCP flow from the TLS SNI or the HTTP Host;
-- it re-applies the DNS policy, the SaaS lists and the firewall domain rules to that hostname,
-  so names reached without the Edge resolver are still enforced;
-- blocks are recorded with layer `web`.
+Two slices are in place.
 
-Not built yet: TLS interception, URL paths and categories beyond the DNS blocklists, malware
-scanning, SafeSearch and QUIC inspection. Blocking UDP 443 with a firewall rule makes browsers
-use TCP, where the hostname is visible.
+- **Hostname control without decryption (ADR-0017).**
+  - The Edge reads the hostname of every allowed TCP flow from the TLS SNI or the HTTP Host.
+  - It re-applies the DNS policy, the SaaS lists and the firewall domain rules to that hostname,
+    so names reached without the Edge resolver are still enforced.
+  - Blocks are recorded with layer `web`.
+- **Opt-in TLS inspection (ADR-0018).**
+  - A tenant turns on `web.inspect`; its devices trust the tenant's inspection root.
+  - The Edge terminates TLS with leaves from a 7-day per-Edge intermediate and proxies HTTP/1.1.
+  - Per request it applies URL rules (host, normalized path prefix, method) and sets request
+    headers, for example to restrict a SaaS login to the company's own account.
+  - Bypassed domains are spliced untouched. QUIC and IPv6 web traffic of inspected devices are
+    refused, so browsers use the inspected path.
+  - The upstream certificate is verified, and the Edge fails closed without an intermediate.
+
+Not built yet: URL categories beyond the DNS blocklists, malware scanning, DLP, SafeSearch,
+HTTP/2 on the inspected path, PAC and explicit proxy mode.
 
 ## Responsibilities
 - Terminate and process outbound web sessions via explicit HTTP/HTTPS proxying (CONNECT method, PAC script distribution) and transparent proxy redirection.

@@ -72,6 +72,8 @@ services:
       EDGE_UID: ${OPENSASE_UID:-1000}
       EDGE_GID: ${OPENSASE_GID:-1000}
       EDGE_ALLOW_PRIVATE: ${EDGE_ALLOW_PRIVATE:-0}
+      # TLS inspection listener (ADR-0018); empty disables. Tenants opt in with policy web.inspect.
+      EDGE_INSPECT_PORT: ${EDGE_INSPECT_PORT-15002}
     # Only the Edge directory: root.crt, edge.crt, edge.key, edge-wg.key.
     volumes:
       - ./pki/edge:/pki:ro

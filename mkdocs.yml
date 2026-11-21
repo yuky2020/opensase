@@ -93,6 +93,7 @@ nav:
       - "0015 Workload Gateway": adr/0015-workload-gateway-mvp.md
       - "0016 Tenant admin tokens": adr/0016-tenant-admin-tokens.md
       - "0017 Web and SaaS control": adr/0017-web-saas-control-sni.md
+      - "0018 TLS inspection": adr/0018-tls-inspection.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

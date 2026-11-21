@@ -20,6 +20,7 @@
 //	connector revoke revoke a Connector (Edges drop it at the next peer sync)
 //	app set          replace the tenant's private apps (ZTNA) from a JSON file
 //	app list         list the tenant's private apps
+//	inspection-ca    download the tenant's web inspection root (ADR-0018)
 //	pq-check         TLS handshake check: prints the negotiated key exchange
 //
 // Global flags default to $OPENSASE_URL, $OPENSASE_CA and $OPENSASE_ADMIN_TOKEN. Secrets
@@ -130,6 +131,7 @@ commands:
   admin-token revoke -tenant ID -id ID
   whoami
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
+  inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
 
 global flags:
@@ -186,6 +188,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return whoami(ctx, g)
 	case "audit":
 		return audit(ctx, g, rest)
+	case "inspection-ca":
+		return inspectionCA(ctx, g, rest)
 	case "pq-check":
 		return pqCheck(ctx, g, rest)
 	}
@@ -280,6 +284,10 @@ func (g *globals) do(ctx context.Context, method, path string, in, out any) erro
 			msg = e.Error
 		}
 		return &apiError{resp.StatusCode, msg}
+	}
+	if b, ok := out.(*[]byte); ok { // non-JSON body (PEM download)
+		*b = raw
+		return nil
 	}
 	if out != nil && len(raw) > 0 {
 		return json.Unmarshal(raw, out)
@@ -890,3 +898,24 @@ func dash(s string) string {
 }
 
 func encodeB64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
+
+// inspectionCA downloads the tenant's web inspection root (ADR-0018), the certificate the
+// tenant's devices must trust for TLS inspection.
+func inspectionCA(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("inspection-ca", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	out := fs.String("o", "", "write the PEM to FILE (default stdout)")
+	_ = fs.Parse(args)
+	var pemBytes []byte
+	if err := g.do(ctx, http.MethodGet, "/v1/admin/tenants/"+url.PathEscape(*tenant)+"/inspection-ca", nil, &pemBytes); err != nil {
+		return err
+	}
+	if _, err := pki.ParseCertsPEM(pemBytes); err != nil {
+		return fmt.Errorf("inspection root: %w", err)
+	}
+	if *out == "" {
+		_, err := os.Stdout.Write(pemBytes)
+		return err
+	}
+	return os.WriteFile(*out, pemBytes, 0o644) //nolint:gosec // G306: a public CA certificate
+}

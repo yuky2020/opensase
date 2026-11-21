@@ -56,6 +56,43 @@ type Snapshot struct {
 	// PrivateApps are the ZTNA apps this user is entitled to (ADR-0013). The Control Plane
 	// includes only entitled apps, so presence here IS the access grant.
 	PrivateApps []PrivateApp `json:"privateApps,omitempty"`
+	// Web is the tenant's web inspection policy (ADR-0018). Only the Edge enforces it;
+	// devices validate it and otherwise ignore it.
+	Web WebPolicy `json:"web,omitzero"`
+}
+
+// WebPolicy decrypts and controls the HTTPS (and plain HTTP) traffic of the tenant's devices
+// at the Edge (ADR-0018). It is tenant-only: user rules cannot change it.
+type WebPolicy struct {
+	// Inspect turns TLS interception on. Without it Rules and Headers apply to plain HTTP
+	// only, and HTTPS is controlled by hostname alone (ADR-0017).
+	Inspect bool `json:"inspect,omitempty"`
+	// Bypass lists domains whose TLS is never decrypted: certificate-pinned apps, banking,
+	// health. Same syntax as Match.Domains.
+	Bypass []string `json:"bypass,omitempty"`
+	// Rules are matched in order on each request; the first match decides. No match allows.
+	Rules []WebRule `json:"rules,omitempty"`
+	// Headers are set on every request to a matching host, replacing any value the client
+	// sent (for example a header that limits a SaaS login to the company's own tenant).
+	Headers []WebHeader `json:"headers,omitempty"`
+}
+
+// WebRule matches requests by host, path and method.
+type WebRule struct {
+	ID      string   `json:"id"`
+	Domains []string `json:"domains"` // same syntax as Match.Domains; at least one
+	// PathPrefixes match the start of the normalized request path (dot segments resolved,
+	// duplicate slashes collapsed, case-insensitive). Empty matches every path.
+	PathPrefixes []string `json:"pathPrefixes,omitempty"`
+	Methods      []string `json:"methods,omitempty"` // empty matches every method
+	Action       Action   `json:"action"`            // allow or block
+}
+
+// WebHeader is a request header the Edge sets for matching hosts.
+type WebHeader struct {
+	Domains []string `json:"domains"`
+	Name    string   `json:"name"`
+	Value   string   `json:"value"`
 }
 
 // PrivateApp is a private application published through Connectors (ADR-0013).

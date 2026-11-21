@@ -74,6 +74,15 @@ exchange. There is no classic fallback.
 
     [:octicons-arrow-right-24: ADR-0017](adr/0017-web-saas-control-sni.md)
 
+-   :material-magnify-scan:{ .lg .middle } __Opt-in TLS inspection__
+
+    ---
+
+    Per-tenant inspection root, URL path and method rules, request header injection, bypass
+    list; fail closed.
+
+    [:octicons-arrow-right-24: ADR-0018](adr/0018-tls-inspection.md)
+
 -   :material-account-key:{ .lg .middle } __Multi-tenant, audited__
 
     ---
@@ -141,11 +150,12 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, SaaS apps, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
-| TLS interception (paths, tenant restrictions), DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](adr/0018-tls-inspection.md)) | ✅ |
+| DLP, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

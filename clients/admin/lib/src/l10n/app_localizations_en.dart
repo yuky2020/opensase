@@ -690,4 +690,76 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get saasCatCodeHosting => 'Code hosting and paste sites';
+
+  @override
+  String get navWeb => 'Web inspection';
+
+  @override
+  String get webHelp =>
+      'Decrypt the tenant\'s HTTPS at the Edge to enforce URL rules and set request headers. Devices must trust the tenant\'s inspection root.';
+
+  @override
+  String get webInspect => 'Inspect TLS';
+
+  @override
+  String get webInspectHelp =>
+      'The Edge terminates TLS with a certificate from the tenant\'s inspection root and checks every request. QUIC and IPv6 web traffic of these devices is refused, so browsers use inspected TCP.';
+
+  @override
+  String get webBypass => 'Never decrypt';
+
+  @override
+  String get webBypassHelp =>
+      'One domain per line (*.bank.example). For certificate-pinned apps, banking and health sites.';
+
+  @override
+  String get webRules => 'URL rules';
+
+  @override
+  String get webRulesHelp =>
+      'Matched in order on each request; the first match decides, no match allows. Paths are normalized and case-insensitive.';
+
+  @override
+  String get webAddRule => 'Add rule';
+
+  @override
+  String get webDomains => 'Domains (comma-separated)';
+
+  @override
+  String get webPaths => 'Path prefixes (empty = every path)';
+
+  @override
+  String get webPathsInvalid => 'Each path must start with /';
+
+  @override
+  String get webMethods => 'Methods (empty = every method)';
+
+  @override
+  String get webAction => 'Action (allow or block)';
+
+  @override
+  String get webHeaders => 'Request headers';
+
+  @override
+  String get webHeadersHelp =>
+      'Set on every request to a matching host, replacing what the client sent, for example to restrict a SaaS login to the company\'s own account.';
+
+  @override
+  String get webAddHeader => 'Add header';
+
+  @override
+  String get webHeaderName => 'Header name';
+
+  @override
+  String get webHeaderValue => 'Value';
+
+  @override
+  String get webRootButton => 'Inspection root';
+
+  @override
+  String get webRootTitle => 'Tenant inspection root';
+
+  @override
+  String get webRootHelp =>
+      'Install this certificate as a trusted root on the tenant\'s devices (MDM, system store). Devices that do not trust it cannot open inspected sites.';
 }

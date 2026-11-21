@@ -53,6 +53,18 @@ type fakeCP struct {
 	// serials holds the current cert serial per device/connector ID, as issued by the
 	// fixture; Peers fills it into entries that have none (the CP sends it, ST-01/ST-04).
 	serials map[string]string
+	// inspect answers InspectionCA (ADR-0018); nil refuses.
+	inspect func(api.InspectionCARequest) (api.InspectionCAResponse, error)
+}
+
+func (f *fakeCP) InspectionCA(_ context.Context, r api.InspectionCARequest) (api.InspectionCAResponse, error) {
+	f.mu.Lock()
+	fn := f.inspect
+	f.mu.Unlock()
+	if fn == nil {
+		return api.InspectionCAResponse{}, errors.New("403 inspection is off")
+	}
+	return fn(r)
 }
 
 func (f *fakeCP) ReportSessions(_ context.Context, s api.EdgeSessions) error {
@@ -154,6 +166,7 @@ type fixture struct {
 	e      *Edge
 	cancel context.CancelFunc
 	apps   []policy.PrivateApp // PrivateApps of the snapshots setPeer publishes
+	web    policy.WebPolicy    // Web policy of the snapshots setPeer publishes
 }
 
 func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
@@ -216,6 +229,7 @@ func (fx *fixture) setPeer(id string, v uint64) {
 			{ID: "saas:dropbox", Category: "saas:file-sharing", Domains: []string{"*.dropbox.com"}},
 		}},
 		PrivateApps: fx.apps,
+		Web:         fx.web,
 	}
 	env, err := policy.Sign(snap, fx.kid, fx.sk)
 	if err != nil {

@@ -77,7 +77,7 @@ fi
 
 # The Edge's tunnel address serves only DNS/ICMP: its HTTPS and broker ports are closed.
 bad=""
-for p in 8443 8444 15001; do cexec nc -z -w 3 100.64.0.1 "$p" >/dev/null 2>&1 && bad="$bad $p"; done
+for p in 8443 8444 15001 15002; do cexec nc -z -w 3 100.64.0.1 "$p" >/dev/null 2>&1 && bad="$bad $p"; done
 [ -z "$bad" ] && pass SEC-DP-106 "client: Edge tunnel address 100.64.0.1 exposes only DNS/ICMP" ||
   fail SEC-DP-106 "client: Edge tunnel address 100.64.0.1 exposes only DNS/ICMP" "open:$bad"
 
@@ -109,3 +109,51 @@ fi
 c="$(https_via ads.doubleclick.net)"
 [ "$c" = 000 ] && pass SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" ||
   fail SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" "HTTP $c"
+
+# TLS inspection (ADR-0018). Turns web.inspect on for the dev tenant with one URL rule, attacks
+# the inspected path from the client, then restores the policy. Needs EDGE_INSPECT_PORT on the
+# Edge (the dev default) and jq.
+T="${SECTEST_TENANT:-acme}"
+orig="$(admin_get "/tenants/$T/policy" 2>/dev/null || true)"
+if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ]; then
+  skip SEC-DP-120 "inspection: requests must match the connection's host" "no jq or no admin access"
+  exit 0
+fi
+admin_get "/tenants/$T/inspection-ca" 2>/dev/null | cexec sh -c 'cat >/tmp/sec-inspect.crt'
+web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}]}')"
+if [ "$(admin_code PUT "/tenants/$T/policy" "$web")" != 204 ]; then
+  skip SEC-DP-120 "inspection: requests must match the connection's host" "could not enable inspection"
+  exit 0
+fi
+ins() { cexec curl -s -m 12 --cacert /tmp/sec-inspect.crt -o /dev/null -w '%{http_code}' "$@" 2>/dev/null || true; }
+i=0
+until cexec curl -sv -m 12 --cacert /tmp/sec-inspect.crt -o /dev/null https://example.com/ 2>&1 | grep -q "issuer:.*web inspection"; do
+  i=$((i + 1))
+  [ "$i" -ge 15 ] && break
+  sleep 2
+done
+if [ "$i" -ge 15 ]; then
+  skip SEC-DP-120 "inspection: requests must match the connection's host" "inspection did not take effect (EDGE_INSPECT_PORT unset?)"
+else
+  # Domain fronting: an inspected connection opened for an allowed name carries a request for
+  # a blocked SaaS app.
+  c="$(ins -H 'Host: pastebin.com' https://example.com/)"
+  [ "$c" = 421 ] && pass SEC-DP-120 "inspection: a request for another host on an inspected connection is refused" ||
+    fail SEC-DP-120 "inspection: a request for another host on an inspected connection is refused" "HTTP $c"
+  # Path rule evasion: case, duplicate slashes, dot segments, percent-encoding.
+  bad=""
+  for p in /blocked /BLOCKED/x //blocked /x/../blocked /./blocked /%62locked /blocked%2fx; do
+    c="$(ins --path-as-is "https://example.com$p")"
+    [ "$c" = 403 ] || bad="$bad $p=$c"
+  done
+  c="$(ins https://example.com/)"
+  case "$c" in 2??|3??|404) ;; *) bad="$bad control:/=$c" ;; esac
+  [ -z "$bad" ] && pass SEC-DP-121 "inspection: URL rule holds against path encoding tricks" ||
+    fail SEC-DP-121 "inspection: URL rule holds against path encoding tricks" "not refused:$bad"
+  # The Edge must not hide a bad server certificate: an SNI the server has no certificate for.
+  c="$(ins --connect-to untrusted.opensase.test:443:example.com:443 https://untrusted.opensase.test/)"
+  [ "$c" = 502 ] && pass SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" ||
+    fail SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" "HTTP $c"
+fi
+admin_code PUT "/tenants/$T/policy" "$orig" >/dev/null
+

@@ -193,6 +193,7 @@ func (s *Server) Handler() http.Handler {
 		// The Edge reports the devices with a live session, so that /v1/decide?device= and
 		// /v1/flows from that edge are scoped to them (review #9), and its live connectors.
 		r.Post("/v1/edge/sessions", s.handleEdgeSessions)
+		r.With(short).Post("/v1/edge/inspection-ca", s.handleInspectionCA)
 	})
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Use(short, s.requireAdmin, s.auditAdmin)
@@ -225,6 +226,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/admin-tokens", s.handleListAdminTokens)
 			r.Post("/admin-tokens/{id}/revoke", s.handleRevokeAdminToken)
 			r.Get("/audit", s.handleListAudit)
+			r.Get("/inspection-ca", s.handleGetInspectionRoot)
 		})
 	})
 	if s.cfg.PortalDir != "" {

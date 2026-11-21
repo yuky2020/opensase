@@ -696,4 +696,76 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get saasCatCodeHosting => 'Hosting di codice e paste';
+
+  @override
+  String get navWeb => 'Ispezione web';
+
+  @override
+  String get webHelp =>
+      'Decifra l\'HTTPS del tenant sull\'Edge per applicare regole sugli URL e impostare header delle richieste. I dispositivi devono fidarsi della root di ispezione del tenant.';
+
+  @override
+  String get webInspect => 'Ispeziona TLS';
+
+  @override
+  String get webInspectHelp =>
+      'L\'Edge termina il TLS con un certificato della root di ispezione del tenant e controlla ogni richiesta. Il traffico web QUIC e IPv6 di questi dispositivi viene rifiutato, così i browser usano TCP ispezionato.';
+
+  @override
+  String get webBypass => 'Non decifrare mai';
+
+  @override
+  String get webBypassHelp =>
+      'Un dominio per riga (*.banca.example). Per app con certificate pinning, banche e siti sanitari.';
+
+  @override
+  String get webRules => 'Regole URL';
+
+  @override
+  String get webRulesHelp =>
+      'Valutate in ordine su ogni richiesta; decide la prima che corrisponde, nessuna corrispondenza consente. I percorsi sono normalizzati e senza distinzione di maiuscole.';
+
+  @override
+  String get webAddRule => 'Aggiungi regola';
+
+  @override
+  String get webDomains => 'Domini (separati da virgola)';
+
+  @override
+  String get webPaths => 'Prefissi di percorso (vuoto = tutti)';
+
+  @override
+  String get webPathsInvalid => 'Ogni percorso deve iniziare con /';
+
+  @override
+  String get webMethods => 'Metodi (vuoto = tutti)';
+
+  @override
+  String get webAction => 'Azione (allow o block)';
+
+  @override
+  String get webHeaders => 'Header delle richieste';
+
+  @override
+  String get webHeadersHelp =>
+      'Impostati su ogni richiesta verso un host corrispondente, sostituendo quelli del client, ad esempio per limitare il login a un SaaS all\'account aziendale.';
+
+  @override
+  String get webAddHeader => 'Aggiungi header';
+
+  @override
+  String get webHeaderName => 'Nome header';
+
+  @override
+  String get webHeaderValue => 'Valore';
+
+  @override
+  String get webRootButton => 'Root di ispezione';
+
+  @override
+  String get webRootTitle => 'Root di ispezione del tenant';
+
+  @override
+  String get webRootHelp =>
+      'Installa questo certificato come root attendibile sui dispositivi del tenant (MDM, archivio di sistema). I dispositivi che non lo considerano attendibile non possono aprire i siti ispezionati.';
 }

@@ -114,7 +114,9 @@ class TenantPolicy {
     List<String>? decideBlockCidrs,
     this.decideDefault = '',
     SaasPolicy? saas,
+    WebPolicy? web,
   }) : saas = saas ?? SaasPolicy(),
+       web = web ?? WebPolicy(),
        rules = rules ?? [],
        apps = apps ?? {},
        dns = dns ?? DnsPolicy(),
@@ -140,6 +142,9 @@ class TenantPolicy {
   /// SaaS app control (ADR-0017).
   SaasPolicy saas;
 
+  /// TLS inspection and web rules, enforced by the Edge (ADR-0018).
+  WebPolicy web;
+
   factory TenantPolicy.fromJson(Json j) {
     final apps = objOrEmpty(j, 'apps');
     return TenantPolicy(
@@ -154,6 +159,7 @@ class TenantPolicy {
       decideBlockCidrs: strList(j, 'decideBlockCidrs'),
       decideDefault: str(j, 'decideDefault'),
       saas: SaasPolicy.fromJson(objOrEmpty(j, 'saas')),
+      web: WebPolicy.fromJson(objOrEmpty(j, 'web')),
     );
   }
 
@@ -171,6 +177,7 @@ class TenantPolicy {
     putOmit(j, 'decideBlockCidrs', decideBlockCidrs);
     j['decideDefault'] = decideDefault;
     if (!saas.isEmpty) j['saas'] = saas.toJson();
+    if (!web.isEmpty) j['web'] = web.toJson();
     return j;
   }
 
@@ -549,4 +556,90 @@ class SaasApp {
       SaasApp(id: str(j, 'id'), name: str(j, 'name'), category: str(j, 'category'), domains: strList(j, 'domains'));
 
   Json toJson() => {'id': id, 'name': name, 'category': category, 'domains': domains};
+}
+
+/// policy.WebPolicy: TLS inspection, URL rules and injected request headers (ADR-0018).
+class WebPolicy {
+  WebPolicy({this.inspect = false, List<String>? bypass, List<WebRule>? rules, List<WebHeader>? headers})
+    : bypass = bypass ?? [],
+      rules = rules ?? [],
+      headers = headers ?? [];
+
+  /// Decrypt TLS at the Edge. Without it, rules and headers apply to plain HTTP only.
+  bool inspect;
+
+  /// Domains never decrypted (pinned apps, banking, health).
+  List<String> bypass;
+
+  /// First match decides; no match allows.
+  List<WebRule> rules;
+  List<WebHeader> headers;
+
+  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty;
+
+  factory WebPolicy.fromJson(Json j) => WebPolicy(
+    inspect: boolean(j, 'inspect'),
+    bypass: strList(j, 'bypass'),
+    rules: objList(j, 'rules', WebRule.fromJson),
+    headers: objList(j, 'headers', WebHeader.fromJson),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{};
+    if (inspect) j['inspect'] = true;
+    putOmit(j, 'bypass', bypass);
+    putOmit(j, 'rules', [for (final r in rules) r.toJson()]);
+    putOmit(j, 'headers', [for (final h in headers) h.toJson()]);
+    return j;
+  }
+}
+
+/// policy.WebRule: matches requests by host, path prefix and method.
+class WebRule {
+  WebRule({
+    required this.id,
+    List<String>? domains,
+    List<String>? pathPrefixes,
+    List<String>? methods,
+    this.action = 'block',
+  }) : domains = domains ?? [],
+       pathPrefixes = pathPrefixes ?? [],
+       methods = methods ?? [];
+
+  String id;
+  List<String> domains;
+  List<String> pathPrefixes;
+  List<String> methods;
+
+  /// allow | block.
+  String action;
+
+  factory WebRule.fromJson(Json j) => WebRule(
+    id: str(j, 'id'),
+    domains: strList(j, 'domains'),
+    pathPrefixes: strList(j, 'pathPrefixes'),
+    methods: strList(j, 'methods'),
+    action: str(j, 'action'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{'id': id, 'domains': domains, 'action': action};
+    putOmit(j, 'pathPrefixes', pathPrefixes);
+    putOmit(j, 'methods', methods);
+    return j;
+  }
+}
+
+/// policy.WebHeader: a request header the Edge sets for matching hosts.
+class WebHeader {
+  WebHeader({List<String>? domains, required this.name, required this.value}) : domains = domains ?? [];
+
+  List<String> domains;
+  String name;
+  String value;
+
+  factory WebHeader.fromJson(Json j) =>
+      WebHeader(domains: strList(j, 'domains'), name: str(j, 'name'), value: str(j, 'value'));
+
+  Json toJson() => {'domains': domains, 'name': name, 'value': value};
 }

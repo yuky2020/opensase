@@ -73,6 +73,21 @@ edge -tenant acme -state-dir /var/lib/opensase-edge -flow-log /var/lib/opensase-
 - **Limits.** Device certificates (24h) still need the Control Plane to renew. Enrollments, policy
   changes and revocations wait until it is reachable again.
 
+## TLS inspection (ADR-0018)
+
+```
+edge -inspect-listen 0.0.0.0:15002 ...          # dev compose: EDGE_INSPECT_PORT (default 15002)
+opensasectl inspection-ca -tenant acme -o acme-inspection.crt   # root to install on devices
+```
+
+- The kernel REDIRECTs tunnel TCP to ports 80 and 443 to the listener. Connections of tenants
+  without `web.inspect`, and bypassed hosts, are spliced unchanged.
+- For inspecting tenants the Edge terminates TLS with leaves signed by its own 7-day
+  intermediate, which it gets from the Control Plane for a key that never leaves the Edge.
+  It applies `web.rules` and `web.headers` per request and verifies the upstream certificate.
+- Without a valid intermediate it refuses inspected connections (fail closed). QUIC and IPv6 web
+  traffic of inspecting devices are refused so that browsers use the inspected path.
+
 ## MVP scope vs later
 - **MVP**:
   - Single Go binary supporting both public multi-tenant and private single-tenant modes.
@@ -84,8 +99,8 @@ edge -tenant acme -state-dir /var/lib/opensase-edge -flow-log /var/lib/opensase-
   - Basic per-tenant egress NAT IP pool assignment.
   - OpenTelemetry structured flow logging and metrics export.
 - **Later**:
-  - Full TLS MITM inspection with selective category bypass (financial, medical) and custom tenant CAs.
-  - Inline CASB tenant restriction headers and cloud application activity enforcement.
+  - URL-category bypass of TLS inspection (financial, medical) beyond the per-domain bypass list.
+  - Cloud application activity enforcement beyond paths, methods and request headers.
   - Inline DLP inspection via streaming ICAP integration and native content pattern matchers.
   - QUIC / HTTP/3 transport for Connector multiplexed tunnels.
   - eBPF/XDP kernel acceleration for WireGuard tunnel handling and packet classification.

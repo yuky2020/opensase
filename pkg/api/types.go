@@ -29,6 +29,8 @@
 //	POST /v1/flows                      FlowBatch -> 202 (mTLS device or edge cert; with an edge cert the tenant comes from each record's DeviceID)
 //	GET  /v1/edge/peers                 -> EdgePeers; for Edges, mTLS with edge cert (a Private Edge gets only its tenant)
 //	POST /v1/edge/sessions              EdgeSessions -> 204 (edge cert; devices with a live session on that edge, sent every 10s)
+//	POST /v1/edge/inspection-ca         InspectionCARequest -> InspectionCAResponse (edge cert; 403 unless the tenant has
+//	                                    web.inspect on and the edge serves that tenant; ADR-0018)
 //	GET  /v1/pki/ca                     -> PEM bundle of tenant CAs + snapshot public keys (JSON PKIBundle)
 //
 //	Connector endpoints (ADR-0013). Connector certs: spiffe://opensase/tenant/<t>/connector/<id>,
@@ -61,6 +63,7 @@
 //	GET  /v1/admin/audit?limit=&tenant=       -> []AuditEntry (super-admin: every entry, or one tenant)
 //	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
+//	GET  /v1/admin/tenants/{t}/inspection-ca  -> PEM of the tenant's web inspection root (ADR-0018), to install on devices
 //
 // Admin portal: the Control Plane serves the static Flutter web build at /admin/ (flag -portal-dir).
 //
@@ -307,6 +310,7 @@ type TenantPolicy struct {
 	DNS            policy.DNSPolicy            `json:"dns"`
 	PrivateApps    []TenantPrivateApp          `json:"privateApps,omitempty"` // ZTNA apps (ADR-0013)
 	SaaS           SaaSPolicy                  `json:"saas,omitzero"`         // SaaS app control (ADR-0017)
+	Web            policy.WebPolicy            `json:"web,omitzero"`          // TLS inspection and URL rules, Edge only (ADR-0018)
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`
@@ -411,4 +415,17 @@ type AdminConnector struct {
 type AdminConnectorCreated struct {
 	Connector       AdminConnector `json:"connector"`
 	ProvisioningKey string         `json:"provisioningKey"` // single use, 24h
+}
+
+// InspectionCARequest asks the Control Plane for an Edge's inspection intermediate of one
+// tenant (ADR-0018). CSR is a PEM PKCS#10 request for a P-256 key the Edge generated.
+type InspectionCARequest struct {
+	TenantID string `json:"tenantId"`
+	CSR      string `json:"csr"`
+}
+
+// InspectionCAResponse carries the intermediate followed by the tenant inspection root (PEM).
+type InspectionCAResponse struct {
+	Chain     string    `json:"chain"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }

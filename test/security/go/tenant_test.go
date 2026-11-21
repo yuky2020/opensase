@@ -2,7 +2,13 @@ package securitytest
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/policy"
 )
 
@@ -256,7 +263,7 @@ func TestTenantIsolation(t *testing.T) {
 		if e := ready(); e != nil {
 			return e
 		}
-		for _, p := range []string{"/devices", "/flows", "/policy", "/users", "/connectors", "/admin-tokens"} {
+		for _, p := range []string{"/devices", "/flows", "/policy", "/users", "/connectors", "/admin-tokens", "/inspection-ca"} {
 			if r := asA("GET", "/tenants/"+f.tB+p, nil); r.code != http.StatusNotFound {
 				return fmt.Errorf("tenant A's admin reads tenant B %s: %s", p, r)
 			}
@@ -369,6 +376,51 @@ func TestTenantIsolation(t *testing.T) {
 			if r.code != http.StatusUnauthorized {
 				return fmt.Errorf("authorization header variant #%d accepted: %d", i, r.code)
 			}
+		}
+		return nil
+	})
+
+	// TLS inspection intermediates (ADR-0018): only for an Edge serving the tenant, only when
+	// the tenant turned inspection on, and never for a device.
+	check(t, "SEC-TEN-026", "inspection intermediate only for an Edge of the tenant with inspection on", "", func(t *testing.T) error {
+		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
+		csr := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))
+		askCA := func(c tls.Certificate, tenant string) resp {
+			return do(f.cp(c), "POST", f.cpURL+"/v1/edge/inspection-ca", api.InspectionCARequest{TenantID: tenant, CSR: csr}, nil)
+		}
+		if err := want(askCA(f.pubEdgeCert, f.tB), "inspection off", http.StatusForbidden); err != nil {
+			return err
+		}
+		tp, err := decode[api.TenantPolicy](f.admin("GET", "/tenants/"+f.tB+"/policy", nil))
+		if err != nil {
+			return err
+		}
+		orig := tp
+		tp.Web = policy.WebPolicy{Inspect: true}
+		if r := f.admin("PUT", "/tenants/"+f.tB+"/policy", tp); r.code != http.StatusNoContent {
+			return fmt.Errorf("enable inspection: %s", r)
+		}
+		defer f.admin("PUT", "/tenants/"+f.tB+"/policy", orig)
+		for name, c := range map[string]tls.Certificate{"device of B": f.devB1.cert, "Private Edge of A": f.privEdgeCert} {
+			if err := want(askCA(c, f.tB), name, http.StatusForbidden); err != nil {
+				return err
+			}
+		}
+		out, err := decode[api.InspectionCAResponse](askCA(f.pubEdgeCert, f.tB))
+		if err != nil {
+			return fmt.Errorf("control: public Edge: %w", err)
+		}
+		certs, err := pki.ParseCertsPEM([]byte(out.Chain))
+		if err != nil {
+			return err
+		}
+		ic := certs[0]
+		if !ic.MaxPathLenZero || time.Until(ic.NotAfter) > 7*24*time.Hour+time.Minute || len(ic.ExtKeyUsage) != 1 || ic.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
+			return fmt.Errorf("intermediate not constrained: pathlen0=%v until=%s eku=%v", ic.MaxPathLenZero, ic.NotAfter, ic.ExtKeyUsage)
+		}
+		if root, _ := f.rootCA(); root != nil && ic.CheckSignatureFrom(root.Cert) == nil {
+			return errors.New("intermediate signed by the provider root")
 		}
 		return nil
 	})

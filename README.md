@@ -45,6 +45,10 @@ exchange. There is no classic fallback.
   decrypting it, and enforces DNS, SaaS and domain policy on it. Apps cannot be reached by
   address either. A SaaS catalog gives one-click blocking of apps and categories, and shadow-IT
   discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)).
+- 🔍 **Opt-in TLS inspection.** A tenant can have the Edge decrypt its HTTPS with a per-tenant
+  inspection root, to block URL paths and methods and to set request headers (for example to
+  limit a SaaS login to the company's account). Bypass lists, fail-closed behaviour and
+  7-day per-Edge intermediates ([ADR-0018](docs/adr/0018-tls-inspection.md)).
 - 🏷️ **Multi-tenant Control Plane.**
   - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
   - signed policy snapshots and flow logs;
@@ -109,11 +113,12 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, SaaS apps, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
-| TLS interception (paths, tenant restrictions), DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](docs/adr/0018-tls-inspection.md)) | ✅ |
+| DLP, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -252,13 +257,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016 and 0017.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017 and 0018.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** opt-in TLS interception with tenant CAs (URL paths, tenant restrictions), then DLP.
+1. **SWG and CASB, next slice:** DLP and malware scanning on the inspected path, URL categories, HTTP/2.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

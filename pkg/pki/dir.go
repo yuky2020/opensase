@@ -169,6 +169,7 @@ type Authority struct {
 
 	mu      sync.Mutex
 	tenants map[string]*CA
+	inspect map[string]*CA // tenant inspection roots (ADR-0018), loaded on first use
 }
 
 // OpenAuthority loads the root CA from dir and every tenant CA under dir/tenants.

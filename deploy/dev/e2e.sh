@@ -19,6 +19,10 @@
 #  11. Web and SaaS control (ADR-0017): a blocked SaaS app fails DNS, and connecting to it by
 #      address (curl --connect-to, no DNS) is reset by the Edge on its TLS SNI, while the
 #      same request naming the address's own host completes.
+#  12. TLS inspection (ADR-0018): with web.inspect on, HTTPS is served with a certificate from
+#      the tenant's inspection root (trusted only with that root), a URL rule blocks one path
+#      with 403, a bypassed domain keeps the server's own certificate; then the example
+#      policy is restored.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -266,6 +270,62 @@ case "$code" in
   000) ko "control: the same request shape with SNI example.com failed" ;;
   *) ok "control: same request shape with SNI example.com completes (HTTP $code)" ;;
 esac
+
+# 12. TLS inspection (ADR-0018): turn it on for the tenant, with one URL rule and one bypass.
+log "inspection: enabling web.inspect for $TENANT"
+ctl inspection-ca -tenant "$TENANT" >.e2e-inspect.crt
+cexec sh -c 'cat >/tmp/inspect.crt' <.e2e-inspect.crt
+jq '.web = {inspect: true, bypass: ["example.org"], rules: [{id: "e2e-no-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}]}' \
+  policy.example.json >.e2e-policy-web.json
+ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-web.json
+issuer=""
+i=0
+while :; do
+  issuer="$(cexec curl -sv -m 15 --cacert /tmp/inspect.crt -o /dev/null https://example.com/ 2>&1 | sed -n 's/.*issuer: *//p' | head -1)"
+  case "$issuer" in *"web inspection $TENANT"*) break ;; esac
+  i=$((i + 1))
+  [ "$i" -ge 15 ] && break
+  sleep 2
+done
+case "$issuer" in
+  *"web inspection $TENANT"*) ok "inspected: example.com served by the Edge with the tenant inspection root ($issuer)" ;;
+  *) ko "example.com not inspected (issuer '$issuer')" ;;
+esac
+code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' https://example.com/ 2>/dev/null || true)"
+case "$code" in 2??|3??|404) ok "inspected request proxied to the real server (HTTP $code)" ;; *) ko "inspected request: HTTP $code" ;; esac
+code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' https://example.com/x/../Blocked/page 2>/dev/null || true)"
+if [ "$code" = 403 ]; then ok "URL rule: /blocked (normalized, any case) refused with 403"; else ko "URL rule not applied: HTTP $code"; fi
+if cexec curl -s -m 15 -o /dev/null https://example.com/ 2>/dev/null; then
+  ko "interception certificate accepted without the inspection root"
+else
+  ok "without the inspection root the device refuses the interception certificate"
+fi
+issuer="$(cexec curl -sv -m 15 -o /dev/null https://example.org/ 2>&1 | sed -n 's/.*issuer: *//p' | head -1)"
+case "$issuer" in
+  "") ko "bypassed example.org failed" ;;
+  *"web inspection"*) ko "bypassed example.org was intercepted" ;;
+  *) ok "bypass: example.org keeps its own certificate ($issuer)" ;;
+esac
+i=0
+while :; do
+  ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | grep -q '"ruleId": "url:e2e-no-blocked"' && break
+  i=$((i + 1))
+  [ "$i" -ge 10 ] && break
+  sleep 3
+done
+if [ "$i" -lt 10 ]; then ok "URL block recorded (layer web, rule url:e2e-no-blocked)"; else ko "no url:e2e-no-blocked flow record"; fi
+ctl policy set -tenant "$TENANT" -f /work/policy.example.json
+rm -f .e2e-policy-web.json .e2e-inspect.crt
+# Wait until the Edge enforces the restored policy (and caches it, for the offline section):
+# example.com verifies again with the system roots.
+i=0
+until cexec curl -s -m 10 -o /dev/null https://example.com/ 2>/dev/null; do
+  i=$((i + 1))
+  [ "$i" -ge 20 ] && break
+  sleep 2
+done
+if [ "$i" -lt 20 ]; then ok "inspection off again after the policy is restored"; else ko "inspection still on 40s after the policy was restored"; fi
+sleep 2 # the state cache is written right after the sync
 
 # 4. Flows: device records, Edge records and the port-25 block. Edge flows are reported when
 # they close (plus a few seconds of batching), so poll.

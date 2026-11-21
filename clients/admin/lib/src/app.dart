@@ -13,6 +13,7 @@ import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
 import 'ui/private_apps_screen.dart';
 import 'ui/saas_screen.dart';
+import 'ui/web_screen.dart';
 import 'ui/settings_screen.dart';
 import 'ui/admin_tokens_screen.dart';
 import 'ui/audit_screen.dart';
@@ -56,6 +57,14 @@ final _dests = <_Dest>[
     perTenant: true,
   ),
   _Dest('/saas', Icons.apps_outlined, Icons.apps, (c) => c.l10n.navSaas, SaasScreen.new, perTenant: true),
+  _Dest(
+    '/web',
+    Icons.travel_explore_outlined,
+    Icons.travel_explore,
+    (c) => c.l10n.navWeb,
+    WebScreen.new,
+    perTenant: true,
+  ),
   _Dest(
     '/connectors',
     Icons.hub_outlined,

@@ -49,6 +49,15 @@ const tenantPolicyJson = '''
     }
   ],
   "saas": {"blockApps": ["dropbox"], "blockCategories": ["ai-assistant"], "allowApps": ["claude"]},
+  "web": {
+    "inspect": true,
+    "bypass": ["*.bank.example"],
+    "rules": [
+      {"id": "no-admin", "domains": ["app.example"], "action": "block", "pathPrefixes": ["/admin"], "methods": ["POST"]},
+      {"id": "all", "domains": ["*.example"], "action": "allow"}
+    ],
+    "headers": [{"domains": ["*.saas.example"], "name": "X-Allowed-Tenant", "value": "acme"}]
+  },
   "decideBlockDomains": ["*.casino.example"],
   "decideBlockCidrs": ["203.0.113.0/24"],
   "decideDefault": "allow"
@@ -97,6 +106,7 @@ void main() {
     expect(p.blocks('chatgpt', 'ai-assistant'), isTrue);
     expect(p.blocks('claude', 'ai-assistant'), isFalse);
     expect(TenantPolicy().toJson().containsKey('saas'), isFalse);
+    expect(TenantPolicy().toJson().containsKey('web'), isFalse);
   });
   roundTrip('AdminUser', '{"id":"u1","email":"a@b.c","name":"A"}', AdminUser.fromJson, (v) => v.toJson());
   roundTrip(

@@ -189,7 +189,8 @@ flowchart LR
 | DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
 | SafeSearch for Google, YouTube, Bing and DuckDuckGo, with bypass protection ([ADR-0025](adr/0025-safesearch.md)) | ✅ |
 | DLP on scanned PDFs (OCR) and PDFs with CID fonts ([ADR-0026](adr/0026-pdf-structure-cid-images.md)); brotli and zstd bodies | ✅ |
-| Exact data match, roles inside a tenant, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Roles inside a tenant: admin, policy-editor, viewer ([ADR-0027](adr/0027-tenant-roles.md)) | ✅ |
+| Exact data match, OIDC for the portal, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

@@ -55,7 +55,9 @@ stays readable. Describe the fix in the report. The lead fixes the product.
 2. **Tenant isolation:**
    - tenant A's admin (a tenant admin token, ADR-0016), device or connector reaching tenant B data (flows, policy, peers, private
      apps);
-   - a Private Edge (ADR-0014) receiving another tenant's devices, decisions or flows.
+   - a Private Edge (ADR-0014) receiving another tenant's devices, decisions or flows;
+   - tenant roles (ADR-0027): a viewer or policy editor token writing, minting tokens or
+     keys, or reaching routes outside its role through path tricks.
 3. **PKI and TLS:**
    - classic (non-PQ) TLS refused on every listener;
    - a wrong SPIFFE URI;

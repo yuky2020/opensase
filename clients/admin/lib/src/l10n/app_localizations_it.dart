@@ -876,4 +876,11 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get safeSearchHelp =>
       'I motori di ricerca (Google, Bing, DuckDuckGo) rispondono con i risultati filtrati e YouTube è in modalità con restrizioni, tramite il DNS dell\'Edge; le connessioni che provano a raggiungerli in altro modo vengono chiuse.';
+
+  @override
+  String get adminTokensFieldRole => 'Ruolo';
+
+  @override
+  String get adminTokensFieldRoleHelp =>
+      'admin (tutto nel tenant), policy-editor (lettura e modifica della policy) o viewer (sola lettura)';
 }

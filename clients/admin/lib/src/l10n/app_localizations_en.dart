@@ -870,4 +870,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get safeSearchHelp =>
       'Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.';
+
+  @override
+  String get adminTokensFieldRole => 'Role';
+
+  @override
+  String get adminTokensFieldRoleHelp =>
+      'admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)';
 }

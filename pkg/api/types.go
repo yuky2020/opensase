@@ -244,12 +244,22 @@ type AdminIdentity struct {
 	Role     string `json:"role"`
 	TenantID string `json:"tenantId,omitempty"`
 	TokenID  string `json:"tokenId,omitempty"`
+	// TenantRole is the role of a tenant admin token (ADR-0027): admin, policy-editor or viewer.
+	TenantRole string `json:"tenantRole,omitempty"`
 }
+
+// Roles of tenant admin tokens (ADR-0027).
+const (
+	TenantRoleAdmin        = "admin"         // everything in the tenant
+	TenantRolePolicyEditor = "policy-editor" // read, and PUT the tenant policy
+	TenantRoleViewer       = "viewer"        // read only
+)
 
 // AdminTokenRequest creates a tenant admin token. ValidFor defaults to 90 days, at most 365.
 type AdminTokenRequest struct {
 	Name     string `json:"name"`
 	ValidFor int    `json:"validForSeconds"`
+	Role     string `json:"role,omitempty"` // TenantRole*; default admin
 }
 
 // AdminToken is a tenant admin token in the admin API, without its secret.
@@ -261,6 +271,7 @@ type AdminToken struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 	Revoked   bool      `json:"revoked"`
 	LastUsed  time.Time `json:"lastUsed,omitzero"`
+	Role      string    `json:"role"`
 }
 
 // AdminTokenCreated is the reply to admin token creation. Token is shown only once.

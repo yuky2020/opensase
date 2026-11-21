@@ -26,6 +26,13 @@ class AdminTokensScreen extends ConsumerWidget {
           validator: (s) => s.isEmpty ? l.fieldRequired : null,
         ),
         FieldSpec(
+          'role',
+          l.adminTokensFieldRole,
+          initial: 'admin',
+          helper: l.adminTokensFieldRoleHelp,
+          validator: (s) => const ['admin', 'policy-editor', 'viewer'].contains(s) ? null : l.adminTokensFieldRoleHelp,
+        ),
+        FieldSpec(
           'days',
           l.adminTokensFieldDays,
           initial: '90',
@@ -41,7 +48,14 @@ class AdminTokensScreen extends ConsumerWidget {
     final created = await runAction(
       context,
       ref,
-      () => ref.read(apiProvider).createAdminToken(tenant, v['name']!, validFor: Duration(days: int.parse(v['days']!))),
+      () => ref
+          .read(apiProvider)
+          .createAdminToken(
+            tenant,
+            v['name']!,
+            validFor: Duration(days: int.parse(v['days']!)),
+            role: v['role'],
+          ),
     );
     if (created == null || !context.mounted) return;
     ref.invalidate(adminTokensProvider(tenant));
@@ -107,6 +121,7 @@ class AdminTokensScreen extends ConsumerWidget {
               : ScrollTable(
                   columns: [
                     DataColumn(label: Text(l.fieldName)),
+                    DataColumn(label: Text(l.adminTokensFieldRole)),
                     DataColumn(label: Text(l.fieldCreated)),
                     DataColumn(label: Text(l.fieldExpires)),
                     DataColumn(label: Text(l.fieldLastUsed)),
@@ -118,6 +133,7 @@ class AdminTokensScreen extends ConsumerWidget {
                       DataRow(
                         cells: [
                           DataCell(Text(t.id == ownId ? '${t.name} ${l.adminTokensThisSession}' : t.name)),
+                          DataCell(Text(t.role)),
                           DataCell(Text(formatTime(context, t.createdAt))),
                           DataCell(Text(formatTime(context, t.expiresAt))),
                           DataCell(Text(formatTime(context, t.lastUsed))),

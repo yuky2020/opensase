@@ -73,7 +73,7 @@ func TestTenantAdminTokens(t *testing.T) {
 	var who api.AdminIdentity
 	_, b = as(tok, "GET", "/v1/admin/whoami", nil)
 	_ = json.Unmarshal(b, &who)
-	if who != (api.AdminIdentity{Role: "tenant", TenantID: "acme", TokenID: created.ID}) {
+	if who != (api.AdminIdentity{Role: "tenant", TenantID: "acme", TokenID: created.ID, TenantRole: api.TenantRoleAdmin}) {
 		t.Fatalf("whoami %+v", who)
 	}
 	who = api.AdminIdentity{}
@@ -234,5 +234,66 @@ func TestPolicyNullBody(t *testing.T) {
 	}
 	if after := e.adminDo("GET", "/v1/admin/tenants/acme/policy", nil, 200); string(after) != string(before) {
 		t.Fatal("policy changed")
+	}
+}
+
+// TestTenantRoles checks ADR-0027: viewers only read, policy editors also replace the policy,
+// admins do everything; tokens of every role stay inside their tenant.
+func TestTenantRoles(t *testing.T) {
+	e := newEnv(t)
+	e.setupTenant(1)
+	mint := func(role string) string {
+		var c api.AdminTokenCreated
+		_ = json.Unmarshal(e.adminDo("POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: role, Role: role}, 201), &c)
+		if c.Role != role {
+			t.Fatalf("created role %q want %q", c.Role, role)
+		}
+		return c.Token
+	}
+	e.adminDo("POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: "x", Role: "owner"}, 400)
+	viewer, editor, admin := mint(api.TenantRoleViewer), mint(api.TenantRolePolicyEditor), mint(api.TenantRoleAdmin)
+	as := func(tok, method, path string, body any) int {
+		resp, _ := e.do(e.admin, method, path, body, map[string]string{"Authorization": "Bearer " + tok})
+		return resp.StatusCode
+	}
+	policy := examplePolicy()
+	for _, tc := range []struct {
+		method, path          string
+		body                  any
+		viewer, editor, admin int
+	}{
+		{"GET", "/v1/admin/tenants/acme/policy", nil, 200, 200, 200},
+		{"GET", "/v1/admin/tenants/acme/flows", nil, 200, 200, 200},
+		{"GET", "/v1/admin/tenants/acme/audit", nil, 200, 200, 200},
+		{"PUT", "/v1/admin/tenants/acme/policy", policy, 403, 204, 204},
+		{"POST", "/v1/admin/tenants/acme/users", api.AdminUser{ID: "u9", Email: "u9@acme"}, 403, 403, 201},
+		{"POST", "/v1/admin/tenants/acme/provisioning-keys", api.ProvisioningKeyRequest{UserID: "u1", MaxUses: 1}, 403, 403, 201},
+		{"POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: "esc", Role: "admin"}, 403, 403, 201},
+		{"GET", "/v1/admin/tenants/beta/policy", nil, 404, 404, 404},
+	} {
+		for who, tok := range map[string]string{"viewer": viewer, "editor": editor, "admin": admin} {
+			want := map[string]int{"viewer": tc.viewer, "editor": tc.editor, "admin": tc.admin}[who]
+			if got := as(tok, tc.method, tc.path, tc.body); got != want {
+				t.Errorf("%s %s %s: %d want %d", who, tc.method, tc.path, got, want)
+			}
+		}
+	}
+	var who api.AdminIdentity
+	resp, b := e.do(e.admin, "GET", "/v1/admin/whoami", nil, map[string]string{"Authorization": "Bearer " + viewer})
+	_ = json.Unmarshal(b, &who)
+	if resp.StatusCode != 200 || who.TenantRole != api.TenantRoleViewer {
+		t.Fatalf("whoami %+v", who)
+	}
+	// Refusals are audited with the actor.
+	var audit []api.AuditEntry
+	_ = json.Unmarshal(e.adminDo("GET", "/v1/admin/tenants/acme/audit?limit=200", nil, 200), &audit)
+	refused := 0
+	for _, a := range audit {
+		if a.Status == 403 && strings.HasPrefix(a.Actor, "token:") {
+			refused++
+		}
+	}
+	if refused < 5 {
+		t.Fatalf("refusals audited: %d", refused)
 	}
 }

@@ -17,14 +17,15 @@ type AdminToken struct {
 	ExpiresAt time.Time
 	Revoked   bool
 	LastUsed  time.Time // zero if never used
+	Role      string    // admin | policy-editor | viewer (ADR-0027)
 }
 
-const adminTokenCols = `id, tenant_id, name, created_at, expires_at, revoked, last_used` //nolint:gosec // G101: column list, not a credential
+const adminTokenCols = `id, tenant_id, name, created_at, expires_at, revoked, last_used, role` //nolint:gosec // G101: column list, not a credential
 
 func scanAdminToken(sc interface{ Scan(...any) error }) (AdminToken, error) {
 	var t AdminToken
 	var created, expires, used int64
-	err := sc.Scan(&t.ID, &t.TenantID, &t.Name, &created, &expires, &t.Revoked, &used)
+	err := sc.Scan(&t.ID, &t.TenantID, &t.Name, &created, &expires, &t.Revoked, &used, &t.Role)
 	t.CreatedAt, t.ExpiresAt = time.Unix(created, 0), time.Unix(expires, 0)
 	if used > 0 {
 		t.LastUsed = time.Unix(used, 0)
@@ -38,9 +39,12 @@ func (s *Store) CreateAdminToken(ctx context.Context, t AdminToken) error {
 	if len(t.Hash) != 32 {
 		return errors.New("store: admin token hash must be 32 bytes")
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO admin_tokens(id, tenant_id, name, token_hash, created_at, expires_at)
-		SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tenants WHERE id = ?)`,
-		t.ID, t.TenantID, t.Name, t.Hash, t.CreatedAt.Unix(), t.ExpiresAt.Unix(), t.TenantID)
+	if t.Role == "" {
+		t.Role = "admin"
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT INTO admin_tokens(id, tenant_id, name, token_hash, created_at, expires_at, role)
+		SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tenants WHERE id = ?)`,
+		t.ID, t.TenantID, t.Name, t.Hash, t.CreatedAt.Unix(), t.ExpiresAt.Unix(), t.Role, t.TenantID)
 	return affected(res, err)
 }
 

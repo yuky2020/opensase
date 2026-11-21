@@ -127,7 +127,7 @@ commands:
   connector revoke -tenant ID -id C
   app set -tenant ID -file apps.json      ([]api.TenantPrivateApp; replaces privateApps)
   app list -tenant ID
-  admin-token add -tenant ID -name N [-valid-for DUR] [-token-out FILE]
+  admin-token add -tenant ID -name N [-role admin|policy-editor|viewer] [-valid-for DUR] [-token-out FILE]
   admin-token list -tenant ID
   admin-token revoke -tenant ID -id ID
   whoami
@@ -637,13 +637,14 @@ func adminTokenAdd(ctx context.Context, g *globals, args []string) error {
 	tenant := tenantFlag(fs)
 	name := fs.String("name", "", "token name (who or what uses it)")
 	validFor := fs.Duration("valid-for", 0, "validity (default 90 days, at most 365)")
+	role := fs.String("role", "admin", "admin | policy-editor | viewer (ADR-0027)")
 	out := fs.String("token-out", "", "write the token to this file (mode 0600, must not exist) instead of stdout")
 	_ = fs.Parse(args)
 	if *name == "" {
 		return errors.New("-name is required")
 	}
 	var c api.AdminTokenCreated
-	if err := g.do(ctx, http.MethodPost, adminTokensPath(*tenant), api.AdminTokenRequest{Name: *name, ValidFor: int(validFor.Seconds())}, &c); err != nil {
+	if err := g.do(ctx, http.MethodPost, adminTokensPath(*tenant), api.AdminTokenRequest{Name: *name, ValidFor: int(validFor.Seconds()), Role: *role}, &c); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "admin token %s (%s) for tenant %s, valid until %s; it is shown only once\n",
@@ -669,13 +670,13 @@ func adminTokenList(ctx context.Context, g *globals, args []string) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tREVOKED\tCREATED\tEXPIRES\tLAST USED")
+	fmt.Fprintln(tw, "ID\tNAME\tROLE\tREVOKED\tCREATED\tEXPIRES\tLAST USED")
 	for _, t := range ts {
 		used := "-"
 		if !t.LastUsed.IsZero() {
 			used = t.LastUsed.Local().Format(time.DateTime)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\t%s\t%s\n", t.ID, t.Name, t.Revoked, t.CreatedAt.Local().Format(time.DateTime), t.ExpiresAt.Local().Format(time.DateTime), used)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%s\t%s\t%s\n", t.ID, t.Name, t.Role, t.Revoked, t.CreatedAt.Local().Format(time.DateTime), t.ExpiresAt.Local().Format(time.DateTime), used)
 	}
 	return tw.Flush()
 }
@@ -704,7 +705,7 @@ func whoami(ctx context.Context, g *globals) error {
 		fmt.Println("super-admin (all tenants, Edge registry)")
 		return nil
 	}
-	fmt.Printf("tenant admin of %s (token %s)\n", id.TenantID, id.TokenID)
+	fmt.Printf("tenant %s of %s (token %s)\n", id.TenantRole, id.TenantID, id.TokenID)
 	return nil
 }
 

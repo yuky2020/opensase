@@ -143,12 +143,13 @@ void main() {
     await t.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await t.enterText(fields.at(0), 'ops');
-    await t.enterText(fields.at(1), '30');
+    await t.enterText(fields.at(1), 'viewer');
+    await t.enterText(fields.at(2), '30');
     await t.tap(find.text('Create'));
     await t.pumpAndSettle();
     expect(find.text('osa_secret'), findsOneWidget);
     final post = cp.requests.lastWhere((r) => r.method == 'POST');
-    expect(jsonDecode(post.body), {'name': 'ops', 'validForSeconds': 30 * 86400});
+    expect(jsonDecode(post.body), {'name': 'ops', 'validForSeconds': 30 * 86400, 'role': 'viewer'});
   });
 
   testWidgets('audit shows token names and results', (t) async {

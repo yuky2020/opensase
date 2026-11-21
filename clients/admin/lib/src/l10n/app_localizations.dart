@@ -1693,6 +1693,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.'**
   String get safeSearchHelp;
+
+  /// No description provided for @adminTokensFieldRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Role'**
+  String get adminTokensFieldRole;
+
+  /// No description provided for @adminTokensFieldRoleHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)'**
+  String get adminTokensFieldRoleHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

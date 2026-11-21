@@ -35,6 +35,7 @@ const (
 type adminScope struct {
 	tenant  string // "" for the super-admin
 	tokenID string
+	role    string // tenant role (ADR-0027); "" for the super-admin
 }
 
 func (a adminScope) super() bool { return a.tenant == "" }
@@ -68,7 +69,7 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 			}
 			if err == nil && t.TenantID != "" {
 				authed = true
-				scope = adminScope{tenant: t.TenantID, tokenID: t.ID}
+				scope = adminScope{tenant: t.TenantID, tokenID: t.ID, role: t.Role}
 			}
 		}
 		if !authed {
@@ -103,17 +104,51 @@ func requireTenantScope(next http.Handler) http.Handler {
 	})
 }
 
+// requireTenantRole enforces the role of a tenant admin token (ADR-0027) on tenant routes:
+// a viewer only reads, a policy editor also replaces the tenant policy, an admin does
+// everything. The super-admin is not limited. Refusals answer 403 and are audited.
+func requireTenantRole(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a := adminFrom(r)
+		// The middleware runs before the sub-router matches, so the path is checked, not the
+		// route pattern. chi has already cleaned it.
+		if !a.super() && !roleAllows(a.role, r.Method, r.URL.Path, chi.URLParam(r, "t")) {
+			writeErr(w, http.StatusForbidden, "the "+a.role+" role cannot do this")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// roleAllows decides one request on /v1/admin/tenants/{tenant}/....
+func roleAllows(role, method, path, tenant string) bool {
+	read := method == http.MethodGet || method == http.MethodHead
+	switch role {
+	case api.TenantRoleAdmin:
+		return true
+	case api.TenantRolePolicyEditor:
+		return read || method == http.MethodPut && path == "/v1/admin/tenants/"+tenant+"/policy"
+	case api.TenantRoleViewer:
+		return read
+	}
+	return false // unknown role: nothing
+}
+
+func validTenantRole(r string) bool {
+	return r == api.TenantRoleAdmin || r == api.TenantRolePolicyEditor || r == api.TenantRoleViewer
+}
+
 func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request) {
 	a := adminFrom(r)
 	if a.super() {
 		writeJSON(w, http.StatusOK, api.AdminIdentity{Role: "super"})
 		return
 	}
-	writeJSON(w, http.StatusOK, api.AdminIdentity{Role: "tenant", TenantID: a.tenant, TokenID: a.tokenID})
+	writeJSON(w, http.StatusOK, api.AdminIdentity{Role: "tenant", TenantID: a.tenant, TokenID: a.tokenID, TenantRole: a.role})
 }
 
 func toAPIAdminToken(t store.AdminToken) api.AdminToken {
-	out := api.AdminToken{ID: t.ID, TenantID: t.TenantID, Name: t.Name, CreatedAt: t.CreatedAt.UTC(), ExpiresAt: t.ExpiresAt.UTC(), Revoked: t.Revoked}
+	out := api.AdminToken{ID: t.ID, TenantID: t.TenantID, Name: t.Name, CreatedAt: t.CreatedAt.UTC(), ExpiresAt: t.ExpiresAt.UTC(), Revoked: t.Revoked, Role: t.Role}
 	if !t.LastUsed.IsZero() {
 		out.LastUsed = t.LastUsed.UTC()
 	}
@@ -134,6 +169,13 @@ func (s *Server) handleCreateAdminToken(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusBadRequest, "name is required (at most 100 bytes)")
 		return
 	}
+	if req.Role == "" {
+		req.Role = api.TenantRoleAdmin
+	}
+	if !validTenantRole(req.Role) {
+		writeErr(w, http.StatusBadRequest, "role must be admin, policy-editor or viewer")
+		return
+	}
 	validFor := time.Duration(req.ValidFor) * time.Second
 	if validFor <= 0 {
 		validFor = defaultAdminTokenValid
@@ -148,12 +190,12 @@ func (s *Server) handleCreateAdminToken(w http.ResponseWriter, r *http.Request) 
 	clear(raw)
 	hash := sha256.Sum256([]byte(tok))
 	now := s.now().UTC().Truncate(time.Second)
-	row := store.AdminToken{ID: uuid.NewString(), TenantID: t, Name: req.Name, Hash: hash[:], CreatedAt: now, ExpiresAt: now.Add(validFor)}
+	row := store.AdminToken{ID: uuid.NewString(), TenantID: t, Name: req.Name, Hash: hash[:], CreatedAt: now, ExpiresAt: now.Add(validFor), Role: req.Role}
 	if err := s.cfg.Store.CreateAdminToken(r.Context(), row); err != nil {
 		s.internalErr(w, r, "create admin token", err)
 		return
 	}
-	s.log.InfoContext(r.Context(), "admin token created", "tenant", t, "id", row.ID, "name", row.Name, "expires", row.ExpiresAt, "by", adminFrom(r).actor())
+	s.log.InfoContext(r.Context(), "admin token created", "tenant", t, "id", row.ID, "name", row.Name, "role", row.Role, "expires", row.ExpiresAt, "by", adminFrom(r).actor())
 	writeJSON(w, http.StatusCreated, api.AdminTokenCreated{AdminToken: toAPIAdminToken(row), Token: tok})
 }
 

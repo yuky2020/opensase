@@ -146,13 +146,17 @@ class AdminApi {
       _list(await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/admin-tokens'), AdminToken.fromJson);
 
   /// Creates a tenant admin token; [validFor] null means the server default (90 days).
-  Future<AdminTokenCreated> createAdminToken(String tenant, String name, {Duration? validFor}) async =>
+  Future<AdminTokenCreated> createAdminToken(String tenant, String name, {Duration? validFor, String? role}) async =>
       AdminTokenCreated.fromJson(
         obj(
           await _send(
             'POST',
             '/v1/admin/tenants/${_seg(tenant)}/admin-tokens',
-            body: {'name': name, if (validFor != null) 'validForSeconds': validFor.inSeconds},
+            body: {
+              'name': name,
+              if (validFor != null) 'validForSeconds': validFor.inSeconds,
+              if (role != null && role.isNotEmpty) 'role': role,
+            },
           ),
           'adminToken',
         ),

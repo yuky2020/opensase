@@ -220,7 +220,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/audit", s.handleListAudit)
 		})
 		r.Route("/tenants/{t}", func(r chi.Router) {
-			r.Use(requireTenantScope)
+			r.Use(requireTenantScope, requireTenantRole)
 			r.Get("/users", s.handleListUsers)
 			r.Post("/users", s.handleCreateUser)
 			r.Post("/connectors", s.handleCreateConnector)

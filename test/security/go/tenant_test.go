@@ -424,4 +424,57 @@ func TestTenantIsolation(t *testing.T) {
 		}
 		return nil
 	})
+
+	// Roles inside a tenant (ADR-0027): a viewer token only reads, a policy editor also
+	// replaces the policy; neither creates users, keys or tokens.
+	check(t, "SEC-TEN-027", "tenant roles: viewer reads only, policy editor cannot escalate", "", func(t *testing.T) error {
+		tokenFor := func(role string) (string, error) {
+			c, err := decode[api.AdminTokenCreated](f.admin("POST", "/tenants/"+f.tA+"/admin-tokens", api.AdminTokenRequest{Name: "sec-" + role, Role: role, ValidFor: 3600}))
+			if err != nil {
+				return "", err
+			}
+			if c.Role != role {
+				return "", fmt.Errorf("token created with role %q, want %q", c.Role, role)
+			}
+			return c.Token, nil
+		}
+		viewer, err := tokenFor(api.TenantRoleViewer)
+		if err != nil {
+			return err
+		}
+		editor, err := tokenFor(api.TenantRolePolicyEditor)
+		if err != nil {
+			return err
+		}
+		as := func(tok, method, path string, body any) int {
+			return do(f.anon(), method, f.cpURL+"/v1/admin"+path, body, map[string]string{"Authorization": "Bearer " + tok}).code
+		}
+		pol := f.admin("GET", "/tenants/"+f.tA+"/policy", nil)
+		if pol.code != 200 {
+			return fmt.Errorf("read policy: %s", pol)
+		}
+		var tp api.TenantPolicy
+		if err := json.Unmarshal(pol.body, &tp); err != nil {
+			return err
+		}
+		for _, c := range []struct {
+			tok, who, method, path string
+			body                   any
+			want                   int
+		}{
+			{viewer, "viewer", "GET", "/tenants/" + f.tA + "/devices", nil, 200},
+			{viewer, "viewer", "PUT", "/tenants/" + f.tA + "/policy", tp, 403},
+			{viewer, "viewer", "POST", "/tenants/" + f.tA + "/users", api.AdminUser{ID: "sec-x", Email: "x@x"}, 403},
+			{viewer, "viewer", "POST", "/tenants/" + f.tA + "/devices/x/revoke", nil, 403},
+			{editor, "editor", "PUT", "/tenants/" + f.tA + "/policy", tp, 204},
+			{editor, "editor", "POST", "/tenants/" + f.tA + "/admin-tokens", api.AdminTokenRequest{Name: "esc", Role: "admin"}, 403},
+			{editor, "editor", "POST", "/tenants/" + f.tA + "/provisioning-keys", api.ProvisioningKeyRequest{UserID: f.uA, MaxUses: 1}, 403},
+			{viewer, "viewer", "GET", "/tenants/" + f.tB + "/devices", nil, 404},
+		} {
+			if got := as(c.tok, c.method, c.path, c.body); got != c.want {
+				return fmt.Errorf("%s %s %s: %d want %d", c.who, c.method, c.path, got, c.want)
+			}
+		}
+		return nil
+	})
 }

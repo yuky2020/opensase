@@ -403,21 +403,29 @@ class AdminConnectorCreated {
 /// The signed-in admin (GET /v1/admin/whoami). A tenant admin (ST-03) sees only its tenant and
 /// cannot create tenants or manage Edges.
 class AdminIdentity {
-  AdminIdentity({required this.role, this.tenantId = '', this.tokenId = ''});
+  AdminIdentity({required this.role, this.tenantId = '', this.tokenId = '', this.tenantRole = ''});
 
   String role;
   String tenantId;
   String tokenId;
 
+  /// admin | policy-editor | viewer for a tenant token (ADR-0027).
+  String tenantRole;
+
   bool get isSuper => role == 'super';
 
-  factory AdminIdentity.fromJson(Json j) =>
-      AdminIdentity(role: str(j, 'role'), tenantId: str(j, 'tenantId'), tokenId: str(j, 'tokenId'));
+  factory AdminIdentity.fromJson(Json j) => AdminIdentity(
+    role: str(j, 'role'),
+    tenantId: str(j, 'tenantId'),
+    tokenId: str(j, 'tokenId'),
+    tenantRole: str(j, 'tenantRole'),
+  );
 
   Json toJson() {
     final j = <String, dynamic>{'role': role};
     putOmit(j, 'tenantId', tenantId);
     putOmit(j, 'tokenId', tokenId);
+    putOmit(j, 'tenantRole', tenantRole);
     return j;
   }
 }
@@ -432,6 +440,7 @@ class AdminToken {
     this.expiresAt,
     this.revoked = false,
     this.lastUsed,
+    this.role = 'admin',
   });
 
   String id;
@@ -441,6 +450,9 @@ class AdminToken {
   DateTime? expiresAt;
   bool revoked;
   DateTime? lastUsed;
+
+  /// admin | policy-editor | viewer (ADR-0027).
+  String role;
 
   bool isExpired(DateTime now) => expiresAt != null && !now.isBefore(expiresAt!);
 
@@ -452,6 +464,7 @@ class AdminToken {
     expiresAt: time(j, 'expiresAt'),
     revoked: boolean(j, 'revoked'),
     lastUsed: time(j, 'lastUsed'),
+    role: str(j, 'role'),
   );
 
   Json toJson() {
@@ -462,6 +475,7 @@ class AdminToken {
       'createdAt': goTime(createdAt),
       'expiresAt': goTime(expiresAt),
       'revoked': revoked,
+      'role': role,
     };
     if (lastUsed != null) j['lastUsed'] = goTime(lastUsed);
     return j;

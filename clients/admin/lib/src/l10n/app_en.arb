@@ -408,5 +408,7 @@
     }
   },
   "safeSearch": "Force SafeSearch",
-  "safeSearchHelp": "Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset."
+  "safeSearchHelp": "Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.",
+  "adminTokensFieldRole": "Role",
+  "adminTokensFieldRoleHelp": "admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)"
 }

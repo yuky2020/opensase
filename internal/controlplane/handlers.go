@@ -531,7 +531,11 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizePrivateApps(tp.PrivateApps)
-	if err := validateTenantPolicy(tp); err != nil {
+	err := validateTenantPolicy(tp)
+	if err == nil {
+		err = s.validateCategories(tp.Categories)
+	}
+	if err != nil {
 		writeValidationErr(w, err)
 		return
 	}

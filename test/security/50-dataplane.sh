@@ -110,6 +110,33 @@ c="$(https_via ads.doubleclick.net)"
 [ "$c" = 000 ] && pass SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" ||
   fail SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" "HTTP $c"
 
+# Web categories (ADR-0022): a UT1 gambling domain must not be reachable through case,
+# trailing dot or subdomain variations, by DNS or by TLS SNI.
+T="${SECTEST_TENANT:-acme}"
+orig="$(admin_get "/tenants/$T/policy" 2>/dev/null || true)"
+if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ] || ! admin_get /categories 2>/dev/null | grep -q '"name":"gambling"'; then
+  skip SEC-DP-126 "categories: blocked category unreachable by name variations" "no category list loaded or no admin access"
+else
+  admin_code PUT "/tenants/$T/policy" "$(printf '%s' "$orig" | jq -c '.categories = ["gambling"]')" >/dev/null
+  i=0
+  until cexec dig +time=3 +tries=1 @100.64.0.1 0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
+    i=$((i + 1))
+    [ "$i" -ge 30 ] && break
+    sleep 2
+  done
+  bad=""
+  for n in 0-casino.info WWW.0-Casino.INFO. a.b.0-casino.info; do
+    cexec dig +time=3 +tries=1 @100.64.0.1 "$n" A 2>/dev/null | grep -q 'status: NXDOMAIN' || bad="$bad dns:$n"
+  done
+  for n in 0-casino.info WWW.0-CASINO.INFO; do
+    [ "$(https_via "$n")" = 000 ] || bad="$bad sni:$n"
+  done
+  [ "$(https_via example.com)" = 000 ] && bad="$bad control:example.com"
+  [ -z "$bad" ] && pass SEC-DP-126 "categories: blocked category unreachable by name variations (DNS, SNI)" ||
+    fail SEC-DP-126 "categories: blocked category unreachable by name variations (DNS, SNI)" "reachable:$bad"
+  admin_code PUT "/tenants/$T/policy" "$orig" >/dev/null
+fi
+
 # TLS inspection (ADR-0018). Turns web.inspect on for the dev tenant with one URL rule, attacks
 # the inspected path from the client, then restores the policy. Needs EDGE_INSPECT_PORT on the
 # Edge (the dev default) and jq.

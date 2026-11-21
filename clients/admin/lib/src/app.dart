@@ -12,6 +12,7 @@ import 'ui/login_screen.dart';
 import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
 import 'ui/private_apps_screen.dart';
+import 'ui/categories_screen.dart';
 import 'ui/saas_screen.dart';
 import 'ui/web_screen.dart';
 import 'ui/settings_screen.dart';
@@ -57,6 +58,14 @@ final _dests = <_Dest>[
     perTenant: true,
   ),
   _Dest('/saas', Icons.apps_outlined, Icons.apps, (c) => c.l10n.navSaas, SaasScreen.new, perTenant: true),
+  _Dest(
+    '/categories',
+    Icons.category_outlined,
+    Icons.category,
+    (c) => c.l10n.navCategories,
+    CategoriesScreen.new,
+    perTenant: true,
+  ),
   _Dest(
     '/web',
     Icons.travel_explore_outlined,

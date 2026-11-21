@@ -138,10 +138,11 @@ type Edge struct {
 	snoop *snoop
 	flows *flowLog
 	guard *guard
-	synth *synthMap     // synthetic PrivateApp addresses (ADR-0013)
-	hub   *connectorHub // live Connector broker connections
-	insp  *inspector    // TLS inspection (ADR-0018); nil when InspectListen is off
-	av    scanner       // malware scanner (ADR-0020)
+	synth *synthMap              // synthetic PrivateApp addresses (ADR-0013)
+	hub   *connectorHub          // live Connector broker connections
+	insp  *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
+	av    scanner                // malware scanner (ADR-0020)
+	cats  atomic.Pointer[catSet] // web categories (ADR-0022)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -303,6 +304,7 @@ func (e *Edge) run(ctx context.Context) error {
 	go e.sweepLoop(ctx)
 	go e.flowLoop(ctx)
 	go e.reportLoop(ctx)
+	go e.categoryLoop(ctx)
 
 	// 6. Session-setup server.
 	srv := &http.Server{

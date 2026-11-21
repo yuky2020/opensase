@@ -31,6 +31,7 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/categories"
 	"github.com/yuky2020/opensase/pkg/packet"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/policy"
@@ -55,6 +56,26 @@ type fakeCP struct {
 	serials map[string]string
 	// inspect answers InspectionCA (ADR-0018); nil refuses.
 	inspect func(api.InspectionCARequest) (api.InspectionCAResponse, error)
+	// categories is the category list Categories serves (ADR-0022); nil answers 503.
+	categories *categories.DB
+	catGets    []string
+}
+
+func (f *fakeCP) Categories(_ context.Context, names []string, etag string) ([]byte, string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.categories == nil {
+		return nil, "", false, errors.New("503 no category list loaded")
+	}
+	f.catGets = append(f.catGets, strings.Join(names, ","))
+	if etag == "v1" {
+		return nil, etag, true, nil
+	}
+	var b bytes.Buffer
+	if err := f.categories.Encode(&b, names); err != nil {
+		return nil, "", false, err
+	}
+	return b.Bytes(), "v1", false, nil
 }
 
 func (f *fakeCP) InspectionCA(_ context.Context, r api.InspectionCARequest) (api.InspectionCAResponse, error) {
@@ -167,6 +188,7 @@ type fixture struct {
 	cancel context.CancelFunc
 	apps   []policy.PrivateApp // PrivateApps of the snapshots setPeer publishes
 	web    policy.WebPolicy    // Web policy of the snapshots setPeer publishes
+	cats   []string            // Categories of the snapshots setPeer publishes
 }
 
 func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
@@ -230,6 +252,7 @@ func (fx *fixture) setPeer(id string, v uint64) {
 		}},
 		PrivateApps: fx.apps,
 		Web:         fx.web,
+		Categories:  fx.cats,
 	}
 	env, err := policy.Sign(snap, fx.kid, fx.sk)
 	if err != nil {

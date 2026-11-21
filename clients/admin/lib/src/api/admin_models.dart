@@ -115,7 +115,9 @@ class TenantPolicy {
     this.decideDefault = '',
     SaasPolicy? saas,
     WebPolicy? web,
+    List<String>? categories,
   }) : saas = saas ?? SaasPolicy(),
+       categories = categories ?? [],
        web = web ?? WebPolicy(),
        rules = rules ?? [],
        apps = apps ?? {},
@@ -145,6 +147,9 @@ class TenantPolicy {
   /// TLS inspection and web rules, enforced by the Edge (ADR-0018).
   WebPolicy web;
 
+  /// Web categories to block (ADR-0022), names from the loaded category list.
+  List<String> categories;
+
   factory TenantPolicy.fromJson(Json j) {
     final apps = objOrEmpty(j, 'apps');
     return TenantPolicy(
@@ -160,6 +165,7 @@ class TenantPolicy {
       decideDefault: str(j, 'decideDefault'),
       saas: SaasPolicy.fromJson(objOrEmpty(j, 'saas')),
       web: WebPolicy.fromJson(objOrEmpty(j, 'web')),
+      categories: strList(j, 'categories'),
     );
   }
 
@@ -178,6 +184,7 @@ class TenantPolicy {
     j['decideDefault'] = decideDefault;
     if (!saas.isEmpty) j['saas'] = saas.toJson();
     if (!web.isEmpty) j['web'] = web.toJson();
+    putOmit(j, 'categories', categories);
     return j;
   }
 
@@ -741,4 +748,63 @@ class MalwarePolicy {
     if (downloads) 'downloads': true,
     if (blockUnscanned) 'blockUnscanned': true,
   };
+}
+
+/// api.CategoryCatalog: the web category list loaded by the Control Plane (ADR-0022).
+class CategoryCatalog {
+  CategoryCatalog({
+    this.source = '',
+    this.licence = '',
+    this.url = '',
+    this.version = '',
+    this.loadedAt,
+    List<WebCategory>? categories,
+  }) : categories = categories ?? [];
+
+  String source;
+  String licence;
+  String url;
+
+  /// Empty when no list is loaded.
+  String version;
+  DateTime? loadedAt;
+  List<WebCategory> categories;
+
+  factory CategoryCatalog.fromJson(Json j) => CategoryCatalog(
+    source: str(j, 'source'),
+    licence: str(j, 'licence'),
+    url: str(j, 'url'),
+    version: str(j, 'version'),
+    loadedAt: time(j, 'loadedAt'),
+    categories: objList(j, 'categories', WebCategory.fromJson),
+  );
+}
+
+class WebCategory {
+  WebCategory({
+    required this.name,
+    this.title = '',
+    this.description = '',
+    this.type = 'black',
+    this.domains = 0,
+    List<String>? aliases,
+  }) : aliases = aliases ?? [];
+
+  String name;
+  String title;
+  String description;
+
+  /// black (can be blocked) | white (allow lists).
+  String type;
+  int domains;
+  List<String> aliases;
+
+  factory WebCategory.fromJson(Json j) => WebCategory(
+    name: str(j, 'name'),
+    title: str(j, 'title'),
+    description: str(j, 'description'),
+    type: str(j, 'type'),
+    domains: integer(j, 'domains'),
+    aliases: strList(j, 'aliases'),
+  );
 }

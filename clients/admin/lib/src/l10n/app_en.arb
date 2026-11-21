@@ -372,5 +372,31 @@
   "webAvBlockUnscannedHelp": "Files over 20 MiB, partial (range) downloads, or no scanner reachable.",
   "webDlpDownloads": "Also scan file downloads",
   "webDlpBoth": "uploads and downloads",
-  "webDlpUploadsOnly": "uploads"
+  "webDlpUploadsOnly": "uploads",
+  "navCategories": "Web categories",
+  "categoriesHelp": "Block whole categories of sites from a public category list. Enforced by the Edge on DNS and on the server name of every connection; the tenant's DNS allow list wins.",
+  "categoriesNotLoaded": "No category list is loaded on the Control Plane (flags -categories-file / -categories-url). Selected categories are saved but not enforced yet.",
+  "categoriesSource": "Source: {source} ({licence}), updated {when}.",
+  "categoriesFilter": "Filter categories",
+  "categoriesDomains": "{n} domains",
+  "@categoriesSource": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "licence": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "@categoriesDomains": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  }
 }

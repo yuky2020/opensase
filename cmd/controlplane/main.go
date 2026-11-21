@@ -16,6 +16,7 @@ import (
 
 	"github.com/yuky2020/opensase/internal/controlplane"
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/categories"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/store"
 )
@@ -36,9 +37,15 @@ func run() error {
 	maxConns := flag.Int("max-conns", controlplane.DefaultMaxConns, "maximum concurrent connections")
 	retention := flag.Duration("flow-retention", controlplane.DefaultFlowRetention, "delete flow records older than this")
 	flowRate := flag.Int("flow-rate", controlplane.DefaultFlowRate, "flow records accepted per device per minute")
+	catFile := flag.String("categories-file", "", "web category archive (UT1 blacklists.tar.gz) to load and cache downloads in (ADR-0022)")
+	catURL := flag.String("categories-url", "", "download the category archive from this URL and refresh it daily (e.g. "+categories.DefaultURL+")")
 	portalDir := flag.String("portal-dir", "", "serve the admin portal (Flutter web build with index.html) from this directory at /admin/")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
+	if *catURL != "" && *catFile == "" {
+		// Downloads need a cache: next to the database by default.
+		*catFile = filepath.Join(filepath.Dir(*dbPath), "categories.tar.gz")
+	}
 
 	lvl := slog.LevelInfo
 	if *debug {
@@ -100,7 +107,7 @@ func run() error {
 	srv, err := controlplane.New(controlplane.Config{
 		Store: st, Authority: auth, SigningKey: sk, SigningKeyID: keyID,
 		AdminToken: token, Edges: edges, ControlURL: *controlURL, Logger: log,
-		MaxConns: *maxConns, FlowRetention: *retention, FlowRate: *flowRate, PortalDir: *portalDir,
+		MaxConns: *maxConns, FlowRetention: *retention, FlowRate: *flowRate, PortalDir: *portalDir, CategoriesFile: *catFile, CategoriesURL: *catURL,
 	})
 	if err != nil {
 		return err

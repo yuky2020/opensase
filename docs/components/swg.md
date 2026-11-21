@@ -24,7 +24,10 @@ Two slices are in place.
 - **Malware scanning (ADR-0020)** of uploads and file downloads with ClamAV, and **DLP on
   uploads (ADR-0019)**.
 
-Not built yet: URL categories beyond the DNS blocklists, DLP on downloads, SafeSearch,
+- **Web categories (ADR-0022)** from the public UT1 list, on DNS and on the SNI/Host of every
+  flow.
+
+Not built yet: category URL (path) entries, SafeSearch,
 HTTP/2 on the inspected path, PAC and explicit proxy mode.
 
 ## Responsibilities

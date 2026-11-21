@@ -1639,6 +1639,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'uploads'**
   String get webDlpUploadsOnly;
+
+  /// No description provided for @navCategories.
+  ///
+  /// In en, this message translates to:
+  /// **'Web categories'**
+  String get navCategories;
+
+  /// No description provided for @categoriesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Block whole categories of sites from a public category list. Enforced by the Edge on DNS and on the server name of every connection; the tenant\'s DNS allow list wins.'**
+  String get categoriesHelp;
+
+  /// No description provided for @categoriesNotLoaded.
+  ///
+  /// In en, this message translates to:
+  /// **'No category list is loaded on the Control Plane (flags -categories-file / -categories-url). Selected categories are saved but not enforced yet.'**
+  String get categoriesNotLoaded;
+
+  /// No description provided for @categoriesSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source} ({licence}), updated {when}.'**
+  String categoriesSource(String source, String licence, String when);
+
+  /// No description provided for @categoriesFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter categories'**
+  String get categoriesFilter;
+
+  /// No description provided for @categoriesDomains.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} domains'**
+  String categoriesDomains(String n);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -55,6 +55,10 @@ exchange. There is no classic fallback.
   and rules can cover file downloads. Transfers are blocked or recorded, without ever storing
   the data ([ADR-0019](docs/adr/0019-dlp-request-bodies.md),
   [ADR-0021](docs/adr/0021-dlp-documents-downloads.md)).
+- 🗂️ **Web categories.** Block whole categories (adult, gambling, malware, phishing…) from
+  the UT1 list of Université Toulouse Capitole, the open list used by most web filters. The
+  Control Plane keeps it fresh; Edges enforce it on DNS and on every connection's server name
+  ([ADR-0022](docs/adr/0022-web-categories-ut1.md)).
 - 🦠 **Malware scanning.** Uploads and file downloads on the inspected path are scanned by a
   ClamAV daemon next to the Edge, with fail-open or fail-closed behaviour chosen per tenant
   ([ADR-0020](docs/adr/0020-malware-scanning.md)).
@@ -122,7 +126,7 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, SaaS apps, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
@@ -130,7 +134,8 @@ flowchart LR
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](docs/adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](docs/adr/0021-dlp-documents-downloads.md)) | ✅ |
-| URL categories, HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](docs/adr/0022-web-categories-ut1.md)) | ✅ |
+| HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -250,7 +255,7 @@ is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md)
 ```
 cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
 internal/       private logic: controlplane, edge, connector
-pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp
+pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp, categories
 mobile/         gomobile bridge for the Android client
 clients/mobile  Flutter Android app (VpnService + Go core .aar)
 clients/admin   Flutter web admin portal
@@ -269,13 +274,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020 and 0021.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021 and 0022.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** URL categories, HTTP/2 on the inspected path, OCR and legacy Office formats for DLP.
+1. **SWG and CASB, next slice:** HTTP/2 on the inspected path, category URL entries on the inspected path, OCR and legacy Office formats for DLP.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

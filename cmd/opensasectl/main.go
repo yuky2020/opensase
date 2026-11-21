@@ -20,6 +20,7 @@
 //	connector revoke revoke a Connector (Edges drop it at the next peer sync)
 //	app set          replace the tenant's private apps (ZTNA) from a JSON file
 //	app list         list the tenant's private apps
+//	categories       list the web categories (UT1) the Control Plane loaded
 //	inspection-ca    download the tenant's web inspection root (ADR-0018)
 //	pq-check         TLS handshake check: prints the negotiated key exchange
 //
@@ -131,6 +132,7 @@ commands:
   admin-token revoke -tenant ID -id ID
   whoami
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
+  categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
 
@@ -188,6 +190,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return whoami(ctx, g)
 	case "audit":
 		return audit(ctx, g, rest)
+	case "categories":
+		return listCategories(ctx, g, rest)
 	case "inspection-ca":
 		return inspectionCA(ctx, g, rest)
 	case "pq-check":
@@ -918,4 +922,31 @@ func inspectionCA(ctx context.Context, g *globals, args []string) error {
 		return err
 	}
 	return os.WriteFile(*out, pemBytes, 0o644) //nolint:gosec // G306: a public CA certificate
+}
+
+// listCategories prints the web category list the Control Plane loaded (ADR-0022).
+func listCategories(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("categories", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "print JSON")
+	_ = fs.Parse(args)
+	var cat api.CategoryCatalog
+	if err := g.do(ctx, http.MethodGet, "/v1/admin/categories", nil, &cat); err != nil {
+		return err
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(cat)
+	}
+	if cat.Version == "" {
+		fmt.Println("no category list loaded (controlplane -categories-file / -categories-url)")
+		return nil
+	}
+	fmt.Printf("%s (%s), version %s, loaded %s\n", cat.Source, cat.Licence, cat.Version, cat.LoadedAt.Local().Format(time.DateTime))
+	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tTYPE\tDOMAINS\tTITLE")
+	for _, c := range cat.Categories {
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", c.Name, c.Type, c.Domains, c.Title)
+	}
+	return tw.Flush()
 }

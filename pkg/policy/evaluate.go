@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -90,6 +91,8 @@ type Compiled struct {
 	appIndex    appIndex // PrivateApp domain pattern -> indexes into privateApps
 
 	web *compiledWeb // ADR-0018; nil when the snapshot has no web policy
+
+	categories []string // ADR-0022
 }
 
 // compiledPrivateApp is a PrivateApp with normalized ports and a precomputed rule ID.
@@ -148,6 +151,11 @@ func (c *Compiled) BlockResponse() string {
 	}
 	return c.blockResponse
 }
+
+var categoryName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// Categories returns the web categories the device's tenant blocks (ADR-0022).
+func (c *Compiled) Categories() []string { return c.categories }
 
 // Compile validates s and builds its evaluation form. s is not retained or modified.
 func Compile(s *Snapshot) (*Compiled, error) {
@@ -253,6 +261,15 @@ func Compile(s *Snapshot) (*Compiled, error) {
 	if err := c.compilePrivateApps(s.PrivateApps); err != nil {
 		return nil, err
 	}
+	for i, n := range s.Categories {
+		if !categoryName.MatchString(n) {
+			return nil, verr(fmt.Sprintf("categories[%d]", i), "invalid category name %q", n)
+		}
+	}
+	if len(s.Categories) > 256 {
+		return nil, verr("categories", "more than 256 categories")
+	}
+	c.categories = slices.Clone(s.Categories)
 	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 || len(s.Web.DLP) > 0 || s.Web.Malware != (MalwarePolicy{}) {
 		w, err := compileWeb(&s.Web)
 		if err != nil {
@@ -576,6 +593,17 @@ func (s *domainSet) lookup(nb *nameBuf) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// DNSAllows reports whether name is in the tenant's DNS AllowDomains, which override every
+// block, web categories included.
+func (c *Compiled) DNSAllows(name string) bool {
+	var nb nameBuf
+	if !nb.load(name) {
+		return false
+	}
+	_, ok := c.dnsAllow.lookup(&nb)
+	return ok
 }
 
 // EvaluateDNS reports whether a DNS query for name is blocked and by which list. AllowDomains

@@ -834,4 +834,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDlpUploadsOnly => 'uploads';
+
+  @override
+  String get navCategories => 'Web categories';
+
+  @override
+  String get categoriesHelp =>
+      'Block whole categories of sites from a public category list. Enforced by the Edge on DNS and on the server name of every connection; the tenant\'s DNS allow list wins.';
+
+  @override
+  String get categoriesNotLoaded =>
+      'No category list is loaded on the Control Plane (flags -categories-file / -categories-url). Selected categories are saved but not enforced yet.';
+
+  @override
+  String categoriesSource(String source, String licence, String when) {
+    return 'Source: $source ($licence), updated $when.';
+  }
+
+  @override
+  String get categoriesFilter => 'Filter categories';
+
+  @override
+  String categoriesDomains(String n) {
+    return '$n domains';
+  }
 }

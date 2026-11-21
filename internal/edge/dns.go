@@ -64,7 +64,12 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	q := req.Question[0]
 	name := normalize(q.Name)
 	if blocked, list := c.EvaluateDNS(name); blocked {
-		rs.block(w, req, c, d, name, list, q)
+		rs.block(w, req, c, d, name, "dns:"+list, q)
+		return
+	}
+	// Web categories (ADR-0022), unless the tenant allowed the name explicitly.
+	if cat, ok := rs.e.category(c, name); ok {
+		rs.block(w, req, c, d, name, "cat:"+cat, q)
 		return
 	}
 	// Private app names (ADR-0013) are answered here and never forwarded upstream.
@@ -90,8 +95,13 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// CNAME cloaking: a permitted name that aliases a blocked one is blocked too.
 	for _, rr := range resp.Answer {
 		if cn, ok := rr.(*dns.CNAME); ok {
-			if blocked, list := c.EvaluateDNS(normalize(cn.Target)); blocked {
-				rs.block(w, req, c, d, name, list, q)
+			target := normalize(cn.Target)
+			if blocked, list := c.EvaluateDNS(target); blocked {
+				rs.block(w, req, c, d, name, "dns:"+list, q)
+				return
+			}
+			if cat, ok := rs.e.category(c, target); ok {
+				rs.block(w, req, c, d, name, "cat:"+cat, q)
 				return
 			}
 		}
@@ -140,7 +150,7 @@ func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, client netip.
 	_ = w.WriteMsg(m)
 }
 
-func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, name, list string, q dns.Question) {
+func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, name, rule string, q dns.Question) {
 	m := new(dns.Msg)
 	if c.BlockResponse() == "zero" {
 		m.SetReply(req)
@@ -161,7 +171,7 @@ func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled
 	rs.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: d.id,
 		Flow:     policy.Flow{Protocol: "udp", DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
-		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: "dns:" + list, Layer: "dns", Log: true},
+		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: "dns", Log: true},
 	})
 }
 

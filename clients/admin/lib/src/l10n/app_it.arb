@@ -257,5 +257,11 @@
   "webAvBlockUnscannedHelp": "File oltre 20 MiB, download parziali (range) o scanner non raggiungibile.",
   "webDlpDownloads": "Analizza anche i download di file",
   "webDlpBoth": "upload e download",
-  "webDlpUploadsOnly": "upload"
+  "webDlpUploadsOnly": "upload",
+  "navCategories": "Categorie web",
+  "categoriesHelp": "Blocca intere categorie di siti da una lista pubblica di categorie. Applicato dall'Edge sul DNS e sul nome del server di ogni connessione; la allow list DNS del tenant ha la precedenza.",
+  "categoriesNotLoaded": "Nessuna lista di categorie caricata sul Control Plane (flag -categories-file / -categories-url). Le categorie scelte vengono salvate ma non ancora applicate.",
+  "categoriesSource": "Fonte: {source} ({licence}), aggiornata il {when}.",
+  "categoriesFilter": "Filtra le categorie",
+  "categoriesDomains": "{n} domini"
 }

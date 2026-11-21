@@ -9,6 +9,7 @@ import 'package:opensase_admin/src/data/session.dart';
 import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
 import 'package:opensase_admin/src/ui/audit_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
+import 'package:opensase_admin/src/ui/categories_screen.dart';
 import 'package:opensase_admin/src/ui/saas_screen.dart';
 import 'package:opensase_admin/src/ui/web_screen.dart';
 import 'package:opensase_admin/src/ui/tenants_screen.dart';
@@ -300,5 +301,40 @@ void main() {
         },
       ],
     });
+  });
+
+  testWidgets('Web categories: a category is blocked and saved; allow lists are not offered', (t) async {
+    Object? put;
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/tenants/acme/policy', {
+        'defaultAction': 'allow',
+        'decideDefault': 'allow',
+        'categories': ['adult'],
+      })
+      ..json('GET /v1/admin/categories', {
+        'source': 'UT1 blacklists, Université Toulouse Capitole',
+        'licence': 'CC BY-SA 4.0',
+        'url': 'https://dsi.ut-capitole.fr/blacklists/',
+        'version': 'abc',
+        'loadedAt': '2026-11-21T19:00:00Z',
+        'categories': [
+          {'name': 'adult', 'title': 'Adult (X)', 'type': 'black', 'domains': 4599288},
+          {'name': 'gambling', 'title': 'Gambling', 'type': 'black', 'domains': 95194},
+          {'name': 'liste_blanche', 'type': 'white', 'domains': 10},
+        ],
+      });
+    cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) {
+      put = jsonDecode(r.body);
+      return http204();
+    };
+    await _pump(t, cp, const CategoriesScreen());
+    expect(find.byKey(const Key('cat_liste_blanche')), findsNothing);
+    expect(find.byKey(const Key('cat_chip_adult')), findsOneWidget);
+    await t.tap(find.byKey(const Key('cat_gambling')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('cat_save')));
+    await t.pumpAndSettle();
+    expect((put! as Map)['categories'], ['adult', 'gambling']);
   });
 }

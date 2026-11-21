@@ -67,6 +67,7 @@ final edgesProvider = FutureProvider<List<AdminEdge>>((ref) => ref.watch(apiProv
 final auditProvider = FutureProvider.family<List<AuditEntry>, String>((ref, t) => ref.watch(apiProvider).listAudit(t));
 
 final saasCatalogProvider = FutureProvider<List<SaasApp>>((ref) => ref.watch(apiProvider).saasCatalog());
+final categoriesProvider = FutureProvider<CategoryCatalog>((ref) => ref.watch(apiProvider).categories());
 
 final adminTokensProvider = FutureProvider.family<List<AdminToken>, String>(
   (ref, t) => ref.watch(apiProvider).listAdminTokens(t),

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
@@ -28,6 +29,8 @@ type controlPlane interface {
 	PostFlows(ctx context.Context, recs []api.FlowRecord) error
 	ReportSessions(ctx context.Context, s api.EdgeSessions) error
 	InspectionCA(ctx context.Context, req api.InspectionCARequest) (api.InspectionCAResponse, error)
+	// Categories fetches category data (ADR-0022). With etag set, notModified reports 304.
+	Categories(ctx context.Context, names []string, etag string) (body []byte, newETag string, notModified bool, err error)
 }
 
 // cpClient talks to the Control Plane over PQ TLS with the edge certificate.
@@ -116,6 +119,31 @@ func (c *cpClient) InspectionCA(ctx context.Context, req api.InspectionCARequest
 	var out api.InspectionCAResponse
 	err := c.do(ctx, http.MethodPost, "/v1/edge/inspection-ca", req, &out)
 	return out, err
+}
+
+// Categories fetches the named web categories in the pkg/categories wire format.
+func (c *cpClient) Categories(ctx context.Context, names []string, etag string) ([]byte, string, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v1/edge/categories?names="+url.QueryEscape(strings.Join(names, ",")), nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNotModified:
+		return nil, etag, true, nil
+	case http.StatusOK:
+		b, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20))
+		return b, resp.Header.Get("ETag"), false, err
+	}
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return nil, "", false, fmt.Errorf("GET /v1/edge/categories: %s: %s", resp.Status, bytes.TrimSpace(msg))
 }
 
 // trust is the material from the PKI bundle: the pool that verifies device certificates and

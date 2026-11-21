@@ -92,6 +92,15 @@ exchange. There is no classic fallback.
 
     [:octicons-arrow-right-24: ADR-0019](adr/0019-dlp-request-bodies.md)
 
+-   :material-shape-outline:{ .lg .middle } __Web categories__
+
+    ---
+
+    The public UT1 category list, refreshed by the Control Plane, enforced by Edges on DNS and
+    SNI.
+
+    [:octicons-arrow-right-24: ADR-0022](adr/0022-web-categories-ut1.md)
+
 -   :material-virus-off-outline:{ .lg .middle } __Malware scanning__
 
     ---
@@ -168,7 +177,7 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, SaaS apps, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
@@ -176,7 +185,8 @@ flowchart LR
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](adr/0021-dlp-documents-downloads.md)) | ✅ |
-| URL categories, HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](adr/0022-web-categories-ut1.md)) | ✅ |
+| HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

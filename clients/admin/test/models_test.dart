@@ -63,6 +63,7 @@ const tenantPolicyJson = '''
       {"id": "words", "action": "allow", "domains": ["*.share.example"], "patterns": ["project +falcon"], "minMatches": 3}
     ]
   },
+  "categories": ["adult", "gambling"],
   "decideBlockDomains": ["*.casino.example"],
   "decideBlockCidrs": ["203.0.113.0/24"],
   "decideDefault": "allow"

@@ -100,7 +100,10 @@ stays readable. Describe the fix in the report. The lead fixes the product.
      encrypted archives with `blockUnscanned`, file downloads;
    - malware (ADR-0020): the EICAR test file in multipart, compressed and download form, and
      what happens when the scanner is down.
-9. **Deployment hardening:**
+9. **Web categories (ADR-0022):** blocked categories reached through case, trailing dot,
+   subdomains, CNAMEs or a hard-coded address (SNI); an Edge asking for categories with a device
+   certificate; a broken or oversized downloaded archive.
+10. **Deployment hardening:**
    - containers run unprivileged, with the capabilities and mounts that ADR-0002 and review #2 allow;
    - secrets file modes in `deploy/dev`.
 

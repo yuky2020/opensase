@@ -110,7 +110,7 @@ is in [`docs/security/review-2026-11-19.md`](security/review-2026-11-19.md).
 ```
 cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
 internal/       private logic: controlplane, edge, connector
-pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp
+pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp, categories
 mobile/         gomobile bridge for the Android client
 clients/mobile  Flutter Android app (VpnService + Go core .aar)
 clients/admin   Flutter web admin portal

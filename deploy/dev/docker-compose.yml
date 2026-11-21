@@ -33,7 +33,9 @@ services:
       - ./data:/data
       # Admin portal (Flutter web). Build it first with `make portal`; served at /admin/.
       - ../../clients/admin/build/web:/portal:ro
-    command: ["-listen", ":9443", "-db", "/data/controlplane.db", "-pki", "/pki", "-control-url", "https://${CONTROL_HOST:-controlplane}:9443", "-portal-dir", "/portal"]
+    # Web categories (ADR-0022): the UT1 list (CC BY-SA 4.0) is downloaded into data/ on first
+    # start (about 26 MB) and refreshed daily. CATEGORIES_URL= (empty) turns downloads off.
+    command: ["-listen", ":9443", "-db", "/data/controlplane.db", "-pki", "/pki", "-control-url", "https://${CONTROL_HOST:-controlplane}:9443", "-portal-dir", "/portal", "-categories-file", "/data/categories.tar.gz", "-categories-url", "${CATEGORIES_URL-https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz}"]
     healthcheck:
       test: ["CMD", "/opensasectl", "-url", "https://localhost:9443", "-ca", "/pki/root.crt", "pq-check"]
       interval: 5s

@@ -64,15 +64,21 @@ type Config struct {
 	AdminToken     string // required; compared in constant time
 	Edges          []api.EdgeInfo
 	ControlURL     string
-	SnapshotTTL    time.Duration    // default 24h
-	MaxConns       int              // concurrent connections, default 4096
-	FlowRetention  time.Duration    // flow records older than this are deleted, default 7 days
-	AuditRetention time.Duration    // admin audit entries older than this are deleted, default 365 days
-	FlowRate       int              // flow records accepted per device per minute, default 1000
-	EnrollRate     int              // enroll attempts (devices + connectors) per source IP per minute, default 30
-	PortalDir      string           // if set, the admin portal (static Flutter web build) is served at /admin/
-	Logger         *slog.Logger     // default slog.Default()
-	Now            func() time.Time // default time.Now
+	SnapshotTTL    time.Duration // default 24h
+	MaxConns       int           // concurrent connections, default 4096
+	FlowRetention  time.Duration // flow records older than this are deleted, default 7 days
+	AuditRetention time.Duration // admin audit entries older than this are deleted, default 365 days
+	FlowRate       int           // flow records accepted per device per minute, default 1000
+	EnrollRate     int           // enroll attempts (devices + connectors) per source IP per minute, default 30
+	PortalDir      string        // if set, the admin portal (static Flutter web build) is served at /admin/
+	// Web categories (ADR-0022). CategoriesFile is the cached category archive (UT1
+	// blacklists.tar.gz), loaded at start; CategoriesURL, if set, refreshes it every
+	// CategoriesRefresh (default 24h). Without a file, categories are not enforced.
+	CategoriesFile    string
+	CategoriesURL     string
+	CategoriesRefresh time.Duration
+	Logger            *slog.Logger     // default slog.Default()
+	Now               func() time.Time // default time.Now
 }
 
 // Server is the Control Plane. Create it with New.
@@ -91,6 +97,8 @@ type Server struct {
 	polls       *pollLimiter
 	flowLimit   *rateLimiter
 	enrollLimit *rateLimiter // failed enroll attempts per source IP (ST-05)
+
+	cats atomic.Pointer[catState] // web category list (ADR-0022)
 }
 
 // New validates cfg and returns a Server.
@@ -194,11 +202,13 @@ func (s *Server) Handler() http.Handler {
 		// /v1/flows from that edge are scoped to them (review #9), and its live connectors.
 		r.Post("/v1/edge/sessions", s.handleEdgeSessions)
 		r.With(short).Post("/v1/edge/inspection-ca", s.handleInspectionCA)
+		r.Get("/v1/edge/categories", s.handleEdgeCategories)
 	})
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Use(short, s.requireAdmin, s.auditAdmin)
 		r.Get("/whoami", s.handleWhoami)
 		r.Get("/saas/catalog", s.handleSaaSCatalog)
+		r.Get("/categories", s.handleCategories)
 		r.Get("/tenants", s.handleListTenants) // filtered to the caller's tenant
 		r.Group(func(r chi.Router) {
 			r.Use(requireSuper)
@@ -280,6 +290,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		ErrorLog:    slog.NewLogLogger(s.log.Handler(), slog.LevelDebug),
 	}
 	go s.maintain(ctx)
+	go s.categoriesLoop(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ServeTLS(netutil.LimitListener(ln, s.cfg.MaxConns), "", "") }()
 	s.log.Info("control plane listening", "addr", ln.Addr().String(), "kex", "X25519MLKEM768", "maxConns", s.cfg.MaxConns)

@@ -840,4 +840,28 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get webDlpUploadsOnly => 'upload';
+
+  @override
+  String get navCategories => 'Categorie web';
+
+  @override
+  String get categoriesHelp =>
+      'Blocca intere categorie di siti da una lista pubblica di categorie. Applicato dall\'Edge sul DNS e sul nome del server di ogni connessione; la allow list DNS del tenant ha la precedenza.';
+
+  @override
+  String get categoriesNotLoaded =>
+      'Nessuna lista di categorie caricata sul Control Plane (flag -categories-file / -categories-url). Le categorie scelte vengono salvate ma non ancora applicate.';
+
+  @override
+  String categoriesSource(String source, String licence, String when) {
+    return 'Fonte: $source ($licence), aggiornata il $when.';
+  }
+
+  @override
+  String get categoriesFilter => 'Filtra le categorie';
+
+  @override
+  String categoriesDomains(String n) {
+    return '$n domini';
+  }
 }

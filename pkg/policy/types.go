@@ -59,6 +59,10 @@ type Snapshot struct {
 	// Web is the tenant's web inspection policy (ADR-0018). Only the Edge enforces it;
 	// devices validate it and otherwise ignore it.
 	Web WebPolicy `json:"web,omitzero"`
+	// Categories are the web categories the tenant blocks (ADR-0022), by name in the
+	// category list loaded by the Control Plane. The Edge enforces them on DNS and on the
+	// hostname of every flow.
+	Categories []string `json:"categories,omitempty"`
 }
 
 // WebPolicy decrypts and controls the HTTPS (and plain HTTP) traffic of the tenant's devices

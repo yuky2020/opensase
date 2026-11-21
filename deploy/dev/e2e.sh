@@ -25,6 +25,8 @@
 #      file is refused by the ClamAV scan (ADR-0020), a bypassed
 #      domain keeps the server's own certificate; then the example
 #      policy is restored.
+#  13. Web categories (ADR-0022): with "gambling" blocked, a UT1 gambling domain fails DNS at
+#      the Edge and is reset by SNI; the block is recorded; then the policy is restored.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -350,6 +352,41 @@ until cexec curl -s -m 10 -o /dev/null https://example.com/ 2>/dev/null; do
 done
 if [ "$i" -lt 20 ]; then ok "inspection off again after the policy is restored"; else ko "inspection still on 40s after the policy was restored"; fi
 sleep 2 # the state cache is written right after the sync
+
+# 13. Web categories (ADR-0022): the UT1 list on the Control Plane, "gambling" blocked.
+log "categories: waiting for the Control Plane's category list"
+i=0
+until ctl categories -json 2>/dev/null | grep -q '"version": "[0-9a-f]'; do
+  i=$((i + 1))
+  [ "$i" -ge 60 ] && break
+  sleep 5
+done
+if [ "$i" -ge 60 ]; then
+  ko "categories: no list loaded on the Control Plane within 5 minutes"
+else
+  ok "categories: $(ctl categories 2>/dev/null | head -1)"
+  jq '.categories = ["gambling"]' policy.example.json >.e2e-policy-cat.json
+  ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-cat.json
+  i=0
+  until cexec dig +time=3 +tries=1 @100.64.0.1 www.0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
+    i=$((i + 1))
+    [ "$i" -ge 30 ] && break
+    sleep 2
+  done
+  if [ "$i" -lt 30 ]; then ok "categories: www.0-casino.info (UT1 gambling) -> NXDOMAIN at the Edge resolver"; else ko "categories: gambling name not blocked by DNS"; fi
+  code="$(sni_code 0-casino.info)"
+  if [ "$code" = 000 ]; then ok "categories: TLS to 0-casino.info over example.com's address reset (SNI)"; else ko "categories: SNI not blocked: HTTP $code"; fi
+  if cexec dig +time=3 +tries=1 @100.64.0.1 example.com A 2>/dev/null | grep -q 'status: NOERROR'; then ok "categories: control example.com resolves"; else ko "categories: control example.com does not resolve"; fi
+  i=0
+  until ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | grep -q '"ruleId": "cat:gambling"'; do
+    i=$((i + 1))
+    [ "$i" -ge 10 ] && break
+    sleep 3
+  done
+  if [ "$i" -lt 10 ]; then ok "categories: blocks recorded (rule cat:gambling)"; else ko "categories: no cat:gambling flow record"; fi
+  ctl policy set -tenant "$TENANT" -f /work/policy.example.json
+  rm -f .e2e-policy-cat.json
+fi
 
 # 4. Flows: device records, Edge records and the port-25 block. Edge flows are reported when
 # they close (plus a few seconds of batching), so poll.

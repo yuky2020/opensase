@@ -79,8 +79,13 @@ That size rules out the existing paths:
 - **Memory.** An Edge serving a tenant that blocks `adult` holds about 37 MB for it. The Control
   Plane holds the whole list, about 46 MB.
 - **List quality.** False positives and gaps are those of UT1; `allowDomains` corrects them per
-  tenant. The `urls` files (path-level entries) are not used yet. They would need the inspected
-  path (ADR-0018).
+  tenant.
+- **URL entries** (the `urls` files, about 75,000 path-level entries in 2026-11) are hashed like
+  domains. They are enforced on the inspected path (ADR-0018): a request is refused when its
+  host, or a parent domain, followed by its path up to a `/` boundary, the whole path, or the
+  path with its query matches an entry. Matching ignores case. It is recorded as
+  `cat:<name>:url`. Without inspection only whole domains are enforced. This was added after
+  the first slice, in the same ADR.
 - **Freshness.** A new UT1 release reaches the Edges within a day plus an hour.
 - After an Edge restart without the Control Plane, categories wait for it (the list is not in
   the signed state cache). This is consistent with fail open.

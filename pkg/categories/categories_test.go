@@ -22,7 +22,7 @@ func ut1Archive(t testing.TB) []byte {
 		_, _ = tw.Write([]byte(body))
 	}
 	file("blacklists/gambling/domains", "casino.example\n# comment\n"+strings.Repeat("x", 70000)+"\nBETS.example.\n\nbad entry!\n*.poker.example")
-	file("blacklists/gambling/urls", "casino.example/x\n")
+	file("blacklists/gambling/urls", "casino.example/x\nhttp://Free-Games.example/Poker/\ncdn.example/promo?id=7\nnopath.example\n")
 	file("blacklists/adult/domains", "adult.example\n")
 	file("blacklists/liste_blanche/domains", "school.example\n")
 	_ = tw.WriteHeader(&tar.Header{Name: "blacklists/porn", Typeflag: tar.TypeSymlink, Linkname: "adult"})
@@ -73,6 +73,32 @@ func TestParseAndLookup(t *testing.T) {
 	}
 }
 
+func TestLookupURL(t *testing.T) {
+	db, _ := ParseUT1(bytes.NewReader(ut1Archive(t)))
+	if g, _ := db.Get("gambling"); g.URLs() != 3 {
+		t.Fatalf("url entries %d", g.URLs())
+	}
+	for _, tc := range []struct {
+		host, path, query string
+		want              bool
+	}{
+		{"free-games.example", "/poker", "", true},
+		{"www.free-games.example", "/Poker/table/1", "", true},
+		{"free-games.example", "/poker2", "", false},
+		{"free-games.example", "/", "", false},
+		{"casino.example", "/x/y", "a=1", true},
+		{"cdn.example", "/promo", "id=7", true},
+		{"cdn.example", "/promo", "id=8", false},
+		{"cdn.example", "/promo", "", false},
+		{"nopath.example", "/anything", "", false},
+	} {
+		_, got := db.LookupURL(tc.host, tc.path, tc.query, []string{"gambling"})
+		if got != tc.want {
+			t.Errorf("LookupURL(%s %s ?%s) = %v", tc.host, tc.path, tc.query, got)
+		}
+	}
+}
+
 func TestWireRoundTrip(t *testing.T) {
 	db, _ := ParseUT1(bytes.NewReader(ut1Archive(t)))
 	var w bytes.Buffer
@@ -86,14 +112,17 @@ func TestWireRoundTrip(t *testing.T) {
 	if n, ok := got.Lookup("www.casino.example", []string{"gambling"}); !ok || n != "gambling" {
 		t.Fatal("decoded lookup failed")
 	}
+	if _, ok := got.LookupURL("free-games.example", "/poker/x", "", []string{"gambling"}); !ok {
+		t.Fatal("decoded URL lookup failed")
+	}
 	if _, ok := got.Get("adult"); ok {
 		t.Fatal("category not requested was encoded")
 	}
 	for name, bad := range map[string][]byte{
 		"header":   []byte("NOPE"),
-		"name":     append([]byte("OSCAT1\x03A!b"), 0, 0, 0, 0),
-		"unsorted": append([]byte("OSCAT1\x01a\x02\x00\x00\x00"), append(bytes.Repeat([]byte{9}, 8), bytes.Repeat([]byte{1}, 8)...)...),
-		"short":    []byte("OSCAT1\x01a\x05\x00\x00\x00"),
+		"name":     append([]byte("OSCAT2\x03A!b"), 0, 0, 0, 0),
+		"unsorted": append([]byte("OSCAT2\x01a\x00\x00\x00\x00\x02\x00\x00\x00"), append(bytes.Repeat([]byte{9}, 8), bytes.Repeat([]byte{1}, 8)...)...),
+		"short":    []byte("OSCAT2\x01a\x05\x00\x00\x00"),
 	} {
 		if _, err := Decode(bytes.NewReader(bad)); err == nil {
 			t.Errorf("%s: decoded", name)

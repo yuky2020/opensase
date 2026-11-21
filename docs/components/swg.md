@@ -27,8 +27,8 @@ Two slices are in place.
 - **Web categories (ADR-0022)** from the public UT1 list, on DNS and on the SNI/Host of every
   flow.
 
-Not built yet: category URL (path) entries, SafeSearch,
-HTTP/2 on the inspected path, PAC and explicit proxy mode.
+Not built yet: SafeSearch,
+PAC and explicit proxy mode. (HTTP/2 on the inspected path: ADR-0023.)
 
 ## Responsibilities
 - Terminate and process outbound web sessions via explicit HTTP/HTTPS proxying (CONNECT method, PAC script distribution) and transparent proxy redirection.

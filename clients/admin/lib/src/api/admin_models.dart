@@ -787,6 +787,7 @@ class WebCategory {
     this.description = '',
     this.type = 'black',
     this.domains = 0,
+    this.urls = 0,
     List<String>? aliases,
   }) : aliases = aliases ?? [];
 
@@ -797,6 +798,9 @@ class WebCategory {
   /// black (can be blocked) | white (allow lists).
   String type;
   int domains;
+
+  /// URL (path) entries, enforced on the inspected path.
+  int urls;
   List<String> aliases;
 
   factory WebCategory.fromJson(Json j) => WebCategory(
@@ -805,6 +809,7 @@ class WebCategory {
     description: str(j, 'description'),
     type: str(j, 'type'),
     domains: integer(j, 'domains'),
+    urls: integer(j, 'urls'),
     aliases: strList(j, 'aliases'),
   );
 }

@@ -398,5 +398,13 @@
         "type": "String"
       }
     }
+  },
+  "categoriesUrls": "{n} pages (blocked on inspected traffic)",
+  "@categoriesUrls": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
   }
 }

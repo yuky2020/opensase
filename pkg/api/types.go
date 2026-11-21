@@ -450,5 +450,6 @@ type WebCategory struct {
 	Description string   `json:"description,omitempty"`
 	Type        string   `json:"type"` // black | white (allow lists, cannot be blocked)
 	Domains     int      `json:"domains"`
+	URLs        int      `json:"urls,omitempty"` // URL (path) entries, enforced on the inspected path
 	Aliases     []string `json:"aliases,omitempty"`
 }

@@ -43,6 +43,20 @@ func (e *Edge) category(c *policy.Compiled, name string) (string, bool) {
 	return cs.db.Lookup(name, want)
 }
 
+// categoryURL reports the first category of the device's policy with a URL entry matching
+// the request (inspected path only, ADR-0022).
+func (e *Edge) categoryURL(c *policy.Compiled, host, path, query string) (string, bool) {
+	want := c.Categories()
+	if len(want) == 0 {
+		return "", false
+	}
+	cs := e.cats.Load()
+	if cs == nil || c.DNSAllows(host) {
+		return "", false
+	}
+	return cs.db.LookupURL(host, path, query, want)
+}
+
 // wantedCategories is the sorted union of the categories in the devices' policies.
 func (e *Edge) wantedCategories() []string {
 	e.reg.mu.Lock()

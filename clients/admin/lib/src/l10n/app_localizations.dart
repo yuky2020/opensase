@@ -1675,6 +1675,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{n} domains'**
   String categoriesDomains(String n);
+
+  /// No description provided for @categoriesUrls.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} pages (blocked on inspected traffic)'**
+  String categoriesUrls(String n);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

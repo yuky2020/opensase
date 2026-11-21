@@ -864,4 +864,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String categoriesDomains(String n) {
     return '$n domini';
   }
+
+  @override
+  String categoriesUrls(String n) {
+    return '$n pagine (bloccate sul traffico ispezionato)';
+  }
 }

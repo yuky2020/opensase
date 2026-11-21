@@ -23,6 +23,7 @@ func testCategories(t *testing.T) *categories.DB {
 	tw := tar.NewWriter(gz)
 	for name, body := range map[string]string{
 		"blacklists/gambling/domains": "casino.example\nlucky.example\n",
+		"blacklists/gambling/urls":    "example.com/poker\n",
 		"blacklists/adult/domains":    "adult.example\n",
 	} {
 		_ = tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg})

@@ -169,6 +169,7 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
                       [
                         if (c.description.isNotEmpty) c.description,
                         l.categoriesDomains(num.format(c.domains)),
+                        if (c.urls > 0) l.categoriesUrls(num.format(c.urls)),
                       ].join(' — '),
                     ),
                     secondary: _blocked.contains(c.name)

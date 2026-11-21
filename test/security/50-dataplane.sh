@@ -147,7 +147,7 @@ if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ]; then
   exit 0
 fi
 admin_get "/tenants/$T/inspection-ca" 2>/dev/null | cexec sh -c 'cat >/tmp/sec-inspect.crt'
-web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}], malware: {uploads: true, downloads: true}}')"
+web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}], malware: {uploads: true, downloads: true}} | .categories = ["gambling"]')"
 if [ "$(admin_code PUT "/tenants/$T/policy" "$web")" != 204 ]; then
   skip SEC-DP-120 "inspection: requests must match the connection's host" "could not enable inspection"
   exit 0
@@ -167,6 +167,18 @@ else
   c="$(ins -H 'Host: pastebin.com' https://example.com/)"
   [ "$c" = 421 ] && pass SEC-DP-120 "inspection: a request for another host on an inspected connection is refused" ||
     fail SEC-DP-120 "inspection: a request for another host on an inspected connection is refused" "HTTP $c"
+  # The same over HTTP/2 (ADR-0023): another :authority on the connection, path tricks.
+  bad=""
+  c="$(ins --http2 -H 'Host: pastebin.com' https://example.com/)"
+  [ "$c" = 421 ] || bad="$bad authority=$c"
+  for p in /BLOCKED/x //blocked /%62locked; do
+    c="$(ins --http2 --path-as-is "https://example.com$p")"
+    [ "$c" = 403 ] || bad="$bad $p=$c"
+  done
+  v="$(cexec curl -s -m 12 --http2 --cacert /tmp/sec-inspect.crt -o /dev/null -w '%{http_version}' https://example.com/ 2>/dev/null || true)"
+  [ "$v" = 2 ] || bad="$bad not-h2:$v"
+  [ -z "$bad" ] && pass SEC-DP-127 "inspection over HTTP/2: host pinning and URL rules hold" ||
+    fail SEC-DP-127 "inspection over HTTP/2: host pinning and URL rules hold" "$bad"
   # Path rule evasion: case, duplicate slashes, dot segments, percent-encoding.
   bad=""
   for p in /blocked /BLOCKED/x //blocked /x/../blocked /./blocked /%62locked /blocked%2fx; do
@@ -215,6 +227,28 @@ else
     cexec sh -c 'gzip -c /tmp/sec-eicar.txt | curl -s -m 30 --cacert /tmp/sec-inspect.crt -H "Content-Encoding: gzip" --data-binary @- https://example.com/' 2>/dev/null | grep -q "malware scan" || bad="$bad gzip"
     [ -z "$bad" ] && pass SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" ||
       fail SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" "not refused:$bad"
+  fi
+  # Category URL entries (ADR-0022): a UT1 gambling page whose domain is not itself listed,
+  # reached over example.com's address; the Edge must refuse it from the path alone.
+  arch="$DEV/data/categories.tar.gz"
+  entry=""
+  if [ -r "$arch" ]; then
+    tar -xzOf "$arch" blacklists/gambling/domains >"${TMPDIR:-/tmp}/sec-gd.$$" 2>/dev/null
+    entry="$(tar -xzOf "$arch" blacklists/gambling/urls 2>/dev/null | awk -F/ 'NR==FNR{d[$0]=1;next} !($1 in d) && NF>=2 && $2!="" {print; exit}' "${TMPDIR:-/tmp}/sec-gd.$$" -)"
+    rm -f "${TMPDIR:-/tmp}/sec-gd.$$"
+  fi
+  if [ -z "$entry" ]; then
+    skip SEC-DP-128 "inspection: category URL entry refused by path" "no cached category archive with URL entries"
+  else
+    h="${entry%%/*}"
+    i=0
+    until cexec curl -s -m 12 --cacert /tmp/sec-inspect.crt --connect-to "$h:443:example.com:443" "https://$entry" 2>/dev/null | grep -q "category your organisation blocks"; do
+      i=$((i + 1))
+      [ "$i" -ge 20 ] && break
+      sleep 2
+    done
+    [ "$i" -lt 20 ] && pass SEC-DP-128 "inspection: category URL entry refused by path ($h)" ||
+      fail SEC-DP-128 "inspection: category URL entry refused by path ($h)" "https://$entry not refused"
   fi
   # The Edge must not hide a bad server certificate: an SNI the server has no certificate for.
   c="$(ins --connect-to untrusted.opensase.test:443:example.com:443 https://untrusted.opensase.test/)"

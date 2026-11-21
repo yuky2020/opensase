@@ -439,7 +439,7 @@ func (w *webFlow) intercept(ctx context.Context, c net.Conn) {
 	}
 	tc := tls.Server(c, &tls.Config{
 		MinVersion:   tls.VersionTLS12,
-		NextProtos:   []string{"http/1.1"},
+		NextProtos:   []string{"h2", "http/1.1"}, // HTTP/2 when the browser offers it (ADR-0023)
 		Certificates: []tls.Certificate{*leaf},
 	})
 	hctx, cancel := context.WithTimeout(ctx, inspectPeekTimeout)
@@ -461,11 +461,13 @@ func (w *webFlow) serveHTTP(ctx context.Context, c net.Conn) {
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{Timeout: inspectDialTimeout}).DialContext(ctx, "tcp", w.dst.String())
 		},
-		TLSClientConfig:     &tls.Config{ServerName: w.host, RootCAs: w.e.insp.roots, MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}},
+		TLSClientConfig:     &tls.Config{ServerName: w.host, RootCAs: w.e.insp.roots, MinVersion: tls.VersionTLS12},
 		TLSHandshakeTimeout: inspectDialTimeout,
 		MaxIdleConnsPerHost: 2,
 		IdleConnTimeout:     90 * time.Second,
-		ForceAttemptHTTP2:   false,
+		// HTTP/2 to the server when it supports it, independent of the browser's protocol.
+		// Upgrade requests (WebSocket) still use HTTP/1.1.
+		ForceAttemptHTTP2: true,
 	}
 	defer tr.CloseIdleConnections()
 	rp := &httputil.ReverseProxy{
@@ -493,14 +495,26 @@ func (w *webFlow) serveHTTP(ctx context.Context, c net.Conn) {
 			rw.WriteHeader(http.StatusBadGateway)
 		},
 	}
+	// HTTP/1.1, and HTTP/2 when the browser negotiated it (ADR-0023). The listener hands out
+	// the *tls.Conn itself, which is how net/http recognises an HTTP/2 connection.
+	ln := newOneConnListener(c)
+	protos := new(http.Protocols)
+	protos.SetHTTP1(true)
+	protos.SetHTTP2(true)
 	srv := &http.Server{
 		Handler:           http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) { w.handle(rw, r, rp) }),
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		Protocols:         protos,
+		HTTP2:             &http.HTTP2Config{MaxConcurrentStreams: 250},
 		ErrorLog:          log.New(io.Discard, "", 0), // handshake and client noise
 		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ConnState: func(_ net.Conn, st http.ConnState) {
+			if st == http.StateClosed || st == http.StateHijacked {
+				ln.done()
+			}
+		},
 	}
-	ln := newOneConnListener(c)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -524,6 +538,12 @@ func (w *webFlow) handle(rw http.ResponseWriter, r *http.Request, rp *httputil.R
 	if act, rule := w.c.WebDecide(w.host, r.Method, r.URL.Path); act == policy.ActionBlock {
 		w.block("url:"+rule, r.URL.Path)
 		blockPage(rw, http.StatusForbidden, w.host, "blocked by your organisation's web policy (rule "+rule+")")
+		return
+	}
+	// Category URL entries (ADR-0022): pages listed under a blocked category.
+	if cat, ok := w.e.categoryURL(w.c, w.host, r.URL.Path, r.URL.RawQuery); ok {
+		w.block("cat:"+cat+":url", r.URL.Path)
+		blockPage(rw, http.StatusForbidden, w.host, "this page is in a category your organisation blocks ("+cat+")")
 		return
 	}
 	checks, av := w.c.DLPChecks(w.host), w.c.Malware().Uploads
@@ -824,7 +844,7 @@ func blockPage(rw http.ResponseWriter, code int, host, why string) {
 		html.EscapeString(host), html.EscapeString(why))
 }
 
-// oneConnListener hands out one connection, then blocks until it is closed.
+// oneConnListener hands out one connection, then blocks until the server reports it closed.
 type oneConnListener struct {
 	once   sync.Once
 	conn   chan net.Conn
@@ -834,9 +854,11 @@ type oneConnListener struct {
 
 func newOneConnListener(c net.Conn) *oneConnListener {
 	l := &oneConnListener{conn: make(chan net.Conn, 1), closed: make(chan struct{}), addr: c.LocalAddr()}
-	l.conn <- &notifyConn{Conn: c, l: l}
+	l.conn <- c
 	return l
 }
+
+func (l *oneConnListener) done() { l.once.Do(func() { close(l.closed) }) }
 
 func (l *oneConnListener) Accept() (net.Conn, error) {
 	select {
@@ -849,17 +871,6 @@ func (l *oneConnListener) Accept() (net.Conn, error) {
 
 func (l *oneConnListener) Close() error   { return nil }
 func (l *oneConnListener) Addr() net.Addr { return l.addr }
-
-type notifyConn struct {
-	net.Conn
-	l *oneConnListener
-}
-
-func (c *notifyConn) Close() error {
-	err := c.Conn.Close()
-	c.l.once.Do(func() { close(c.l.closed) })
-	return err
-}
 
 // webBlockRule is the rule that blocks a new flow which would escape the inspection path
 // (IPv4 TCP only), or "": QUIC (UDP 443) and IPv6 HTTPS of a device with TLS inspection on,

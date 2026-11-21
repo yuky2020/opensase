@@ -299,6 +299,11 @@ case "$issuer" in
 esac
 code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' https://example.com/ 2>/dev/null || true)"
 case "$code" in 2??|3??|404) ok "inspected request proxied to the real server (HTTP $code)" ;; *) ko "inspected request: HTTP $code" ;; esac
+# HTTP/2 on the inspected path (ADR-0023): negotiated with the device, rules still apply.
+v="$(cexec curl -s -m 15 --http2 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_version} %{http_code}' https://example.com/ 2>/dev/null || true)"
+case "$v" in "2 "2??|"2 "3??) ok "inspected HTTP/2: $v" ;; *) ko "inspected HTTP/2 not negotiated: '$v'" ;; esac
+v="$(cexec curl -s -m 15 --http2 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_version} %{http_code}' https://example.com/blocked 2>/dev/null || true)"
+if [ "$v" = "2 403" ]; then ok "URL rule over HTTP/2: 403"; else ko "URL rule over HTTP/2: '$v'"; fi
 code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' https://example.com/x/../Blocked/page 2>/dev/null || true)"
 if [ "$code" = 403 ]; then ok "URL rule: /blocked (normalized, any case) refused with 403"; else ko "URL rule not applied: HTTP $code"; fi
 if cexec curl -s -m 15 -o /dev/null https://example.com/ 2>/dev/null; then

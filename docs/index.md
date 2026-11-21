@@ -181,12 +181,12 @@ flowchart LR
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
-| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](adr/0018-tls-inspection.md)) | ✅ |
+| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list, HTTP/2 ([ADR-0018](adr/0018-tls-inspection.md), [ADR-0023](adr/0023-http2-inspected-path.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](adr/0021-dlp-documents-downloads.md)) | ✅ |
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](adr/0022-web-categories-ut1.md)) | ✅ |
-| HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| OCR and legacy Office formats for DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

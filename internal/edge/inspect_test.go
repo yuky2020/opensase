@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,8 +37,34 @@ type inspectFixture struct {
 // server (certificate for example.com) that echoes the path and the X-Allowed-Tenant header.
 func newInspectFixture(t *testing.T, web policy.WebPolicy) *inspectFixture {
 	t.Helper()
-	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newInspectFixtureH2(t, web, false)
+}
+
+// newInspectFixtureH2 is newInspectFixture with an upstream that speaks HTTP/2 when upH2.
+func newInspectFixtureH2(t *testing.T, web policy.WebPolicy, upH2 bool) *inspectFixture {
+	t.Helper()
+	up := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/ws":
+			// A minimal upgrade: 101, then echo one line.
+			if r.Header.Get("Upgrade") != "websocket" {
+				http.Error(w, "no upgrade", 400)
+				return
+			}
+			conn, brw, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			_, _ = brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+			_ = brw.Flush()
+			line, _ := brw.ReadString('\n')
+			_, _ = brw.WriteString("echo " + line)
+			_ = brw.Flush()
+			return
+		case "/proto":
+			_, _ = io.WriteString(w, r.Proto)
+			return
 		case "/dl/eicar":
 			w.Header().Set("Content-Type", "application/octet-stream")
 			_, _ = io.WriteString(w, eicar)
@@ -71,6 +98,8 @@ func newInspectFixture(t *testing.T, web policy.WebPolicy) *inspectFixture {
 		}
 		_, _ = fmt.Fprintf(w, "path=%s tenant=%s", r.URL.Path, r.Header.Get("X-Allowed-Tenant"))
 	}))
+	up.EnableHTTP2 = upH2
+	up.StartTLS()
 	t.Cleanup(up.Close)
 	upRoots := x509.NewCertPool()
 	upRoots.AddCert(up.Certificate())
@@ -438,5 +467,137 @@ func TestInspectionDLPDocuments(t *testing.T) {
 		if code, _ := get(t, c, "GET", "example.com", "/dl/sheet"); code != want {
 			t.Errorf("download (rule downloads=%v): %d want %d", downloads, code, want)
 		}
+	}
+}
+
+// TestInspectionHTTP2 checks ADR-0023: browsers that offer HTTP/2 get it, the server leg uses
+// HTTP/2 when the server supports it, and every per-request control holds on HTTP/2 streams.
+func TestInspectionHTTP2(t *testing.T) {
+	web := testWeb
+	web.DLP = []policy.DLPRule{{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock}}
+	for _, upH2 := range []bool{true, false} {
+		z := newInspectFixtureH2(t, web, upH2)
+		h2only := new(http.Protocols)
+		h2only.SetHTTP2(true)
+		tr := &http.Transport{
+			Protocols:       h2only,
+			TLSClientConfig: &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12},
+			DialContext:     func(context.Context, string, string) (net.Conn, error) { return z.dial(), nil },
+		}
+		cc, err := tr.NewClientConn(context.Background(), "https", "example.com:443")
+		if err != nil {
+			t.Fatal(err)
+		}
+		do := func(method, host, path, body string) (int, string) {
+			t.Helper()
+			var rd io.Reader
+			if body != "" {
+				rd = strings.NewReader(body)
+			}
+			req, _ := http.NewRequest(method, "https://"+host+path, rd)
+			resp, err := cc.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("%s %s%s: %v", method, host, path, err)
+			}
+			defer resp.Body.Close()
+			if resp.ProtoMajor != 2 {
+				t.Fatalf("browser leg is %s, not HTTP/2", resp.Proto)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			return resp.StatusCode, string(b)
+		}
+		wantUp := "HTTP/1.1"
+		if upH2 {
+			wantUp = "HTTP/2.0"
+		}
+		if code, body := do("GET", "example.com", "/proto", ""); code != 200 || body != wantUp {
+			t.Fatalf("upstream h2=%v: %d %q", upH2, code, body)
+		}
+		if code, body := do("GET", "example.com", "/ok", ""); code != 200 || body != "path=/ok tenant=acme" {
+			t.Fatalf("header injection over h2: %d %q", code, body)
+		}
+		if code, _ := do("GET", "example.com", "/admin/x", ""); code != http.StatusForbidden {
+			t.Fatalf("URL rule over h2: %d", code)
+		}
+		if code, _ := do("GET", "evil.example", "/ok", ""); code != http.StatusMisdirectedRequest {
+			t.Fatalf("other host over h2: %d", code)
+		}
+		if code, _ := do("POST", "example.com", "/up", "pan 4111 1111 1111 1111"); code != http.StatusForbidden {
+			t.Fatalf("DLP over h2: %d", code)
+		}
+		// Concurrent streams on the one connection.
+		var wg sync.WaitGroup
+		errs := make(chan string, 20)
+		for i := range 20 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				req, _ := http.NewRequest("GET", fmt.Sprintf("https://example.com/s%d", i), nil)
+				resp, err := cc.RoundTrip(req)
+				if err != nil {
+					errs <- err.Error()
+					return
+				}
+				b, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if want := fmt.Sprintf("path=/s%d tenant=acme", i); string(b) != want {
+					errs <- string(b)
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for e := range errs {
+			t.Errorf("concurrent stream: %s", e)
+		}
+	}
+	// An HTTP/1.1 browser still reaches an HTTP/2 server through HTTP/2 on the server leg.
+	z := newInspectFixtureH2(t, testWeb, true)
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	if code, body := get(t, c, "GET", "example.com", "/proto"); code != 200 || body != "HTTP/2.0" {
+		t.Fatalf("h1 client, h2 server: %d %q", code, body)
+	}
+}
+
+// TestInspectionUpgrade: WebSocket-style upgrades still pass on HTTP/1.1, with HTTP/2 enabled
+// towards the server.
+func TestInspectionUpgrade(t *testing.T) {
+	z := newInspectFixtureH2(t, testWeb, true)
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	if _, err := fmt.Fprintf(c, "GET /ws HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("upgrade: %v %v", resp, err)
+	}
+	_, _ = io.WriteString(c, "hello\n")
+	line, err := br.ReadString('\n')
+	if err != nil || line != "echo hello\n" {
+		t.Fatalf("upgraded stream: %q %v", line, err)
+	}
+}
+
+// TestInspectionCategoryURL: URL entries of a blocked category apply on the inspected path.
+func TestInspectionCategoryURL(t *testing.T) {
+	fx := newInspectFixture(t, testWeb)
+	fx.cats = []string{"gambling"}
+	fx.setPeer("d1", 2)
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fx.cp.mu.Lock()
+	fx.cp.categories = testCategories(t)
+	fx.cp.mu.Unlock()
+	if err := fx.e.syncCategories(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c := tls.Client(fx.dial(), &tls.Config{ServerName: "example.com", RootCAs: fx.root, MinVersion: tls.VersionTLS12})
+	if code, _ := get(t, c, "GET", "example.com", "/poker/table"); code != http.StatusForbidden || !fx.hasRecord("cat:gambling:url") {
+		t.Fatalf("category URL: %d", code)
+	}
+	if code, _ := get(t, c, "GET", "example.com", "/ok"); code != 200 {
+		t.Fatalf("other path: %d", code)
 	}
 }

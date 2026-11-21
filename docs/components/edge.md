@@ -86,6 +86,7 @@ edge -clamd clamav:3310 ...                     # malware scanning (ADR-0020); d
 - For inspecting tenants the Edge terminates TLS with leaves signed by its own 7-day
   intermediate, which it gets from the Control Plane for a key that never leaves the Edge.
   It applies `web.rules` and `web.headers` per request and verifies the upstream certificate.
+- HTTP/2 is negotiated with browsers and servers that offer it (ADR-0023).
 - Without a valid intermediate it refuses inspected connections (fail closed). QUIC and IPv6 web
   traffic of inspecting devices are refused so that browsers use the inspected path.
 

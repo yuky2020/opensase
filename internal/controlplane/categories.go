@@ -165,7 +165,7 @@ func (s *Server) handleCategories(w http.ResponseWriter, _ *http.Request) {
 		out.Version, out.LoadedAt = st.version, st.loadedAt
 		for _, n := range st.db.Names() {
 			c, _ := st.db.Get(n)
-			out.Categories = append(out.Categories, api.WebCategory{Name: c.Name, Title: c.Title, Description: c.Description, Type: c.Type, Domains: c.Len(), Aliases: c.Aliases})
+			out.Categories = append(out.Categories, api.WebCategory{Name: c.Name, Title: c.Title, Description: c.Description, Type: c.Type, Domains: c.Len(), URLs: c.URLs(), Aliases: c.Aliases})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)

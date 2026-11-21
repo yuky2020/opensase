@@ -112,7 +112,8 @@ On the inspected path:
 - No `X-Forwarded-For` or similar header is added: servers see the Edge's egress address, as
   with the NAT path.
 
-ALPN is limited to HTTP/1.1 on both sides; WebSocket upgrades pass through.
+ALPN was limited to HTTP/1.1 on both sides in this slice; ADR-0023 adds HTTP/2. WebSocket
+upgrades pass through.
 
 The browser-facing and server-facing TLS cannot go through `pqsession.Harden`: they talk to
 arbitrary browsers and servers. Both still offer and prefer X25519MLKEM768 (Go's default), so a
@@ -134,7 +135,7 @@ PQ-capable browser and server keep a post-quantum key exchange on both legs.
   down cannot inspect until it gets one, and refuses inspected connections meanwhile (fail
   closed).
 - Not covered yet:
-  - HTTP/2 to the client or the server (HTTP/1.1 only);
+  - HTTP/2 to the client or the server (added by ADR-0023);
   - URL categories, DLP and malware scanning of bodies;
   - per-request flow records for allowed requests: only blocks are recorded, and paths are not
     stored in flow records.

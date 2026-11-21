@@ -263,5 +263,6 @@
   "categoriesNotLoaded": "Nessuna lista di categorie caricata sul Control Plane (flag -categories-file / -categories-url). Le categorie scelte vengono salvate ma non ancora applicate.",
   "categoriesSource": "Fonte: {source} ({licence}), aggiornata il {when}.",
   "categoriesFilter": "Filtra le categorie",
-  "categoriesDomains": "{n} domini"
+  "categoriesDomains": "{n} domini",
+  "categoriesUrls": "{n} pagine (bloccate sul traffico ispezionato)"
 }

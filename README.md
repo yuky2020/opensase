@@ -130,12 +130,12 @@ flowchart LR
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
-| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](docs/adr/0018-tls-inspection.md)) | ✅ |
+| Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list, HTTP/2 ([ADR-0018](docs/adr/0018-tls-inspection.md), [ADR-0023](docs/adr/0023-http2-inspected-path.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](docs/adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](docs/adr/0021-dlp-documents-downloads.md)) | ✅ |
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](docs/adr/0022-web-categories-ut1.md)) | ✅ |
-| HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| OCR and legacy Office formats for DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -274,13 +274,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021 and 0022.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022 and 0023.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** HTTP/2 on the inspected path, category URL entries on the inspected path, OCR and legacy Office formats for DLP.
+1. **SWG and CASB, next slice:** OCR and legacy Office formats for DLP, SafeSearch.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

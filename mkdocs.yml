@@ -98,6 +98,7 @@ nav:
       - "0020 Malware scanning": adr/0020-malware-scanning.md
       - "0021 DLP in documents": adr/0021-dlp-documents-downloads.md
       - "0022 Web categories (UT1)": adr/0022-web-categories-ut1.md
+      - "0023 HTTP/2 inspected path": adr/0023-http2-inspected-path.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

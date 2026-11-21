@@ -3,6 +3,18 @@
 ## Purpose
 The Secure Web Gateway (SWG) inspects, filters, and secures outbound internet traffic originating from enterprise users and cloud workloads. Operating inside the Edge, it supports both explicit forward proxying via PAC files and transparent proxying for tunneled flows from Client and Workload Gateways. It enforces acceptable use policies, protects against web-based malware, decrypts TLS traffic using tenant-specific intermediate certificates, and applies selective inspection bypasses for privacy-sensitive and certificate-pinned applications. It delivers deep application visibility, content filtering, and protocol sanitization across HTTP, HTTP/2, and HTTP/3.
 
+## Current implementation
+
+The first slice is in place (ADR-0017). It works without decryption:
+- the Edge reads the hostname of every allowed TCP flow from the TLS SNI or the HTTP Host;
+- it re-applies the DNS policy, the SaaS lists and the firewall domain rules to that hostname,
+  so names reached without the Edge resolver are still enforced;
+- blocks are recorded with layer `web`.
+
+Not built yet: TLS interception, URL paths and categories beyond the DNS blocklists, malware
+scanning, SafeSearch and QUIC inspection. Blocking UDP 443 with a firewall rule makes browsers
+use TCP, where the hostname is visible.
+
 ## Responsibilities
 - Terminate and process outbound web sessions via explicit HTTP/HTTPS proxying (CONNECT method, PAC script distribution) and transparent proxy redirection.
 - Intercept and inspect TLS connections using tenant-specific intermediate CAs, dynamically synthesizing server certificates on the fly.

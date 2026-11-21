@@ -210,8 +210,11 @@ func (fx *fixture) setPeer(id string, v uint64) {
 	snap := &policy.Snapshot{
 		SchemaVersion: 1, Version: v, TenantID: "acme", UserID: "u1", DeviceID: id,
 		IssuedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
-		Firewall:    fx.tenantPolicy(),
-		DNS:         policy.DNSPolicy{BlockResponse: "nxdomain", Blocklists: []policy.Blocklist{{ID: "ads", Domains: []string{"*.doubleclick.net"}}}},
+		Firewall: fx.tenantPolicy(),
+		DNS: policy.DNSPolicy{BlockResponse: "nxdomain", Blocklists: []policy.Blocklist{
+			{ID: "ads", Domains: []string{"*.doubleclick.net"}},
+			{ID: "saas:dropbox", Category: "saas:file-sharing", Domains: []string{"*.dropbox.com"}},
+		}},
 		PrivateApps: fx.apps,
 	}
 	env, err := policy.Sign(snap, fx.kid, fx.sk)

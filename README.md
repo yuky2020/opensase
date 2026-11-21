@@ -41,6 +41,10 @@ exchange. There is no classic fallback.
 - 🖥️ **Workload Gateway.** A headless Linux client in gateway mode puts whole subnets (VPCs, server
   LANs) behind the PQ tunnel, with DNS diverted to the Edge and a fail-closed kill switch
   ([ADR-0015](docs/adr/0015-workload-gateway-mvp.md)).
+- 🌐 **Web and SaaS control.** The Edge reads the TLS SNI or HTTP Host of every flow, without
+  decrypting it, and enforces DNS, SaaS and domain policy on it. Apps cannot be reached by
+  address either. A SaaS catalog gives one-click blocking of apps and categories, and shadow-IT
+  discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)).
 - 🏷️ **Multi-tenant Control Plane.**
   - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
   - signed policy snapshots and flow logs;
@@ -105,10 +109,11 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
-| SWG / CASB / DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
+| TLS interception (paths, tenant restrictions), DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -219,7 +224,7 @@ Coverage areas:
 - the offline cache;
 - container hardening.
 
-Latest run ([report](docs/security/sectest-2026-11-20.md)): **103 pass · 0 fail · 0 known
+Latest run ([report](docs/security/sectest-2026-11-20.md)): **106 pass · 0 fail · 0 known
 failures**. The run found 10 issues, ST-01 to ST-10, and all of them are fixed. The earlier review
 is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md).
 
@@ -228,7 +233,7 @@ is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md)
 ```
 cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
 internal/       private logic: controlplane, edge, connector
-pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession
+pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas
 mobile/         gomobile bridge for the Android client
 clients/mobile  Flutter Android app (VpnService + Go core .aar)
 clients/admin   Flutter web admin portal
@@ -247,13 +252,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015 and 0016.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016 and 0017.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB** on the Edge.
+1. **SWG and CASB, next slice:** opt-in TLS interception with tenant CAs (URL paths, tenant restrictions), then DLP.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

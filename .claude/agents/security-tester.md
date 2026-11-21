@@ -82,7 +82,11 @@ stays readable. Describe the fix in the report. The lead fixes the product.
    - a tampered `state.json` is refused;
    - a cache of another tenant is refused;
    - file modes of the state and flow logs.
-7. **Deployment hardening:**
+7. **Web and SaaS control (ADR-0017):**
+   - blocked names reached without DNS (TLS SNI, HTTP Host, case, trailing dot, subdomains);
+   - a ClientHello split, reordered or padded to evade the parser;
+   - a mismatch between the SNI and the HTTP Host.
+8. **Deployment hardening:**
    - containers run unprivileged, with the capabilities and mounts that ADR-0002 and review #2 allow;
    - secrets file modes in `deploy/dev`.
 

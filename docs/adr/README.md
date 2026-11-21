@@ -20,3 +20,4 @@ Status values: Proposed, Accepted, Superseded. Each ADR gets its own file `NNNN-
 | 0014 | Private Edge | **Accepted** (2026-11-20) | Edge bound to one tenant by the Control Plane, local state cache for offline start, local flow log |
 | 0015 | Workload Gateway, first slice | **Accepted** (2026-11-20) | Linux client in gateway mode: subnet forwarded into the PQ tunnel, NAT, DNS diverted to the Edge, fail closed |
 | 0016 | Tenant-scoped admin credentials | **Accepted** (2026-11-21) | Configured token = super-admin; per-tenant `osa_` tokens (hashed, expiring, revocable) scoped by one middleware; other tenants answer 404 (ST-03) |
+| 0017 | Web and SaaS control, first slice | **Accepted** (2026-11-21) | Edge reads TLS SNI / HTTP Host of each allowed TCP flow (no decryption) and re-applies DNS, SaaS and domain policy; SaaS catalog compiled into DNS blocklists; flows tagged for discovery |

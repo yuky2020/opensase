@@ -17,6 +17,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/saas"
 	"github.com/yuky2020/opensase/pkg/store"
 )
 
@@ -66,7 +67,46 @@ func MergeLayers(tp api.TenantPolicy, ur *api.UserRules) (policy.FirewallPolicy,
 	if dns.BlockResponse == "" {
 		dns.BlockResponse = "nxdomain"
 	}
+	// Copy before appending so the tenant policy's slice is never shared.
+	dns.Blocklists = append(slices.Clone(dns.Blocklists), saasBlocklists(tp.SaaS)...)
 	return fw, dns
+}
+
+// saasBlocklists compiles a SaaS policy into one DNS blocklist per blocked catalog app
+// (ADR-0017): every app in BlockApps, plus every app of BlockCategories not in AllowApps.
+// Unknown IDs are skipped here; validateSaaS refuses them when the policy is stored.
+func saasBlocklists(sp api.SaaSPolicy) []policy.Blocklist {
+	var out []policy.Blocklist
+	for _, a := range saas.Apps() {
+		blocked := slices.Contains(sp.BlockApps, a.ID) ||
+			slices.Contains(sp.BlockCategories, a.Category) && !slices.Contains(sp.AllowApps, a.ID)
+		if !blocked {
+			continue
+		}
+		bl := policy.Blocklist{ID: "saas:" + a.ID, Name: a.Name, Category: "saas:" + a.Category}
+		for _, d := range a.Domains {
+			bl.Domains = append(bl.Domains, "*."+d)
+		}
+		out = append(out, bl)
+	}
+	return out
+}
+
+// validateSaaS checks that a SaaS policy names only catalog apps and categories.
+func validateSaaS(sp api.SaaSPolicy) error {
+	for field, ids := range map[string][]string{"saas.blockApps": sp.BlockApps, "saas.allowApps": sp.AllowApps} {
+		for i, id := range ids {
+			if _, ok := saas.ByID(id); !ok {
+				return &policy.ValidationError{Field: fmt.Sprintf("%s[%d]", field, i), Msg: fmt.Sprintf("unknown SaaS app %q", id)}
+			}
+		}
+	}
+	for i, c := range sp.BlockCategories {
+		if !saas.IsCategory(c) {
+			return &policy.ValidationError{Field: fmt.Sprintf("saas.blockCategories[%d]", i), Msg: fmt.Sprintf("unknown SaaS category %q", c)}
+		}
+	}
+	return nil
 }
 
 // validateTenantPolicy compiles a throw-away snapshot to reject invalid policies early.
@@ -88,6 +128,9 @@ func validateTenantPolicy(tp api.TenantPolicy) error {
 		return err
 	}
 	if err := validatePrivateApps(tp.PrivateApps); err != nil {
+		return err
+	}
+	if err := validateSaaS(tp.SaaS); err != nil {
 		return err
 	}
 	fw, dns := MergeLayers(tp, nil)

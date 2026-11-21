@@ -80,3 +80,32 @@ bad=""
 for p in 8443 8444 15001; do cexec nc -z -w 3 100.64.0.1 "$p" >/dev/null 2>&1 && bad="$bad $p"; done
 [ -z "$bad" ] && pass SEC-DP-106 "client: Edge tunnel address 100.64.0.1 exposes only DNS/ICMP" ||
   fail SEC-DP-106 "client: Edge tunnel address 100.64.0.1 exposes only DNS/ICMP" "open:$bad"
+
+# Web and SaaS control (ADR-0017). The bootstrap policy blocks the SaaS app "pastebin"; DNS for
+# it fails, so these checks try to reach it without DNS, by example.com's address, and expect
+# the Edge to reset the flow on the hostname it reads from the TLS SNI or HTTP Host.
+# -k: a certificate mismatch must not be mistaken for the block; only a reset gives HTTP 000.
+https_via() { cexec curl -sk -m 12 -o /dev/null -w '%{http_code}' --connect-to "$1:443:example.com:443" "https://$1/" 2>/dev/null || true; }
+http_host() { cexec curl -s -m 12 -o /dev/null -w '%{http_code}' -H "Host: $1" http://example.com/ 2>/dev/null || true; }
+if [ "$(https_via example.com)" = 000 ]; then
+  skip SEC-DP-110 "client: blocked SaaS app unreachable by address (TLS SNI)" "control: https://example.com via --connect-to failed"
+else
+  bad=""
+  for h in pastebin.com www.pastebin.com PASTEBIN.COM; do
+    c="$(https_via "$h")"
+    [ "$c" = 000 ] || bad="$bad $h=$c"
+  done
+  [ -z "$bad" ] && pass SEC-DP-110 "client: blocked SaaS app unreachable by address (TLS SNI, subdomain, case)" ||
+    fail SEC-DP-110 "client: blocked SaaS app unreachable by address (TLS SNI, subdomain, case)" "answered:$bad"
+fi
+if [ "$(http_host example.com)" = 000 ]; then
+  skip SEC-DP-111 "client: blocked SaaS app unreachable by address (HTTP Host)" "control: http://example.com failed"
+else
+  c="$(http_host pastebin.com)"
+  [ "$c" = 000 ] && pass SEC-DP-111 "client: blocked SaaS app unreachable by address (HTTP Host)" ||
+    fail SEC-DP-111 "client: blocked SaaS app unreachable by address (HTTP Host)" "HTTP $c"
+fi
+# DNS-blocklisted names are enforced the same way (DNS policy applied to the SNI).
+c="$(https_via ads.doubleclick.net)"
+[ "$c" = 000 ] && pass SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" ||
+  fail SEC-DP-112 "client: DNS-blocklisted name unreachable by address (TLS SNI)" "HTTP $c"

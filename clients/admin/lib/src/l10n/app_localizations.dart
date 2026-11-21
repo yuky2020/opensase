@@ -1285,6 +1285,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Time'**
   String get fieldTime;
+
+  /// No description provided for @navSaas.
+  ///
+  /// In en, this message translates to:
+  /// **'SaaS apps'**
+  String get navSaas;
+
+  /// No description provided for @saasHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Block well-known SaaS apps or whole categories. Enforced on DNS by devices and Edges, and on the TLS server name of every Edge flow, so apps cannot be reached by address either.'**
+  String get saasHelp;
+
+  /// No description provided for @saasBlockCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Block every app of this category'**
+  String get saasBlockCategory;
+
+  /// No description provided for @saasDiscovered.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen in recent flows:'**
+  String get saasDiscovered;
+
+  /// No description provided for @saasSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} flows'**
+  String saasSeen(int count);
+
+  /// No description provided for @statusBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get statusBlocked;
+
+  /// No description provided for @statusAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get statusAllowed;
+
+  /// No description provided for @saasCatFileSharing.
+  ///
+  /// In en, this message translates to:
+  /// **'File sharing'**
+  String get saasCatFileSharing;
+
+  /// No description provided for @saasCatWebmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Webmail'**
+  String get saasCatWebmail;
+
+  /// No description provided for @saasCatAiAssistant.
+  ///
+  /// In en, this message translates to:
+  /// **'AI assistants'**
+  String get saasCatAiAssistant;
+
+  /// No description provided for @saasCatSocialMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Social media'**
+  String get saasCatSocialMedia;
+
+  /// No description provided for @saasCatMessaging.
+  ///
+  /// In en, this message translates to:
+  /// **'Messaging'**
+  String get saasCatMessaging;
+
+  /// No description provided for @saasCatCollaboration.
+  ///
+  /// In en, this message translates to:
+  /// **'Collaboration'**
+  String get saasCatCollaboration;
+
+  /// No description provided for @saasCatStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Streaming'**
+  String get saasCatStreaming;
+
+  /// No description provided for @saasCatCodeHosting.
+  ///
+  /// In en, this message translates to:
+  /// **'Code hosting and paste sites'**
+  String get saasCatCodeHosting;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

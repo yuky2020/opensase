@@ -53,6 +53,7 @@
 //	POST /v1/admin/tenants/{t}/connectors/{c}/revoke   -> 204 | 404
 //	GET  /v1/admin/tenants                -> []AdminTenant (a tenant admin sees only its tenant)
 //	GET  /v1/admin/whoami                 -> AdminIdentity
+//	GET  /v1/admin/saas/catalog           -> []SaaSApp (the built-in catalog, ADR-0017)
 //	POST /v1/admin/tenants/{t}/admin-tokens            AdminTokenRequest -> AdminTokenCreated (token shown once)
 //	GET  /v1/admin/tenants/{t}/admin-tokens            -> []AdminToken
 //	POST /v1/admin/tenants/{t}/admin-tokens/{id}/revoke -> 204 | 404
@@ -170,6 +171,9 @@ type FlowRecord struct {
 	BytesIn  uint64          `json:"bytesIn"`
 	Where    string          `json:"where"` // "device" | "edge" | "cloud" (decide API)
 	DeviceID string          `json:"deviceId,omitempty"`
+	// SaaSApp is the catalog app (pkg/saas) that Flow.Domain belongs to. The Control Plane sets
+	// it when it stores the record; values sent by devices and Edges are ignored (ADR-0017).
+	SaaSApp string `json:"saasApp,omitempty"`
 }
 
 // FlowBatch is the body of POST /v1/flows and the reply to the admin flows query.
@@ -302,10 +306,29 @@ type TenantPolicy struct {
 	Apps           map[string]policy.AppPolicy `json:"apps"` // tenant-mandated per-app policy; user Apps override only if AllowUserRules
 	DNS            policy.DNSPolicy            `json:"dns"`
 	PrivateApps    []TenantPrivateApp          `json:"privateApps,omitempty"` // ZTNA apps (ADR-0013)
+	SaaS           SaaSPolicy                  `json:"saas,omitzero"`         // SaaS app control (ADR-0017)
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`
 	DecideDefault      policy.Action `json:"decideDefault"` // allow|block
+}
+
+// SaaSPolicy blocks applications of the built-in SaaS catalog (pkg/saas, ADR-0017). The
+// Control Plane compiles it into DNS blocklists with IDs "saas:<app>", so it is enforced on
+// DNS answers on the device and at the Edge, and on the TLS SNI or HTTP Host of Edge flows.
+// DNS.AllowDomains still overrides it.
+type SaaSPolicy struct {
+	BlockApps       []string `json:"blockApps,omitempty"`       // catalog app IDs
+	BlockCategories []string `json:"blockCategories,omitempty"` // catalog categories
+	AllowApps       []string `json:"allowApps,omitempty"`       // exempt from BlockCategories (not from BlockApps)
+}
+
+// SaaSApp is one entry of the SaaS catalog (GET /v1/admin/saas/catalog).
+type SaaSApp struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Category string   `json:"category"`
+	Domains  []string `json:"domains"`
 }
 
 // RenewRequest is the body of POST /v1/renew and POST /v1/connector/renew.

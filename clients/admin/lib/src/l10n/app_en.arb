@@ -292,5 +292,27 @@
   "fieldPath": "Path",
   "fieldResult": "Result",
   "auditActorSuper": "super-admin",
-  "fieldTime": "Time"
+  "fieldTime": "Time",
+  "navSaas": "SaaS apps",
+  "saasHelp": "Block well-known SaaS apps or whole categories. Enforced on DNS by devices and Edges, and on the TLS server name of every Edge flow, so apps cannot be reached by address either.",
+  "saasBlockCategory": "Block every app of this category",
+  "saasDiscovered": "Seen in recent flows:",
+  "saasSeen": "{count} flows",
+  "@saasSeen": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "statusBlocked": "Blocked",
+  "statusAllowed": "Allowed",
+  "saasCatFileSharing": "File sharing",
+  "saasCatWebmail": "Webmail",
+  "saasCatAiAssistant": "AI assistants",
+  "saasCatSocialMedia": "Social media",
+  "saasCatMessaging": "Messaging",
+  "saasCatCollaboration": "Collaboration",
+  "saasCatStreaming": "Streaming",
+  "saasCatCodeHosting": "Code hosting and paste sites"
 }

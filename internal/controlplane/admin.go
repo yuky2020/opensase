@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/saas"
 	"github.com/yuky2020/opensase/pkg/store"
 )
 
@@ -254,6 +255,16 @@ func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	out := make([]api.AuditEntry, 0, len(es))
 	for _, e := range es {
 		out = append(out, api.AuditEntry{ID: e.ID, At: e.At.UTC(), Actor: e.Actor, TenantID: e.TenantID, Method: e.Method, Path: e.Path, Status: e.Status})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSaaSCatalog serves the built-in SaaS catalog (ADR-0017) for policy editors.
+func (s *Server) handleSaaSCatalog(w http.ResponseWriter, _ *http.Request) {
+	apps := saas.Apps()
+	out := make([]api.SaaSApp, 0, len(apps))
+	for _, a := range apps {
+		out = append(out, api.SaaSApp{ID: a.ID, Name: a.Name, Category: a.Category, Domains: a.Domains})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

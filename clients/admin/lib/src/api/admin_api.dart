@@ -145,6 +145,9 @@ class AdminApi {
     AuditEntry.fromJson,
   );
 
+  /// The built-in SaaS catalog (ADR-0017).
+  Future<List<SaasApp>> saasCatalog() async => _list(await _send('GET', '/v1/admin/saas/catalog'), SaasApp.fromJson);
+
   // --- edges ---
 
   Future<List<AdminEdge>> listEdges() async => _list(await _send('GET', '/v1/admin/edges'), AdminEdge.fromJson);

@@ -198,5 +198,20 @@
   "fieldPath": "Percorso",
   "fieldResult": "Esito",
   "auditActorSuper": "super-admin",
-  "fieldTime": "Ora"
+  "fieldTime": "Ora",
+  "navSaas": "App SaaS",
+  "saasHelp": "Blocca app SaaS note o intere categorie. Applicato al DNS da dispositivi ed Edge, e al nome del server TLS di ogni flusso sull'Edge, così le app non sono raggiungibili nemmeno per indirizzo.",
+  "saasBlockCategory": "Blocca tutte le app di questa categoria",
+  "saasDiscovered": "Viste nei flussi recenti:",
+  "saasSeen": "{count} flussi",
+  "statusBlocked": "Bloccata",
+  "statusAllowed": "Consentita",
+  "saasCatFileSharing": "Condivisione file",
+  "saasCatWebmail": "Webmail",
+  "saasCatAiAssistant": "Assistenti AI",
+  "saasCatSocialMedia": "Social media",
+  "saasCatMessaging": "Messaggistica",
+  "saasCatCollaboration": "Collaborazione",
+  "saasCatStreaming": "Streaming",
+  "saasCatCodeHosting": "Hosting di codice e paste"
 }

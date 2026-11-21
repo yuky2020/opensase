@@ -197,6 +197,7 @@ func (s *Server) Handler() http.Handler {
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Use(short, s.requireAdmin, s.auditAdmin)
 		r.Get("/whoami", s.handleWhoami)
+		r.Get("/saas/catalog", s.handleSaaSCatalog)
 		r.Get("/tenants", s.handleListTenants) // filtered to the caller's tenant
 		r.Group(func(r chi.Router) {
 			r.Use(requireSuper)

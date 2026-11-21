@@ -113,7 +113,9 @@ class TenantPolicy {
     List<String>? decideBlockDomains,
     List<String>? decideBlockCidrs,
     this.decideDefault = '',
-  }) : rules = rules ?? [],
+    SaasPolicy? saas,
+  }) : saas = saas ?? SaasPolicy(),
+       rules = rules ?? [],
        apps = apps ?? {},
        dns = dns ?? DnsPolicy(),
        privateApps = privateApps ?? [],
@@ -135,6 +137,9 @@ class TenantPolicy {
   /// allow | block ("" means the server default).
   String decideDefault;
 
+  /// SaaS app control (ADR-0017).
+  SaasPolicy saas;
+
   factory TenantPolicy.fromJson(Json j) {
     final apps = objOrEmpty(j, 'apps');
     return TenantPolicy(
@@ -148,6 +153,7 @@ class TenantPolicy {
       decideBlockDomains: strList(j, 'decideBlockDomains'),
       decideBlockCidrs: strList(j, 'decideBlockCidrs'),
       decideDefault: str(j, 'decideDefault'),
+      saas: SaasPolicy.fromJson(objOrEmpty(j, 'saas')),
     );
   }
 
@@ -164,6 +170,7 @@ class TenantPolicy {
     putOmit(j, 'decideBlockDomains', decideBlockDomains);
     putOmit(j, 'decideBlockCidrs', decideBlockCidrs);
     j['decideDefault'] = decideDefault;
+    if (!saas.isEmpty) j['saas'] = saas.toJson();
     return j;
   }
 
@@ -180,6 +187,7 @@ class FlowRecord {
     this.bytesIn = 0,
     this.where = '',
     this.deviceId = '',
+    this.saasApp = '',
   }) : flow = flow ?? Flow(),
        decision = decision ?? Decision();
 
@@ -194,6 +202,9 @@ class FlowRecord {
   String where;
   String deviceId;
 
+  /// Catalog app of the flow's hostname, set by the Control Plane (ADR-0017).
+  String saasApp;
+
   factory FlowRecord.fromJson(Json j) => FlowRecord(
     start: time(j, 'start'),
     end: time(j, 'end'),
@@ -203,6 +214,7 @@ class FlowRecord {
     bytesIn: integer(j, 'bytesIn'),
     where: str(j, 'where'),
     deviceId: str(j, 'deviceId'),
+    saasApp: str(j, 'saasApp'),
   );
 
   Json toJson() {
@@ -217,6 +229,7 @@ class FlowRecord {
       'where': where,
     };
     putOmit(j, 'deviceId', deviceId);
+    putOmit(j, 'saasApp', saasApp);
     return j;
   }
 }
@@ -486,4 +499,54 @@ class AuditEntry {
     j['status'] = status;
     return j;
   }
+}
+
+/// TenantPolicy.saas: block catalog apps or whole categories (ADR-0017).
+class SaasPolicy {
+  SaasPolicy({List<String>? blockApps, List<String>? blockCategories, List<String>? allowApps})
+    : blockApps = blockApps ?? [],
+      blockCategories = blockCategories ?? [],
+      allowApps = allowApps ?? [];
+
+  List<String> blockApps;
+  List<String> blockCategories;
+
+  /// Exempt from blockCategories (not from blockApps).
+  List<String> allowApps;
+
+  bool get isEmpty => blockApps.isEmpty && blockCategories.isEmpty && allowApps.isEmpty;
+
+  /// Whether [app] of [category] is blocked by this policy.
+  bool blocks(String app, String category) =>
+      blockApps.contains(app) || (blockCategories.contains(category) && !allowApps.contains(app));
+
+  factory SaasPolicy.fromJson(Json j) => SaasPolicy(
+    blockApps: strList(j, 'blockApps'),
+    blockCategories: strList(j, 'blockCategories'),
+    allowApps: strList(j, 'allowApps'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{};
+    putOmit(j, 'blockApps', blockApps);
+    putOmit(j, 'blockCategories', blockCategories);
+    putOmit(j, 'allowApps', allowApps);
+    return j;
+  }
+}
+
+/// One entry of the built-in SaaS catalog.
+class SaasApp {
+  SaasApp({required this.id, required this.name, required this.category, List<String>? domains})
+    : domains = domains ?? [];
+
+  String id;
+  String name;
+  String category;
+  List<String> domains;
+
+  factory SaasApp.fromJson(Json j) =>
+      SaasApp(id: str(j, 'id'), name: str(j, 'name'), category: str(j, 'category'), domains: strList(j, 'domains'));
+
+  Json toJson() => {'id': id, 'name': name, 'category': category, 'domains': domains};
 }

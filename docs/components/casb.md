@@ -3,6 +3,19 @@
 ## Purpose
 The Cloud Access Security Broker (CASB) protects enterprise data and enforces governance across cloud software-as-a-service (SaaS) applications. It operates in dual complementary modes: CASB inline within the SWG data path for real-time traffic inspection and CASB API out-of-band for deep cloud tenant management. CASB inline delivers shadow IT discovery, application identification, tenant restriction header injection, and granular activity controls over uploads, downloads, and sharing. CASB API connects directly to SaaS provider APIs to audit data-at-rest, detect overshared or public resources, and execute automated policy remediation.
 
+## Current implementation
+
+The first slice is in place (ADR-0017): inline app-level control and discovery, without
+decryption.
+- **Catalog:** `pkg/saas` lists well-known SaaS apps with their domains and categories.
+- **Policy:** `TenantPolicy.saas` blocks apps or whole categories, with exemptions. It is
+  enforced on DNS by devices and Edges, and on the TLS SNI or HTTP Host of every Edge flow.
+- **Discovery:** the Control Plane tags each flow record with its SaaS app. The portal's "SaaS
+  apps" page shows the apps seen and has the block switches.
+
+Not built yet: API-mode CASB (OAuth connectors to SaaS tenants), tenant restrictions (need
+interception) and activity-level controls such as upload or share.
+
 ## Responsibilities
 - Maintain an open, community-driven SaaS application catalog indexing signatures, domains, risk profiles, and compliance certifications.
 - Identify cloud applications in real-time within the SWG data path using SNI, URL patterns, and HTTP request headers.

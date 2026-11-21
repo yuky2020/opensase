@@ -207,8 +207,12 @@ func (f *Filter) outbound(pkt []byte) bool {
 	key := p.FlowKey()
 	now := time.Now()
 	if cn := f.ct.get(key); cn != nil && cn.deviceID == d.id {
-		if cn.blocked {
+		if cn.blocked.Load() {
 			f.reject(&p, pkt)
+			return false
+		}
+		// Web control (ADR-0017): the first bytes of an allowed TCP flow name its host.
+		if cn.peek != nil && len(p.Payload) > 0 && !f.inspect(cn, c, &p, pkt, dst, now) {
 			return false
 		}
 		cn.touch(now, len(pkt), true, &p)
@@ -254,12 +258,15 @@ func (f *Filter) outbound(pkt []byte) bool {
 	}
 	cn := &conn{deviceID: d.id, proto: p.Protocol, flow: flow, decision: dec, start: now}
 	if dec.Action != policy.ActionAllow {
-		cn.blocked = true
+		cn.blocked.Store(true)
 		if f.ct.add(key, cn, now, len(pkt), &p) {
 			f.e.flows.add(cn.record(now))
 		}
 		f.reject(&p, pkt)
 		return false
+	}
+	if p.Protocol == packet.ProtoTCP {
+		cn.peek = newHostPeek(&p)
 	}
 	return f.ct.add(key, cn, now, len(pkt), &p)
 }
@@ -284,8 +291,9 @@ func (f *Filter) ztnaOutbound(p *packet.Packet, pkt []byte, d *device, key packe
 			flow.Domain = name
 		}
 	}
-	cn := &conn{deviceID: d.id, proto: p.Protocol, flow: flow, start: now, blocked: true,
+	cn := &conn{deviceID: d.id, proto: p.Protocol, flow: flow, start: now,
 		decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: LayerZTNA, Log: true}}
+	cn.blocked.Store(true)
 	if f.ct.add(key, cn, now, len(pkt), p) {
 		f.e.flows.add(cn.record(now))
 	}
@@ -306,7 +314,7 @@ func (f *Filter) inbound(pkt []byte) bool {
 		return true // PMTU and unreachable signals for known devices
 	}
 	cn := f.ct.get(p.FlowKey().Reverse())
-	if cn == nil || cn.blocked {
+	if cn == nil || cn.blocked.Load() {
 		return false
 	}
 	cn.touch(time.Now(), len(pkt), false, &p)
@@ -336,11 +344,15 @@ func (f *Filter) reject(p *packet.Packet, pkt []byte) {
 type conn struct {
 	deviceID string
 	proto    uint8
+	start    time.Time
+	local    bool      // to the Edge itself (DNS, ping): not reported
+	peek     *hostPeek // allowed TCP flows until their host is known (ADR-0017); nil otherwise
+
+	mu       sync.Mutex // guards flow and decision, which web control may update
 	flow     policy.Flow
 	decision policy.Decision
-	start    time.Time
-	blocked  bool
-	local    bool // to the Edge itself (DNS, ping): not reported
+
+	blocked atomic.Bool
 
 	lastSeen atomic.Int64 // unix nanoseconds
 	bytesOut atomic.Uint64
@@ -387,11 +399,14 @@ func (c *conn) touch(now time.Time, n int, out bool, p *packet.Packet) {
 }
 
 func (c *conn) record(end time.Time) api.FlowRecord {
+	c.mu.Lock()
+	flow, dec := c.flow, c.decision
+	c.mu.Unlock()
 	return api.FlowRecord{
 		Start:    c.start,
 		End:      end,
-		Flow:     c.flow,
-		Decision: c.decision,
+		Flow:     flow,
+		Decision: dec,
 		BytesOut: c.bytesOut.Load(),
 		BytesIn:  c.bytesIn.Load(),
 		Where:    "edge",
@@ -402,7 +417,7 @@ func (c *conn) record(end time.Time) api.FlowRecord {
 // expired reports whether c has been idle past its timeout.
 func (c *conn) expired(now time.Time) bool {
 	idle := now.Sub(time.Unix(0, c.lastSeen.Load()))
-	if c.blocked {
+	if c.blocked.Load() {
 		return idle > blockedHold
 	}
 	switch c.proto {
@@ -446,7 +461,7 @@ func (t *conntrack) add(k packet.FlowKey, c *conn, now time.Time, n int, p *pack
 	t.mu.Lock()
 	if old, ok := t.m[k]; ok {
 		t.mu.Unlock()
-		if old.blocked || old.deviceID != c.deviceID {
+		if old.blocked.Load() || old.deviceID != c.deviceID {
 			return false
 		}
 		old.touch(now, n, true, p)
@@ -474,7 +489,7 @@ func (t *conntrack) sweep(now time.Time, owner func(packet.FlowKey) string) []ap
 			continue
 		}
 		delete(t.m, k)
-		if !c.local && !c.blocked {
+		if !c.local && !c.blocked.Load() {
 			out = append(out, c.record(time.Unix(0, c.lastSeen.Load())))
 		}
 	}

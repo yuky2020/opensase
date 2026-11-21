@@ -13,6 +13,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/saas"
 	"github.com/yuky2020/opensase/pkg/store"
 )
 
@@ -358,5 +359,10 @@ func sanitizeFlow(rec api.FlowRecord, now time.Time) api.FlowRecord {
 	f.Network = policy.NetworkType(truncate(string(f.Network), maxNetworkLen))
 	rec.Decision.RuleID = truncate(rec.Decision.RuleID, maxRuleIDLen)
 	rec.Decision.Layer = truncate(rec.Decision.Layer, maxProtoLen*2)
+	// SaaS discovery (ADR-0017): derived here from the hostname, never taken from the reporter.
+	rec.SaaSApp = ""
+	if a, ok := saas.Lookup(f.Domain); ok {
+		rec.SaaSApp = a.ID
+	}
 	return rec
 }

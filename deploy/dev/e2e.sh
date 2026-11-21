@@ -16,6 +16,9 @@
 #  10. Workload Gateway (ADR-0015): a workload on an internal subnet, with no Client, reaches the
 #      internet and the private app only through the gateway; policy and DNS policy apply;
 #      forwarded traffic cannot bypass the tunnel.
+#  11. Web and SaaS control (ADR-0017): a blocked SaaS app fails DNS, and connecting to it by
+#      address (curl --connect-to, no DNS) is reset by the Edge on its TLS SNI, while the
+#      same request naming the address's own host completes.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -247,18 +250,36 @@ for src in $(docker inspect --format '{{range .Mounts}}{{.Source}} {{end}}' "$(d
 done
 if [ -z "$bad" ]; then ok "control plane does not mount edge keys (pki/edge)"; else ko "control plane mounts edge material:$bad"; fi
 
+# 11. Web and SaaS control (ADR-0017). pastebin is blocked by the example policy's SaaS section.
+if out="$(cexec nslookup pastebin.com 2>&1)"; then
+  ko "blocked SaaS app pastebin.com resolved: $out"
+else
+  ok "SaaS block: pastebin.com fails DNS"
+fi
+# Bypass DNS: connect to example.com's address but name pastebin.com in the SNI. -k so that a
+# certificate mismatch is not mistaken for the block: only an Edge reset gives HTTP 000.
+sni_code() { cexec curl -sk -m 15 -o /dev/null -w '%{http_code}' --connect-to "$1:443:example.com:443" "https://$1/" 2>/dev/null || true; }
+code="$(sni_code pastebin.com)"
+if [ "$code" = 000 ]; then ok "SaaS block by SNI: TLS to pastebin.com over example.com's address reset"; else ko "SNI pastebin.com not blocked: HTTP $code"; fi
+code="$(sni_code example.com)"
+case "$code" in
+  000) ko "control: the same request shape with SNI example.com failed" ;;
+  *) ok "control: same request shape with SNI example.com completes (HTTP $code)" ;;
+esac
+
 # 4. Flows: device records, Edge records and the port-25 block. Edge flows are reported when
 # they close (plus a few seconds of batching), so poll.
 log "waiting for flow records"
 i=0
 while :; do
   flows="$(ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null || true)"
-  has_edge=no; has_dev=no; has_smtp=no; has_builtin=no
+  has_edge=no; has_dev=no; has_smtp=no; has_builtin=no; has_saas=no
+  echo "$flows" | grep -q '"ruleId": "saas:pastebin"' && has_saas=yes
   echo "$flows" | grep -q '"ruleId": "builtin-' && has_builtin=yes
   echo "$flows" | grep -q '"where": "edge"' && has_edge=yes
   echo "$flows" | grep -q '"where": "device"' && has_dev=yes
   echo "$flows" | grep -q '"ruleId": "block-smtp"' && has_smtp=yes
-  [ "$has_edge$has_dev$has_smtp" = yesyesyes ] && break
+  [ "$has_edge$has_dev$has_smtp$has_saas" = yesyesyesyes ] && break
   i=$((i + 1))
   [ "$i" -ge 20 ] && break
   sleep 3
@@ -266,6 +287,7 @@ done
 [ "$has_edge" = yes ] && ok "edge flow records present" || ko "no edge flow records"
 [ "$has_dev" = yes ] && ok "device flow records present" || ko "no device flow records"
 [ "$has_smtp" = yes ] && ok "port 25 block recorded (rule block-smtp)" || ko "no block-smtp flow record"
+[ "$has_saas" = yes ] && ok "SNI block recorded (layer web, rule saas:pastebin)" || ko "no saas:pastebin web record"
 # Informational: the client firewall may already block these before they reach the Edge.
 [ "$has_builtin" = yes ] && echo "info: Edge builtin-deny / builtin-dns-bypass records present" || echo "info: no Edge builtin-* records (blocked on the device first?)"
 ctl flows -tenant "$TENANT" -limit 15 || true

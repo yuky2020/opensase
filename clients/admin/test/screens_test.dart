@@ -9,6 +9,7 @@ import 'package:opensase_admin/src/data/session.dart';
 import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
 import 'package:opensase_admin/src/ui/audit_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
+import 'package:opensase_admin/src/ui/saas_screen.dart';
 import 'package:opensase_admin/src/ui/tenants_screen.dart';
 import 'package:opensase_admin/src/ui/users_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -186,5 +187,59 @@ void main() {
     expect(find.text('super-admin'), findsOneWidget);
     expect(find.text('204'), findsOneWidget);
     expect(find.text('/v1/admin/tenants/acme/policy'), findsOneWidget);
+  });
+
+  testWidgets('SaaS: category block with an exemption is saved; discovered apps are shown', (t) async {
+    Object? put;
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/tenants/acme/policy', {'defaultAction': 'allow', 'decideDefault': 'allow'})
+      ..json('GET /v1/admin/saas/catalog', [
+        {
+          'id': 'chatgpt',
+          'name': 'ChatGPT',
+          'category': 'ai-assistant',
+          'domains': ['chatgpt.com'],
+        },
+        {
+          'id': 'claude',
+          'name': 'Claude',
+          'category': 'ai-assistant',
+          'domains': ['claude.ai'],
+        },
+        {
+          'id': 'dropbox',
+          'name': 'Dropbox',
+          'category': 'file-sharing',
+          'domains': ['dropbox.com'],
+        },
+      ])
+      ..json('GET /v1/admin/tenants/acme/flows', {
+        'records': [
+          {
+            'start': '2026-11-20T09:00:00Z',
+            'flow': {'protocol': 'tcp', 'dstIp': '1.2.3.4', 'dstPort': 443, 'domain': 'www.dropbox.com'},
+            'decision': {'action': 'allow', 'layer': 'default'},
+            'where': 'edge',
+            'saasApp': 'dropbox',
+          },
+        ],
+      });
+    cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) {
+      put = jsonDecode(r.body);
+      return http204();
+    };
+    await _pump(t, cp, const SaasScreen());
+    expect(find.byKey(const Key('seen_dropbox')), findsOneWidget);
+    await t.tap(find.byKey(const Key('saas_cat_ai-assistant')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('saas_app_claude'))); // exempt from the category
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('saas_save')));
+    await t.pumpAndSettle();
+    expect((put! as Map)['saas'], {
+      'blockCategories': ['ai-assistant'],
+      'allowApps': ['claude'],
+    });
   });
 }

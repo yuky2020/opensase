@@ -648,4 +648,52 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get fieldTime => 'Ora';
+
+  @override
+  String get navSaas => 'App SaaS';
+
+  @override
+  String get saasHelp =>
+      'Blocca app SaaS note o intere categorie. Applicato al DNS da dispositivi ed Edge, e al nome del server TLS di ogni flusso sull\'Edge, così le app non sono raggiungibili nemmeno per indirizzo.';
+
+  @override
+  String get saasBlockCategory => 'Blocca tutte le app di questa categoria';
+
+  @override
+  String get saasDiscovered => 'Viste nei flussi recenti:';
+
+  @override
+  String saasSeen(int count) {
+    return '$count flussi';
+  }
+
+  @override
+  String get statusBlocked => 'Bloccata';
+
+  @override
+  String get statusAllowed => 'Consentita';
+
+  @override
+  String get saasCatFileSharing => 'Condivisione file';
+
+  @override
+  String get saasCatWebmail => 'Webmail';
+
+  @override
+  String get saasCatAiAssistant => 'Assistenti AI';
+
+  @override
+  String get saasCatSocialMedia => 'Social media';
+
+  @override
+  String get saasCatMessaging => 'Messaggistica';
+
+  @override
+  String get saasCatCollaboration => 'Collaborazione';
+
+  @override
+  String get saasCatStreaming => 'Streaming';
+
+  @override
+  String get saasCatCodeHosting => 'Hosting di codice e paste';
 }

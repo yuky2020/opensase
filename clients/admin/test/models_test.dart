@@ -48,6 +48,7 @@ const tenantPolicyJson = '''
       "users": ["alice@acme.test"]
     }
   ],
+  "saas": {"blockApps": ["dropbox"], "blockCategories": ["ai-assistant"], "allowApps": ["claude"]},
   "decideBlockDomains": ["*.casino.example"],
   "decideBlockCidrs": ["203.0.113.0/24"],
   "decideDefault": "allow"
@@ -83,6 +84,20 @@ void main() {
     AuditEntry.fromJson,
     (v) => v.toJson(),
   );
+  roundTrip(
+    'SaasApp',
+    '{"id":"dropbox","name":"Dropbox","category":"file-sharing","domains":["dropbox.com"]}',
+    SaasApp.fromJson,
+    (v) => v.toJson(),
+  );
+  test('SaasPolicy.blocks and empty policy omits saas', () {
+    final p = SaasPolicy(blockApps: ['dropbox'], blockCategories: ['ai-assistant'], allowApps: ['claude']);
+    expect(p.blocks('dropbox', 'file-sharing'), isTrue);
+    expect(p.blocks('box', 'file-sharing'), isFalse);
+    expect(p.blocks('chatgpt', 'ai-assistant'), isTrue);
+    expect(p.blocks('claude', 'ai-assistant'), isFalse);
+    expect(TenantPolicy().toJson().containsKey('saas'), isFalse);
+  });
   roundTrip('AdminUser', '{"id":"u1","email":"a@b.c","name":"A"}', AdminUser.fromJson, (v) => v.toJson());
   roundTrip(
     'ProvisioningKeyRequest',
@@ -102,7 +117,7 @@ void main() {
     '''{"records":[{"start":"2026-11-20T10:00:00Z","end":"2026-11-20T10:00:05.5Z",
       "flow":{"app":"com.android.chrome","uid":10123,"network":"wifi","protocol":"tcp","dstIp":"93.184.216.34","dstPort":443,"domain":"example.com"},
       "decision":{"action":"block","ruleId":"dns:ads","layer":"dns","log":true},
-      "bytesOut":100,"bytesIn":2000,"where":"edge","deviceId":"d1"}]}''',
+      "bytesOut":100,"bytesIn":2000,"where":"edge","deviceId":"d1","saasApp":"github"}]}''',
     FlowBatch.fromJson,
     (v) => v.toJson(),
   );

@@ -65,6 +65,15 @@ exchange. There is no classic fallback.
 
     [:octicons-arrow-right-24: ADR-0015](adr/0015-workload-gateway-mvp.md)
 
+-   :material-web-check:{ .lg .middle } __Web and SaaS control__
+
+    ---
+
+    Hostname from TLS SNI or HTTP Host, enforced without decryption; SaaS catalog with
+    one-click blocking and discovery.
+
+    [:octicons-arrow-right-24: ADR-0017](adr/0017-web-saas-control-sni.md)
+
 -   :material-account-key:{ .lg .middle } __Multi-tenant, audited__
 
     ---
@@ -132,14 +141,15 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result | ✅ |
-| SWG / CASB / DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
+| TLS interception (paths, tenant restrictions), DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 
-1. **SWG and CASB** on the Edge.
+1. **SWG and CASB, next slice:** opt-in TLS interception with tenant CAs (URL paths, tenant restrictions), then DLP.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](adr/README.md), proposed).

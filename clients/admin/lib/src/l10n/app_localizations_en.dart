@@ -768,7 +768,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDlpHelp =>
-      'Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).';
+      'Scans uploads, and file downloads where enabled, on the inspected path (up to 8 MiB), including the text inside Office documents, PDF files and ZIP archives. Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).';
 
   @override
   String get webAddDlp => 'Add DLP rule';
@@ -825,4 +825,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webAvBlockUnscannedHelp => 'Files over 20 MiB, partial (range) downloads, or no scanner reachable.';
+
+  @override
+  String get webDlpDownloads => 'Also scan file downloads';
+
+  @override
+  String get webDlpBoth => 'uploads and downloads';
+
+  @override
+  String get webDlpUploadsOnly => 'uploads';
 }

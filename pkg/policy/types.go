@@ -91,7 +91,7 @@ type MalwarePolicy struct {
 	BlockUnscanned bool `json:"blockUnscanned,omitempty"`
 }
 
-// DLPRule finds sensitive data in request bodies (pkg/dlp).
+// DLPRule finds sensitive data in uploads, and optionally file downloads (pkg/dlp).
 type DLPRule struct {
 	ID         string   `json:"id"`
 	Domains    []string `json:"domains,omitempty"`    // empty = every host on the inspected path
@@ -100,9 +100,12 @@ type DLPRule struct {
 	MinMatches int      `json:"minMatches,omitempty"` // matches needed to trigger; 0 means 1
 	// Action is block (403) or allow (the request goes through and is recorded).
 	Action Action `json:"action"`
-	// BlockUnscanned treats a body the Edge cannot scan (larger than the scan limit, or with a
-	// Content-Encoding) as a match. Otherwise such bodies pass this rule unscanned.
+	// BlockUnscanned treats content the Edge cannot fully scan as a match: larger than the
+	// scan limit, an unsupported Content-Encoding, or a container it could not open (encrypted,
+	// damaged, over the extraction bounds). Otherwise such content passes this rule unscanned.
 	BlockUnscanned bool `json:"blockUnscanned,omitempty"`
+	// Downloads also applies the rule to file downloads (ADR-0021). Uploads are always scanned.
+	Downloads bool `json:"downloads,omitempty"`
 }
 
 // WebRule matches requests by host, path and method.

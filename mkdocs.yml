@@ -96,6 +96,7 @@ nav:
       - "0018 TLS inspection": adr/0018-tls-inspection.md
       - "0019 DLP on uploads": adr/0019-dlp-request-bodies.md
       - "0020 Malware scanning": adr/0020-malware-scanning.md
+      - "0021 DLP in documents": adr/0021-dlp-documents-downloads.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

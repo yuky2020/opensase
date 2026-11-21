@@ -168,6 +168,15 @@ else
   case "$c" in 403 | 000) bad="$bad control:clean=$c" ;; esac
   [ -z "$bad" ] && pass SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" ||
     fail SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" "not refused:$bad"
+  # DLP inside documents (ADR-0021): Word, PDF and a nested ZIP, each with the test card.
+  # The block page must name the matching rule, not ":unscanned": the text was really read.
+  bad=""
+  for f in card.docx card.pdf card-nested.zip; do
+    dc cp "$(dirname "$0")/fixtures/$f" "client:/tmp/$f" >/dev/null 2>&1 || { bad="$bad $f=copy"; continue; }
+    cexec curl -s -m 15 --cacert /tmp/sec-inspect.crt -F "file=@/tmp/$f" https://example.com/ 2>/dev/null | grep -q "rule dlp:sec-pci)" || bad="$bad $f"
+  done
+  [ -z "$bad" ] && pass SEC-DP-125 "inspection: DLP reads inside Word, PDF and nested ZIP uploads" ||
+    fail SEC-DP-125 "inspection: DLP reads inside Word, PDF and nested ZIP uploads" "not caught:$bad"
   # Malware evasion (ADR-0020): the EICAR test file inside a multipart upload and gzip-compressed.
   if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(dc --profile av ps -q clamav 2>/dev/null)" 2>/dev/null)" != healthy ]; then
     skip SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" "clamav not running (docker compose --profile av up -d clamav)"

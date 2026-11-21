@@ -5,15 +5,18 @@ OpenSASE Data Loss Prevention (DLP) is a shared content inspection engine that d
 
 ## Current implementation
 
-The first slice is in place (ADR-0019). It scans request bodies on the Edge's inspected path
-(ADR-0018).
+Two slices are in place. They scan transfers on the Edge's inspected path (ADR-0018).
 - **Detectors** (`pkg/dlp`): `credit-card` (Luhn), `iban` (mod-97), `private-key`,
   `it-tax-code` (check character), `email`, plus tenant RE2 patterns.
 - **Policy:** `web.dlp` rules with domains, a match threshold and `block` or `allow` (record only).
   `blockUnscanned` also blocks bodies larger than 8 MiB or with a Content-Encoding.
 - **Privacy:** only match counts are computed, and records hold the rule, never the data.
 
-Not built yet: document and archive parsing, downloads, exact data match, OCR, API-mode DLP.
+- **Documents and downloads (ADR-0021):** gzip/deflate bodies are decoded; ZIP, Office Open XML,
+  PDF and gzip files are read by their text within fixed bounds; rules with `downloads` also
+  scan file downloads.
+
+Not built yet: OCR, legacy Office (OLE2) and RTF, exact data match, API-mode DLP.
 
 ## Responsibilities
 - Evaluate extracted plain text and file metadata from HTTP request/response payloads (POST/PUT uploads, file downloads) and SaaS storage objects against DLP Policy Rules.

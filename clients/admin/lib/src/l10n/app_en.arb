@@ -338,7 +338,7 @@
   "webRootTitle": "Tenant inspection root",
   "webRootHelp": "Install this certificate as a trusted root on the tenant's devices (MDM, system store). Devices that do not trust it cannot open inspected sites.",
   "webDlp": "Data loss prevention",
-  "webDlpHelp": "Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).",
+  "webDlpHelp": "Scans uploads, and file downloads where enabled, on the inspected path (up to 8 MiB), including the text inside Office documents, PDF files and ZIP archives. Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).",
   "webAddDlp": "Add DLP rule",
   "webDlpDetectors": "Detectors (comma-separated)",
   "webDlpDetectorsHelp": "Built-in detectors: {list}. Card numbers, IBANs and tax codes are checksum-validated.",
@@ -369,5 +369,8 @@
   "webAvDownloads": "Scan file downloads for malware",
   "webAvDownloadsHelp": "Attachments and file types (archives, executables, documents); web pages and streamed media are not held back. ClamAV on the Edge, up to 20 MiB.",
   "webAvBlockUnscanned": "Block what cannot be scanned",
-  "webAvBlockUnscannedHelp": "Files over 20 MiB, partial (range) downloads, or no scanner reachable."
+  "webAvBlockUnscannedHelp": "Files over 20 MiB, partial (range) downloads, or no scanner reachable.",
+  "webDlpDownloads": "Also scan file downloads",
+  "webDlpBoth": "uploads and downloads",
+  "webDlpUploadsOnly": "uploads"
 }

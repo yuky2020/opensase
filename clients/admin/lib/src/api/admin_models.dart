@@ -672,6 +672,7 @@ class DlpRule {
     this.minMatches = 0,
     this.action = 'block',
     this.blockUnscanned = false,
+    this.downloads = false,
   }) : domains = domains ?? [],
        detectors = detectors ?? [],
        patterns = patterns ?? [];
@@ -693,6 +694,9 @@ class DlpRule {
   String action;
   bool blockUnscanned;
 
+  /// Also scan file downloads (ADR-0021).
+  bool downloads;
+
   factory DlpRule.fromJson(Json j) => DlpRule(
     id: str(j, 'id'),
     domains: strList(j, 'domains'),
@@ -701,6 +705,7 @@ class DlpRule {
     minMatches: integer(j, 'minMatches'),
     action: str(j, 'action'),
     blockUnscanned: boolean(j, 'blockUnscanned'),
+    downloads: boolean(j, 'downloads'),
   );
 
   Json toJson() {
@@ -710,6 +715,7 @@ class DlpRule {
     putOmit(j, 'patterns', patterns);
     if (minMatches > 0) j['minMatches'] = minMatches;
     if (blockUnscanned) j['blockUnscanned'] = true;
+    if (downloads) j['downloads'] = true;
     return j;
   }
 }

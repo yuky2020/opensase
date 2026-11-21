@@ -381,6 +381,7 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
                       ),
                       subtitle: Text(
                         [
+                          d.downloads ? l.webDlpBoth : l.webDlpUploadsOnly,
                           d.domains.isEmpty ? l.webDlpAllHosts : d.domains.join(', '),
                           if (d.minMatches > 1) '≥ ${d.minMatches}',
                         ].join(' · '),
@@ -388,6 +389,16 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          Tooltip(
+                            message: l.webDlpDownloads,
+                            child: IconButton(
+                              key: Key('web_dlp_downloads_${d.id}'),
+                              isSelected: d.downloads,
+                              icon: const Icon(Icons.download_outlined),
+                              selectedIcon: const Icon(Icons.download),
+                              onPressed: () => _edit(() => d.downloads = !d.downloads),
+                            ),
+                          ),
                           Tooltip(
                             message: l.webDlpBlockUnscanned,
                             child: Switch(

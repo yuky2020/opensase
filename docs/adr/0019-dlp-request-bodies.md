@@ -74,8 +74,8 @@ and on plain HTTP when the tenant has web rules. For each request with a body:
 
 ## Consequences
 
-- Only request bodies are scanned: uploads, form posts and API calls. Downloads are not scanned
-  yet.
+- Only request bodies are scanned: uploads, form posts and API calls. ADR-0021 adds downloads,
+  text extraction from documents and archives, and decoding of compressed bodies.
 - Formats are not parsed: text inside PDF, Office or ZIP files is not seen, so their compressed
   content passes unscanned. With `blockUnscanned` only a `Content-Encoding` counts as
   unscannable, not a compressed file format; document parsing is the next step.

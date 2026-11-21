@@ -59,7 +59,7 @@ const tenantPolicyJson = '''
     "headers": [{"domains": ["*.saas.example"], "name": "X-Allowed-Tenant", "value": "acme"}],
     "malware": {"uploads": true, "downloads": true, "blockUnscanned": true},
     "dlp": [
-      {"id": "pci", "action": "block", "detectors": ["credit-card", "iban"], "blockUnscanned": true},
+      {"id": "pci", "action": "block", "detectors": ["credit-card", "iban"], "blockUnscanned": true, "downloads": true},
       {"id": "words", "action": "allow", "domains": ["*.share.example"], "patterns": ["project +falcon"], "minMatches": 3}
     ]
   },

@@ -1,7 +1,10 @@
 package edge
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -51,6 +54,10 @@ func newInspectFixture(t *testing.T, web policy.WebPolicy) *inspectFixture {
 		case "/dl/clean":
 			w.Header().Set("Content-Type", "application/zip")
 			_, _ = io.WriteString(w, "PK clean")
+			return
+		case "/dl/sheet":
+			w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+			_, _ = w.Write(sheetWithCard)
 			return
 		case "/dl/range":
 			w.Header().Set("Content-Type", "application/octet-stream")
@@ -375,5 +382,61 @@ func TestInspectionMalware(t *testing.T) {
 	z2.e.av = clamd{addr: fakeClamd(t, eicarReply)}
 	if code, _ := get(t, c2, "GET", "example.com", "/dl/range"); code != http.StatusForbidden {
 		t.Fatalf("range response, blockUnscanned: %d", code)
+	}
+}
+
+// sheetWithCard is a minimal spreadsheet (a ZIP of XML) with a card number in a cell.
+var sheetWithCard = func() []byte {
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	f, _ := zw.Create("xl/worksheets/sheet1.xml")
+	_, _ = f.Write([]byte(`<?xml version="1.0"?><worksheet><sheetData><row><c><v>7</v></c><c><v>4111111111111111</v></c></row></sheetData></worksheet>`))
+	_ = zw.Close()
+	return b.Bytes()
+}()
+
+// encryptedZip has one entry flagged as encrypted.
+var encryptedZip = func() []byte {
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	f, _ := zw.CreateHeader(&zip.FileHeader{Name: "secret.txt", Flags: 0x1})
+	_, _ = f.Write([]byte("ciphertext"))
+	_ = zw.Close()
+	return b.Bytes()
+}()
+
+// TestInspectionDLPDocuments checks ADR-0021: documents and archives are scanned by their
+// extracted text, uploads and (when the rule asks) downloads, and containers the Edge cannot
+// open follow BlockUnscanned.
+func TestInspectionDLPDocuments(t *testing.T) {
+	for _, downloads := range []bool{false, true} {
+		web := testWeb
+		web.DLP = []policy.DLPRule{{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock, BlockUnscanned: true, Downloads: downloads}}
+		z := newInspectFixture(t, web)
+		c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+		// Uploads: a spreadsheet, the same zipped again, and gzip-encoded.
+		var gzBody bytes.Buffer
+		gw := gzip.NewWriter(&gzBody)
+		_, _ = gw.Write(sheetWithCard)
+		_ = gw.Close()
+		for name, up := range map[string]struct{ hdr, body string }{
+			"xlsx":          {"", string(sheetWithCard)},
+			"gzip xlsx":     {"Content-Encoding: gzip\r\n", gzBody.String()},
+			"encrypted zip": {"", string(encryptedZip)},
+		} {
+			if code, _ := post(t, c, up.hdr, up.body); code != http.StatusForbidden {
+				t.Errorf("upload %s: %d", name, code)
+			}
+		}
+		if !z.hasRecord("dlp:pci:unscanned") {
+			t.Error("no unscanned record for the encrypted zip")
+		}
+		want := 200
+		if downloads {
+			want = http.StatusForbidden
+		}
+		if code, _ := get(t, c, "GET", "example.com", "/dl/sheet"); code != want {
+			t.Errorf("download (rule downloads=%v): %d want %d", downloads, code, want)
+		}
 	}
 }

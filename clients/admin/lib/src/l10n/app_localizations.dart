@@ -1517,7 +1517,7 @@ abstract class AppLocalizations {
   /// No description provided for @webDlpHelp.
   ///
   /// In en, this message translates to:
-  /// **'Scans upload bodies on the inspected path (up to 8 MiB). Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).'**
+  /// **'Scans uploads, and file downloads where enabled, on the inspected path (up to 8 MiB), including the text inside Office documents, PDF files and ZIP archives. Matches are recorded, never the data. Switch: also block bodies that cannot be scanned (too large or compressed).'**
   String get webDlpHelp;
 
   /// No description provided for @webAddDlp.
@@ -1621,6 +1621,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Files over 20 MiB, partial (range) downloads, or no scanner reachable.'**
   String get webAvBlockUnscannedHelp;
+
+  /// No description provided for @webDlpDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Also scan file downloads'**
+  String get webDlpDownloads;
+
+  /// No description provided for @webDlpBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'uploads and downloads'**
+  String get webDlpBoth;
+
+  /// No description provided for @webDlpUploadsOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'uploads'**
+  String get webDlpUploadsOnly;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

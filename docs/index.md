@@ -175,7 +175,8 @@ flowchart LR
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](adr/0018-tls-inspection.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](adr/0020-malware-scanning.md)) | ✅ |
-| DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](adr/0021-dlp-documents-downloads.md)) | ✅ |
+| URL categories, HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

@@ -51,8 +51,10 @@ exchange. There is no classic fallback.
   7-day per-Edge intermediates ([ADR-0018](docs/adr/0018-tls-inspection.md)).
 - 🛡️ **DLP on uploads.** On the inspected path, request bodies are scanned for card numbers,
   IBANs and Italian tax codes (all checksum-validated), private keys, bulk e-mail and custom
-  patterns. Uploads are blocked or recorded, without ever storing the data
-  ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)).
+  patterns. The text inside Office documents, PDF files and (nested) ZIP archives is read too,
+  and rules can cover file downloads. Transfers are blocked or recorded, without ever storing
+  the data ([ADR-0019](docs/adr/0019-dlp-request-bodies.md),
+  [ADR-0021](docs/adr/0021-dlp-documents-downloads.md)).
 - 🦠 **Malware scanning.** Uploads and file downloads on the inspected path are scanned by a
   ClamAV daemon next to the Edge, with fail-open or fail-closed behaviour chosen per tenant
   ([ADR-0020](docs/adr/0020-malware-scanning.md)).
@@ -127,7 +129,8 @@ flowchart LR
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](docs/adr/0018-tls-inspection.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](docs/adr/0020-malware-scanning.md)) | ✅ |
-| DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](docs/adr/0021-dlp-documents-downloads.md)) | ✅ |
+| URL categories, HTTP/2 on the inspected path, OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -266,13 +269,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019 and 0020.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020 and 0021.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** DLP on downloads and documents, URL categories, HTTP/2 on the inspected path.
+1. **SWG and CASB, next slice:** URL categories, HTTP/2 on the inspected path, OCR and legacy Office formats for DLP.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

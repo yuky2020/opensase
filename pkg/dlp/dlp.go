@@ -106,37 +106,56 @@ func (m *Matcher) Counts(b []byte) map[string]int {
 
 // --- credit cards ---
 
-// countCards finds runs of 13-19 digits, optionally grouped by single spaces or dashes and not
-// glued to other digits, and counts the Luhn-valid ones with a known issuer prefix.
+// countCards finds runs of digits grouped by single spaces or dashes and not glued to other
+// digits. Within a run, consecutive groups totalling 13-19 digits are candidates, so two
+// numbers separated by a single space are both found. Candidates must be Luhn-valid with a
+// known issuer prefix.
 func countCards(b []byte) int {
 	n := 0
-	digits := make([]byte, 0, 19)
+	var groups [][]byte
 	for i := 0; i < len(b); {
 		if !isDigit(b[i]) || (i > 0 && isDigit(b[i-1])) {
 			i++
 			continue
 		}
-		digits = digits[:0]
+		groups = groups[:0]
 		j := i
-		for j < len(b) && len(digits) <= 19 {
-			if isDigit(b[j]) {
-				digits = append(digits, b[j])
-				j++
+		for j < len(b) {
+			k := j
+			for k < len(b) && isDigit(b[k]) {
+				k++
+			}
+			groups = append(groups, b[j:k])
+			if k+1 < len(b) && (b[k] == ' ' || b[k] == '-') && isDigit(b[k+1]) && len(groups) < 64 {
+				j = k + 1
 				continue
 			}
-			if (b[j] == ' ' || b[j] == '-') && j+1 < len(b) && isDigit(b[j+1]) {
-				j++
-				continue
-			}
+			j = k
 			break
 		}
-		if l := len(digits); l >= 13 && l <= 19 && cardPrefix(digits) && luhn(digits) && !sameDigit(digits) {
-			n++
-		}
-		if j == i {
-			j++
-		}
+		n += cardsInGroups(groups)
 		i = j
+	}
+	return n
+}
+
+func cardsInGroups(groups [][]byte) int {
+	n := 0
+	digits := make([]byte, 0, 19)
+	for i := 0; i < len(groups); {
+		found := false
+		digits = digits[:0]
+		for j := i; j < len(groups) && len(digits)+len(groups[j]) <= 19; j++ {
+			digits = append(digits, groups[j]...)
+			if l := len(digits); l >= 13 && cardPrefix(digits) && luhn(digits) && !sameDigit(digits) {
+				n++
+				i, found = j+1, true
+				break
+			}
+		}
+		if !found {
+			i++
+		}
 	}
 	return n
 }

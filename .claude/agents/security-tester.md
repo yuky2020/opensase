@@ -96,6 +96,8 @@ stays readable. Describe the fix in the report. The lead fixes the product.
    - the inspection listener must not be reachable directly from the tunnel;
    - DLP (ADR-0019): sensitive data in every upload encoding (form, JSON, multipart, chunked,
      compressed with `blockUnscanned`), and records that never hold the data;
+   - DLP inside documents (ADR-0021): Word, PDF and nested ZIP uploads, zip bombs and
+     encrypted archives with `blockUnscanned`, file downloads;
    - malware (ADR-0020): the EICAR test file in multipart, compressed and download form, and
      what happens when the scanner is down.
 9. **Deployment hardening:**

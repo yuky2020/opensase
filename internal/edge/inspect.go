@@ -31,6 +31,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/dlp"
 	"github.com/yuky2020/opensase/pkg/packet"
 	"github.com/yuky2020/opensase/pkg/peek"
 	"github.com/yuky2020/opensase/pkg/pki"
@@ -567,17 +568,20 @@ func (w *webFlow) scanMalware(ctx context.Context, b []byte, complete bool) (str
 	return "", true
 }
 
-// multipartParts returns the bodies of the parts of a multipart body, or nil. A body that
-// does not parse yields the parts read so far: the whole body is scanned as well.
-func multipartParts(contentType string, body []byte) [][]byte {
+// multipartParts returns the bodies of the parts of a multipart body, or nil. ok reports
+// that the whole body parsed; otherwise the parts read so far are returned.
+func multipartParts(contentType string, body []byte) (parts [][]byte, ok bool) {
 	mt, params, err := mime.ParseMediaType(contentType)
 	if err != nil || !strings.HasPrefix(mt, "multipart/") || params["boundary"] == "" {
-		return nil
+		return nil, false
 	}
 	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 	var out [][]byte
 	for len(out) < 256 {
 		p, err := mr.NextRawPart()
+		if errors.Is(err, io.EOF) {
+			return out, true
+		}
 		if err != nil {
 			break
 		}
@@ -587,7 +591,7 @@ func multipartParts(contentType string, body []byte) [][]byte {
 		}
 		out = append(out, b)
 	}
-	return out
+	return out, false
 }
 
 // fileDownload reports whether a response is a file download to scan: an attachment, or a
@@ -616,20 +620,38 @@ func fileDownload(resp *http.Response) bool {
 // scanDownload scans a file download and replaces the response with a block page when it
 // must not reach the device.
 func (w *webFlow) scanDownload(resp *http.Response) error {
-	if !w.c.Malware().Downloads || !fileDownload(resp) {
+	av := w.c.Malware().Downloads
+	var dl []policy.DLPCheck
+	for _, ch := range w.c.DLPChecks(w.host) {
+		if ch.Downloads {
+			dl = append(dl, ch)
+		}
+	}
+	if (!av && len(dl) == 0) || !fileDownload(resp) {
 		return nil
 	}
-	var rule string
-	var ok bool
+	rule, ok := "", true
 	if resp.StatusCode == http.StatusPartialContent {
 		// A range is not the whole file: it cannot be judged on its own.
-		rule, ok = w.scanMalware(resp.Request.Context(), nil, false)
+		if av {
+			rule, ok = w.scanMalware(resp.Request.Context(), nil, false)
+		}
+		if ok {
+			rule, ok = w.runDLP(dl, resp.Header, nil, false)
+		}
 	} else {
-		head, err := io.ReadAll(io.LimitReader(resp.Body, maxAVScan+1))
+		limit := 0
+		if av {
+			limit = maxAVScan
+		}
+		if len(dl) > 0 {
+			limit = max(limit, maxDLPScan)
+		}
+		head, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 		if err != nil {
 			return err
 		}
-		complete := len(head) <= maxAVScan
+		complete := len(head) <= limit
 		if complete {
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(head))
@@ -639,7 +661,12 @@ func (w *webFlow) scanDownload(resp *http.Response) error {
 				io.Closer
 			}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
 		}
-		rule, ok = w.scanMalware(resp.Request.Context(), head, complete)
+		if av {
+			rule, ok = w.scanMalware(resp.Request.Context(), head, len(head) <= maxAVScan)
+		}
+		if ok {
+			rule, ok = w.runDLP(dl, resp.Header, head, len(head) <= maxDLPScan)
+		}
 	}
 	if ok {
 		return nil
@@ -647,7 +674,11 @@ func (w *webFlow) scanDownload(resp *http.Response) error {
 	_ = resp.Body.Close()
 	var page bytes.Buffer
 	rec := &bufferWriter{h: http.Header{}, b: &page}
-	blockPage(rec, http.StatusForbidden, w.host, "the download was blocked by the malware scan ("+rule+")")
+	why := "the download was blocked by the malware scan (" + rule + ")"
+	if strings.HasPrefix(rule, "dlp:") {
+		why = "the download contains data your organisation's policy does not allow (rule " + rule + ")"
+	}
+	blockPage(rec, http.StatusForbidden, w.host, why)
 	resp.StatusCode, resp.Status = http.StatusForbidden, "403 Forbidden"
 	resp.Header = rec.h
 	resp.Body = io.NopCloser(&page)
@@ -697,33 +728,61 @@ func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck, av bool) (
 	if av {
 		// File signatures are anchored at the start of a file, so each part of a multipart
 		// upload is scanned on its own (found by SEC-DP-124), and so is the whole body.
-		for _, blob := range append(multipartParts(r.Header.Get("Content-Type"), head), head) {
+		parts, _ := multipartParts(r.Header.Get("Content-Type"), head)
+		for _, blob := range append(parts, head) {
 			if rule, ok := w.scanMalware(r.Context(), blob, len(head) <= maxAVScan); !ok {
 				return rule, false
 			}
 		}
 	}
-	enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding")))
-	scannable := len(head) <= maxDLPScan && (enc == "" || enc == "identity")
-	text := head
-	if scannable && strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
-		// Form values carry "+" for spaces and percent-escapes; scan the decoded form.
-		if dec, err := url.QueryUnescape(string(head)); err == nil {
-			text = []byte(dec)
+	return w.runDLP(checks, r.Header, head, len(head) <= maxDLPScan)
+}
+
+// runDLP evaluates DLP checks on content with headers h (Content-Encoding, Content-Type).
+// complete is false when only a prefix was read. Containers (ZIP, Office documents, PDF,
+// gzip) are scanned by their extracted text (ADR-0021). It returns false and the rule when
+// the content must be blocked.
+func (w *webFlow) runDLP(checks []policy.DLPCheck, h http.Header, body []byte, complete bool) (string, bool) {
+	if len(checks) == 0 {
+		return "", true
+	}
+	var blobs [][]byte
+	scanned := complete
+	if complete {
+		dec, ok := dlp.Decode(h.Get("Content-Encoding"), body)
+		if !ok {
+			scanned = false
+		} else {
+			if strings.HasPrefix(strings.ToLower(h.Get("Content-Type")), "application/x-www-form-urlencoded") {
+				// Form values carry "+" for spaces and percent-escapes; scan the decoded form.
+				if u, err := url.QueryUnescape(string(dec)); err == nil {
+					dec = []byte(u)
+				}
+			}
+			// A multipart body that parses is scanned part by part, so that nothing counts
+			// twice; one that does not parse is scanned whole as well.
+			parts, ok := multipartParts(h.Get("Content-Type"), dec)
+			if !ok {
+				parts = append(parts, dec)
+			}
+			for _, p := range parts {
+				ex := dlp.Extract(p)
+				blobs = append(blobs, ex.Blobs...)
+				scanned = scanned && ex.Complete
+			}
 		}
 	}
 	for _, ch := range checks {
-		rule := "dlp:" + ch.ID
-		hit := false
-		if !scannable {
-			hit = ch.BlockUnscanned
-			rule += ":unscanned"
-		} else {
-			n := 0
-			for _, c := range ch.Matcher.Counts(text) {
+		n := 0
+		for _, b := range blobs {
+			for _, c := range ch.Matcher.Counts(b) {
 				n += c
 			}
-			hit = n >= ch.MinMatches
+		}
+		rule := "dlp:" + ch.ID
+		hit := n >= ch.MinMatches
+		if !hit && !scanned && ch.BlockUnscanned {
+			hit, rule = true, rule+":unscanned"
 		}
 		if !hit {
 			continue

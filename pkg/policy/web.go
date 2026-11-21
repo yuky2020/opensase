@@ -50,6 +50,7 @@ type DLPCheck struct {
 	Action         Action
 	MinMatches     int
 	BlockUnscanned bool
+	Downloads      bool
 	Matcher        *dlp.Matcher
 }
 
@@ -156,7 +157,7 @@ func compileWeb(w *WebPolicy) (*compiledWeb, error) {
 		if err != nil {
 			return nil, verr(field, "%v", err)
 		}
-		cd := compiledDLP{all: len(r.Domains) == 0, check: DLPCheck{ID: r.ID, Action: r.Action, MinMatches: max(r.MinMatches, 1), BlockUnscanned: r.BlockUnscanned, Matcher: m}}
+		cd := compiledDLP{all: len(r.Domains) == 0, check: DLPCheck{ID: r.ID, Action: r.Action, MinMatches: max(r.MinMatches, 1), BlockUnscanned: r.BlockUnscanned, Downloads: r.Downloads, Matcher: m}}
 		if cd.hosts, err = buildSet(r.Domains, "", field+".domains"); err != nil {
 			return nil, err
 		}

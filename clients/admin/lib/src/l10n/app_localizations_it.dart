@@ -774,7 +774,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get webDlpHelp =>
-      'Analizza il contenuto degli upload sul percorso ispezionato (fino a 8 MiB). Vengono registrate le corrispondenze, mai i dati. Interruttore: blocca anche i contenuti non analizzabili (troppo grandi o compressi).';
+      'Analizza gli upload, e i download di file dove attivato, sul percorso ispezionato (fino a 8 MiB), compreso il testo dentro documenti Office, PDF e archivi ZIP. Vengono registrate le corrispondenze, mai i dati. Interruttore: blocca anche i contenuti non analizzabili (troppo grandi o compressi).';
 
   @override
   String get webAddDlp => 'Aggiungi regola DLP';
@@ -831,4 +831,13 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get webAvBlockUnscannedHelp => 'File oltre 20 MiB, download parziali (range) o scanner non raggiungibile.';
+
+  @override
+  String get webDlpDownloads => 'Analizza anche i download di file';
+
+  @override
+  String get webDlpBoth => 'upload e download';
+
+  @override
+  String get webDlpUploadsOnly => 'upload';
 }

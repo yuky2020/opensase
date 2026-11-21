@@ -364,5 +364,10 @@
         "type": "int"
       }
     }
-  }
+  },
+  "webAvUploads": "Scan uploads for malware",
+  "webAvDownloads": "Scan file downloads for malware",
+  "webAvDownloadsHelp": "Attachments and file types (archives, executables, documents); web pages and streamed media are not held back. ClamAV on the Edge, up to 20 MiB.",
+  "webAvBlockUnscanned": "Block what cannot be scanned",
+  "webAvBlockUnscannedHelp": "Files over 20 MiB, partial (range) downloads, or no scanner reachable."
 }

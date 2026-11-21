@@ -92,6 +92,15 @@ exchange. There is no classic fallback.
 
     [:octicons-arrow-right-24: ADR-0019](adr/0019-dlp-request-bodies.md)
 
+-   :material-virus-off-outline:{ .lg .middle } __Malware scanning__
+
+    ---
+
+    Uploads and file downloads scanned by ClamAV next to the Edge; fail open or closed per
+    tenant.
+
+    [:octicons-arrow-right-24: ADR-0020](adr/0020-malware-scanning.md)
+
 -   :material-account-key:{ .lg .middle } __Multi-tenant, audited__
 
     ---
@@ -165,7 +174,8 @@ flowchart LR
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](adr/0018-tls-inspection.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](adr/0019-dlp-request-bodies.md)) | ✅ |
-| Malware scanning, DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](adr/0020-malware-scanning.md)) | ✅ |
+| DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

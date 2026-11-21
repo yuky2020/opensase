@@ -53,6 +53,9 @@ exchange. There is no classic fallback.
   IBANs and Italian tax codes (all checksum-validated), private keys, bulk e-mail and custom
   patterns. Uploads are blocked or recorded, without ever storing the data
   ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)).
+- 🦠 **Malware scanning.** Uploads and file downloads on the inspected path are scanned by a
+  ClamAV daemon next to the Edge, with fail-open or fail-closed behaviour chosen per tenant
+  ([ADR-0020](docs/adr/0020-malware-scanning.md)).
 - 🏷️ **Multi-tenant Control Plane.**
   - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
   - signed policy snapshots and flow logs;
@@ -123,7 +126,8 @@ flowchart LR
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](docs/adr/0017-web-saas-control-sni.md)) | ✅ |
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list ([ADR-0018](docs/adr/0018-tls-inspection.md)) | ✅ |
 | DLP on uploads: card numbers, IBANs, tax codes, private keys, custom patterns ([ADR-0019](docs/adr/0019-dlp-request-bodies.md)) | ✅ |
-| Malware scanning, DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](docs/adr/0020-malware-scanning.md)) | ✅ |
+| DLP on downloads and documents, URL categories, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -262,13 +266,13 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018 and 0019.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019 and 0020.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** malware scanning, DLP on downloads and documents, URL categories, HTTP/2.
+1. **SWG and CASB, next slice:** DLP on downloads and documents, URL categories, HTTP/2 on the inspected path.
 2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
 3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
 4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).

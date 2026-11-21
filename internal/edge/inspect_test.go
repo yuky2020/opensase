@@ -34,6 +34,30 @@ type inspectFixture struct {
 func newInspectFixture(t *testing.T, web policy.WebPolicy) *inspectFixture {
 	t.Helper()
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dl/eicar":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = io.WriteString(w, eicar)
+			return
+		case "/dl/attachment":
+			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("Content-Disposition", `attachment; filename="x.txt"`)
+			_, _ = io.WriteString(w, eicar)
+			return
+		case "/page":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(w, eicar)
+			return
+		case "/dl/clean":
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = io.WriteString(w, "PK clean")
+			return
+		case "/dl/range":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = io.WriteString(w, "part")
+			return
+		}
 		b, _ := io.ReadAll(r.Body)
 		if len(b) > 0 {
 			_, _ = fmt.Fprintf(w, "body=%d ", len(b))
@@ -308,5 +332,48 @@ func TestInspectionDLPOversize(t *testing.T) {
 		if code != 200 || !strings.HasPrefix(body, fmt.Sprintf("body=%d ", len(big))) {
 			t.Fatalf("oversize forwarded: %d %.60q", code, body)
 		}
+	}
+}
+
+// TestInspectionMalware checks ADR-0020: uploads and file downloads are scanned, page
+// content is not, and unscannable content follows BlockUnscanned.
+func TestInspectionMalware(t *testing.T) {
+	web := testWeb
+	web.Malware = policy.MalwarePolicy{Uploads: true, Downloads: true}
+	z := newInspectFixture(t, web)
+	z.e.av = clamd{addr: fakeClamd(t, eicarReply)}
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	if code, body := post(t, c, "", "hello"); code != 200 || body != "body=5 path=/up tenant=acme" {
+		t.Fatalf("clean upload: %d %q", code, body)
+	}
+	if code, _ := post(t, c, "", eicar); code != http.StatusForbidden || !z.hasRecord("malware:Eicar-Test-Signature") {
+		t.Fatalf("eicar upload: %d", code)
+	}
+	// The test file as a multipart upload: it does not start the body, only its part.
+	mp := "--XB\r\nContent-Disposition: form-data; name=\"f\"; filename=\"e.com\"\r\n\r\n" + eicar + "\r\n--XB--\r\n"
+	if code, _ := post(t, c, "Content-Type: multipart/form-data; boundary=XB\r\n", mp); code != http.StatusForbidden {
+		t.Fatalf("eicar in multipart: %d", code)
+	}
+	for path, want := range map[string]int{"/dl/eicar": 403, "/dl/attachment": 403, "/page": 200, "/dl/clean": 200, "/dl/range": 206} {
+		if code, _ := get(t, c, "GET", "example.com", path); code != want {
+			t.Errorf("GET %s: %d want %d", path, code, want)
+		}
+	}
+
+	// Scanner down: content passes unscanned, or is blocked with BlockUnscanned.
+	z.e.av = clamd{addr: "127.0.0.1:1"}
+	if code, _ := get(t, c, "GET", "example.com", "/dl/clean"); code != 200 {
+		t.Fatalf("scanner down, fail open: %d", code)
+	}
+	web.Malware.BlockUnscanned = true
+	z2 := newInspectFixture(t, web)
+	z2.e.av = clamd{}
+	c2 := tls.Client(z2.dial(), &tls.Config{ServerName: "example.com", RootCAs: z2.root, MinVersion: tls.VersionTLS12})
+	if code, _ := get(t, c2, "GET", "example.com", "/dl/clean"); code != http.StatusForbidden || !z2.hasRecord("malware:unscanned") {
+		t.Fatalf("scanner down, blockUnscanned: %d", code)
+	}
+	z2.e.av = clamd{addr: fakeClamd(t, eicarReply)}
+	if code, _ := get(t, c2, "GET", "example.com", "/dl/range"); code != http.StatusForbidden {
+		t.Fatalf("range response, blockUnscanned: %d", code)
 	}
 }

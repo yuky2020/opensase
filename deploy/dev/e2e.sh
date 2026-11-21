@@ -21,7 +21,8 @@
 #      same request naming the address's own host completes.
 #  12. TLS inspection (ADR-0018): with web.inspect on, HTTPS is served with a certificate from
 #      the tenant's inspection root (trusted only with that root), a URL rule blocks one path
-#      with 403, a DLP rule refuses an upload with a card number (ADR-0019), a bypassed
+#      with 403, a DLP rule refuses an upload with a card number (ADR-0019), the EICAR test
+#      file is refused by the ClamAV scan (ADR-0020), a bypassed
 #      domain keeps the server's own certificate; then the example
 #      policy is restored.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
@@ -47,6 +48,8 @@ docker compose --profile e2e build client
 docker compose --profile e2e rm -sf client >/dev/null 2>&1 || true
 docker volume rm opensase_clientstate >/dev/null 2>&1 || true
 docker compose --profile e2e up -d client
+# Malware scanner (ADR-0020): it loads its signatures while the other sections run.
+docker compose --profile av up -d clamav >/dev/null 2>&1 || true
 
 log "waiting for the tunnel address on $TUN"
 i=0
@@ -276,7 +279,7 @@ esac
 log "inspection: enabling web.inspect for $TENANT"
 ctl inspection-ca -tenant "$TENANT" >.e2e-inspect.crt
 cexec sh -c 'cat >/tmp/inspect.crt' <.e2e-inspect.crt
-jq '.web = {inspect: true, bypass: ["example.org"], rules: [{id: "e2e-no-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "e2e-pci", detectors: ["credit-card"], action: "block"}]}' \
+jq '.web = {inspect: true, bypass: ["example.org"], rules: [{id: "e2e-no-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "e2e-pci", detectors: ["credit-card"], action: "block"}], malware: {uploads: true, downloads: true}}' \
   policy.example.json >.e2e-policy-web.json
 ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-web.json
 issuer=""
@@ -312,6 +315,20 @@ code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_co
 if [ "$code" = 403 ]; then ok "DLP: upload with a card number refused with 403"; else ko "DLP card upload: HTTP $code"; fi
 code="$(cexec curl -s -m 15 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' --data 'note=hello' https://example.com/ 2>/dev/null || true)"
 case "$code" in 000 | 403) ko "DLP: clean upload refused or failed (HTTP $code)" ;; *) ok "DLP: clean upload reaches the server (HTTP $code)" ;; esac
+# Malware (ADR-0020): the EICAR test file, assembled here, is refused as an upload.
+i=0
+until [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --profile av ps -q clamav)" 2>/dev/null)" = healthy ]; do
+  i=$((i + 1))
+  [ "$i" -ge 60 ] && break
+  sleep 5
+done
+if [ "$i" -ge 60 ]; then
+  ko "malware: clamav not healthy within 5 minutes"
+else
+  eicar='X5O!P%@AP[4\PZX54(P^)7CC)7}$'"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\$H+H*"
+  code="$(cexec curl -s -m 30 --cacert /tmp/inspect.crt -o /dev/null -w '%{http_code}' --data-binary "$eicar" https://example.com/ 2>/dev/null || true)"
+  if [ "$code" = 403 ]; then ok "malware: EICAR upload refused by the ClamAV scan"; else ko "malware: EICAR upload: HTTP $code"; fi
+fi
 i=0
 while :; do
   f="$(ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null || true)"

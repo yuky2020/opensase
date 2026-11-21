@@ -74,6 +74,8 @@ services:
       EDGE_ALLOW_PRIVATE: ${EDGE_ALLOW_PRIVATE:-0}
       # TLS inspection listener (ADR-0018); empty disables. Tenants opt in with policy web.inspect.
       EDGE_INSPECT_PORT: ${EDGE_INSPECT_PORT-15002}
+      # Malware scanning (ADR-0020): the clamav service (profile "av"). Unreachable = unscanned.
+      EDGE_CLAMD: ${EDGE_CLAMD-clamav:3310}
     # Only the Edge directory: root.crt, edge.crt, edge.key, edge-wg.key.
     volumes:
       - ./pki/edge:/pki:ro
@@ -83,6 +85,21 @@ services:
       controlplane:
         condition: service_healthy
     command: ["-control-url", "https://controlplane:9443", "-pki", "/pki", "-listen", ":8443", "-wg-port", "51820", "-wg-endpoint", "${EDGE_HOST:-edge}:51820", "-upstream-dns", "${UPSTREAM_DNS:-1.1.1.1:53}", "-ztna-listen", "0.0.0.0:15001", "-broker-listen", ":8444", "-state-dir", "/var/lib/opensase-edge", "-flow-log", "/var/lib/opensase-edge/flows.jsonl"]
+
+  # Malware scanner for the Edge (ADR-0020). Heavy (about 1 GiB of RAM for the signatures),
+  # so it only runs with the "av" profile: docker compose --profile av up -d clamav.
+  clamav:
+    profiles: ["av"]
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_MILTERD: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
 
   # Connector (ADR-0013): outbound only, on the default network (Control Plane, Edge) and
   # on corp, the "data-centre LAN" that the Edge and the Control Plane cannot reach.

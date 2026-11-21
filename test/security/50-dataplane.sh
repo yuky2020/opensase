@@ -120,7 +120,7 @@ if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ]; then
   exit 0
 fi
 admin_get "/tenants/$T/inspection-ca" 2>/dev/null | cexec sh -c 'cat >/tmp/sec-inspect.crt'
-web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}]}')"
+web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}], malware: {uploads: true, downloads: true}}')"
 if [ "$(admin_code PUT "/tenants/$T/policy" "$web")" != 204 ]; then
   skip SEC-DP-120 "inspection: requests must match the connection's host" "could not enable inspection"
   exit 0
@@ -168,6 +168,18 @@ else
   case "$c" in 403 | 000) bad="$bad control:clean=$c" ;; esac
   [ -z "$bad" ] && pass SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" ||
     fail SEC-DP-123 "inspection: DLP catches a card number in every upload encoding" "not refused:$bad"
+  # Malware evasion (ADR-0020): the EICAR test file inside a multipart upload and gzip-compressed.
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(dc --profile av ps -q clamav 2>/dev/null)" 2>/dev/null)" != healthy ]; then
+    skip SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" "clamav not running (docker compose --profile av up -d clamav)"
+  else
+    bad=""
+    cexec sh -c 'printf "%s%s" "X5O!P%@AP[4\\PZX54(P^)7CC)7}\$" "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\$H+H*" >/tmp/sec-eicar.txt'
+    # The block page must name the malware scan: the DLP rule above also blocks gzip bodies.
+    cexec curl -s -m 30 --cacert /tmp/sec-inspect.crt -F 'file=@/tmp/sec-eicar.txt' https://example.com/ 2>/dev/null | grep -q "malware scan" || bad="$bad multipart"
+    cexec sh -c 'gzip -c /tmp/sec-eicar.txt | curl -s -m 30 --cacert /tmp/sec-inspect.crt -H "Content-Encoding: gzip" --data-binary @- https://example.com/' 2>/dev/null | grep -q "malware scan" || bad="$bad gzip"
+    [ -z "$bad" ] && pass SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" ||
+      fail SEC-DP-124 "inspection: malware scan catches EICAR in multipart and gzip uploads" "not refused:$bad"
+  fi
   # The Edge must not hide a bad server certificate: an SNI the server has no certificate for.
   c="$(ins --connect-to untrusted.opensase.test:443:example.com:443 https://untrusted.opensase.test/)"
   [ "$c" = 502 ] && pass SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" ||

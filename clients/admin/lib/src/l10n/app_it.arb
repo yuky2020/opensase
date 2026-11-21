@@ -249,5 +249,10 @@
   "webDlpLog": "Registra",
   "webDlpAllHosts": "tutti gli host",
   "webDlpPatternCount": "{n} pattern",
-  "webDlpBlockUnscanned": "Blocca i contenuti non analizzabili"
+  "webDlpBlockUnscanned": "Blocca i contenuti non analizzabili",
+  "webAvUploads": "Scansiona gli upload per malware",
+  "webAvDownloads": "Scansiona i download di file per malware",
+  "webAvDownloadsHelp": "Allegati e tipi di file (archivi, eseguibili, documenti); pagine web e media in streaming non vengono trattenuti. ClamAV sull'Edge, fino a 20 MiB.",
+  "webAvBlockUnscanned": "Blocca ciò che non si può analizzare",
+  "webAvBlockUnscannedHelp": "File oltre 20 MiB, download parziali (range) o scanner non raggiungibile."
 }

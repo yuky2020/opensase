@@ -95,6 +95,7 @@ nav:
       - "0017 Web and SaaS control": adr/0017-web-saas-control-sni.md
       - "0018 TLS inspection": adr/0018-tls-inspection.md
       - "0019 DLP on uploads": adr/0019-dlp-request-bodies.md
+      - "0020 Malware scanning": adr/0020-malware-scanning.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

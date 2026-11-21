@@ -566,7 +566,9 @@ class WebPolicy {
     List<WebRule>? rules,
     List<WebHeader>? headers,
     List<DlpRule>? dlp,
-  }) : bypass = bypass ?? [],
+    MalwarePolicy? malware,
+  }) : malware = malware ?? MalwarePolicy(),
+       bypass = bypass ?? [],
        rules = rules ?? [],
        headers = headers ?? [],
        dlp = dlp ?? [];
@@ -584,7 +586,10 @@ class WebPolicy {
   /// Request body scanning (ADR-0019).
   List<DlpRule> dlp;
 
-  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty;
+  /// Malware scanning (ADR-0020).
+  MalwarePolicy malware;
+
+  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty && malware.isEmpty;
 
   factory WebPolicy.fromJson(Json j) => WebPolicy(
     inspect: boolean(j, 'inspect'),
@@ -592,6 +597,7 @@ class WebPolicy {
     rules: objList(j, 'rules', WebRule.fromJson),
     headers: objList(j, 'headers', WebHeader.fromJson),
     dlp: objList(j, 'dlp', DlpRule.fromJson),
+    malware: MalwarePolicy.fromJson(objOrEmpty(j, 'malware')),
   );
 
   Json toJson() {
@@ -601,6 +607,7 @@ class WebPolicy {
     putOmit(j, 'rules', [for (final r in rules) r.toJson()]);
     putOmit(j, 'headers', [for (final h in headers) h.toJson()]);
     putOmit(j, 'dlp', [for (final d in dlp) d.toJson()]);
+    if (!malware.isEmpty) j['malware'] = malware.toJson();
     return j;
   }
 }
@@ -705,4 +712,27 @@ class DlpRule {
     if (blockUnscanned) j['blockUnscanned'] = true;
     return j;
   }
+}
+
+/// policy.MalwarePolicy: uploads and file downloads scanned by ClamAV at the Edge (ADR-0020).
+class MalwarePolicy {
+  MalwarePolicy({this.uploads = false, this.downloads = false, this.blockUnscanned = false});
+
+  bool uploads;
+  bool downloads;
+  bool blockUnscanned;
+
+  bool get isEmpty => !uploads && !downloads && !blockUnscanned;
+
+  factory MalwarePolicy.fromJson(Json j) => MalwarePolicy(
+    uploads: boolean(j, 'uploads'),
+    downloads: boolean(j, 'downloads'),
+    blockUnscanned: boolean(j, 'blockUnscanned'),
+  );
+
+  Json toJson() => {
+    if (uploads) 'uploads': true,
+    if (downloads) 'downloads': true,
+    if (blockUnscanned) 'blockUnscanned': true,
+  };
 }

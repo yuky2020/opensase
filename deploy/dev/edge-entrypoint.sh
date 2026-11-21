@@ -15,6 +15,7 @@ EDGE_IP="100.64.0.1"
 EDGE_IP6="fd7a:5a5e::1"
 SYNTH="100.96.0.0/12"                  # synthetic PrivateApp addresses (ADR-0013)
 ZTNA_PORT="${EDGE_ZTNA_PORT:-15001}"  # must match -ztna-listen
+CLAMD="${EDGE_CLAMD:-}"                # malware scanner host:port (ADR-0020); adds -clamd
 INSPECT_PORT="${EDGE_INSPECT_PORT:-}"  # TLS inspection (ADR-0018); empty = off; adds -inspect-listen
 ALLOW_PRIVATE="${EDGE_ALLOW_PRIVATE:-0}"
 EDGE_UID="${EDGE_UID:-1000}"
@@ -103,6 +104,9 @@ if [ "$ALLOW_PRIVATE" = 1 ]; then
 fi
 if [ -n "$INSPECT_PORT" ]; then
   set -- "$@" -inspect-listen "0.0.0.0:$INSPECT_PORT"
+fi
+if [ -n "$CLAMD" ]; then
+  set -- "$@" -clamd "$CLAMD"
 fi
 
 if [ "$EDGE_UID" = 0 ]; then

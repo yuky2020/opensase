@@ -39,6 +39,7 @@ func run() error {
 	denyCIDRs := flag.String("deny-cidrs", "", "extra comma-separated CIDRs tunnel clients may not reach (on top of the built-in deny list)")
 	allowPrivate := flag.Bool("allow-private", false, "let tunnel clients reach private ranges (RFC 1918, CGNAT, ULA); link-local, loopback, multicast and the Edge's own addresses stay denied")
 	allowDoH := flag.Bool("allow-doh", false, "disable the built-in DNS-over-HTTPS endpoint blocklist (plain DNS and DoT to other resolvers stay blocked)")
+	clamdAddr := flag.String("clamd", "", "ClamAV daemon host:port for malware scanning on the inspected path (ADR-0020)")
 	inspectListen := flag.String("inspect-listen", "off", "TLS inspection listener for tunnel TCP to ports 80/443 the kernel REDIRECTs to it (ADR-0018; \"off\" disables)")
 	ztnaListen := flag.String("ztna-listen", "0.0.0.0:15001", "ZTNA broker listener for TCP the kernel REDIRECTs from the tunnel to 100.96.0.0/12 (\"off\" disables)")
 	brokerListen := flag.String("broker-listen", ":8444", "Connector listener (mTLS, ALPN opensase-broker/1; \"off\" disables)")
@@ -91,7 +92,7 @@ func run() error {
 		ListenAddr: *listen, WGPort: *wgPort, WGEndpoint: *wgEndpoint, TUNName: *tunName,
 		MTU: *mtu, Upstream: *upstream, RotateAfter: *rotate, Logger: log,
 		DenyCIDRs: deny, AllowPrivate: *allowPrivate, AllowDoH: *allowDoH,
-		ZTNAListen: *ztnaListen, BrokerListen: *brokerListen, InspectListen: *inspectListen,
+		ZTNAListen: *ztnaListen, BrokerListen: *brokerListen, InspectListen: *inspectListen, ClamdAddr: *clamdAddr,
 		TenantID: *tenant, StateDir: *stateDir, FlowLogPath: *flowLog,
 	})
 }

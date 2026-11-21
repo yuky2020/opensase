@@ -95,7 +95,9 @@ stays readable. Describe the fix in the report. The lead fixes the product.
    - QUIC and IPv6 web traffic of inspected devices must not escape the inspection path;
    - the inspection listener must not be reachable directly from the tunnel;
    - DLP (ADR-0019): sensitive data in every upload encoding (form, JSON, multipart, chunked,
-     compressed with `blockUnscanned`), and records that never hold the data.
+     compressed with `blockUnscanned`), and records that never hold the data;
+   - malware (ADR-0020): the EICAR test file in multipart, compressed and download form, and
+     what happens when the scanner is down.
 9. **Deployment hardening:**
    - containers run unprivileged, with the capabilities and mounts that ADR-0002 and review #2 allow;
    - secrets file modes in `deploy/dev`.

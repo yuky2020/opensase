@@ -78,6 +78,17 @@ type WebPolicy struct {
 	// DLP rules scan request bodies on the inspected path (ADR-0019), after Rules allowed
 	// the request.
 	DLP []DLPRule `json:"dlp,omitempty"`
+	// Malware scans uploads and file downloads on the inspected path (ADR-0020).
+	Malware MalwarePolicy `json:"malware,omitzero"`
+}
+
+// MalwarePolicy turns malware scanning on. The Edge scans with a ClamAV daemon.
+type MalwarePolicy struct {
+	Uploads   bool `json:"uploads,omitempty"`   // request bodies
+	Downloads bool `json:"downloads,omitempty"` // file downloads (see ADR-0020 for which responses)
+	// BlockUnscanned blocks content the Edge could not scan: larger than the scan limit, a
+	// partial (range) response, or no scanner reachable. Otherwise it passes unscanned.
+	BlockUnscanned bool `json:"blockUnscanned,omitempty"`
 }
 
 // DLPRule finds sensitive data in request bodies (pkg/dlp).

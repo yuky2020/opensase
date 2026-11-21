@@ -1591,6 +1591,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Block bodies that cannot be scanned'**
   String get webDlpBlockUnscanned;
+
+  /// No description provided for @webAvUploads.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan uploads for malware'**
+  String get webAvUploads;
+
+  /// No description provided for @webAvDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan file downloads for malware'**
+  String get webAvDownloads;
+
+  /// No description provided for @webAvDownloadsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachments and file types (archives, executables, documents); web pages and streamed media are not held back. ClamAV on the Edge, up to 20 MiB.'**
+  String get webAvDownloadsHelp;
+
+  /// No description provided for @webAvBlockUnscanned.
+  ///
+  /// In en, this message translates to:
+  /// **'Block what cannot be scanned'**
+  String get webAvBlockUnscanned;
+
+  /// No description provided for @webAvBlockUnscannedHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Files over 20 MiB, partial (range) downloads, or no scanner reachable.'**
+  String get webAvBlockUnscannedHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

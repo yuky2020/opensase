@@ -815,4 +815,20 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get webDlpBlockUnscanned => 'Blocca i contenuti non analizzabili';
+
+  @override
+  String get webAvUploads => 'Scansiona gli upload per malware';
+
+  @override
+  String get webAvDownloads => 'Scansiona i download di file per malware';
+
+  @override
+  String get webAvDownloadsHelp =>
+      'Allegati e tipi di file (archivi, eseguibili, documenti); pagine web e media in streaming non vengono trattenuti. ClamAV sull\'Edge, fino a 20 MiB.';
+
+  @override
+  String get webAvBlockUnscanned => 'Blocca ciò che non si può analizzare';
+
+  @override
+  String get webAvBlockUnscannedHelp => 'File oltre 20 MiB, download parziali (range) o scanner non raggiungibile.';
 }

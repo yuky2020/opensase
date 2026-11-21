@@ -809,4 +809,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDlpBlockUnscanned => 'Block bodies that cannot be scanned';
+
+  @override
+  String get webAvUploads => 'Scan uploads for malware';
+
+  @override
+  String get webAvDownloads => 'Scan file downloads for malware';
+
+  @override
+  String get webAvDownloadsHelp =>
+      'Attachments and file types (archives, executables, documents); web pages and streamed media are not held back. ClamAV on the Edge, up to 20 MiB.';
+
+  @override
+  String get webAvBlockUnscanned => 'Block what cannot be scanned';
+
+  @override
+  String get webAvBlockUnscannedHelp => 'Files over 20 MiB, partial (range) downloads, or no scanner reachable.';
 }

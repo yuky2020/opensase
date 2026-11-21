@@ -70,7 +70,10 @@ type Config struct {
 	// InspectRoots verifies upstream servers (nil = the system roots).
 	InspectListen string
 	InspectRoots  *x509.CertPool
-	Logger        *slog.Logger
+	// ClamdAddr is the ClamAV daemon that scans for malware (ADR-0020), host:port. Empty:
+	// content of tenants with malware scanning is unscanned.
+	ClamdAddr string
+	Logger    *slog.Logger
 }
 
 func (c *Config) defaults() {
@@ -138,6 +141,7 @@ type Edge struct {
 	synth *synthMap     // synthetic PrivateApp addresses (ADR-0013)
 	hub   *connectorHub // live Connector broker connections
 	insp  *inspector    // TLS inspection (ADR-0018); nil when InspectListen is off
+	av    scanner       // malware scanner (ADR-0020)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -180,6 +184,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 	if cfg.InspectListen != listenOff {
 		e.insp = newInspector(cp, cfg.InspectRoots)
 	}
+	e.av = clamd{addr: cfg.ClamdAddr}
 	copy(e.wgPub[:], k.PublicKey().Bytes())
 	e.dec = newDecider(ctx, cp, cfg.Logger)
 	if cfg.FlowLogPath != "" {

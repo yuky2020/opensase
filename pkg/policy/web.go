@@ -35,6 +35,7 @@ type compiledWeb struct {
 	rules   []compiledWebRule
 	headers []compiledWebHeader
 	dlp     []compiledDLP
+	malware MalwarePolicy
 }
 
 type compiledDLP struct {
@@ -67,7 +68,7 @@ type compiledWebHeader struct {
 }
 
 func compileWeb(w *WebPolicy) (*compiledWeb, error) {
-	cw := &compiledWeb{inspect: w.Inspect}
+	cw := &compiledWeb{inspect: w.Inspect, malware: w.Malware}
 	var err error
 	if cw.bypass, err = buildSet(w.Bypass, "", "web.bypass"); err != nil {
 		return nil, err
@@ -164,6 +165,14 @@ func compileWeb(w *WebPolicy) (*compiledWeb, error) {
 	return cw, nil
 }
 
+// Malware returns the malware scanning policy (ADR-0020).
+func (c *Compiled) Malware() MalwarePolicy {
+	if c.web == nil {
+		return MalwarePolicy{}
+	}
+	return c.web.malware
+}
+
 // DLPChecks returns the DLP rules that apply to requests to host, in policy order.
 func (c *Compiled) DLPChecks(host string) []DLPCheck {
 	if c.web == nil {
@@ -216,7 +225,8 @@ func (c *Compiled) InspectEnabled() bool { return c.web != nil && c.web.inspect 
 // HasWebRules reports whether requests need to be evaluated at all (any rule, header or DLP
 // rule).
 func (c *Compiled) HasWebRules() bool {
-	return c.web != nil && (len(c.web.rules) > 0 || len(c.web.headers) > 0 || len(c.web.dlp) > 0)
+	return c.web != nil && (len(c.web.rules) > 0 || len(c.web.headers) > 0 || len(c.web.dlp) > 0 ||
+		c.web.malware.Uploads || c.web.malware.Downloads)
 }
 
 // WebDecide returns the action for one request and the ID of the rule that decided it ("" if

@@ -21,7 +21,10 @@ Two slices are in place.
     refused, so browsers use the inspected path.
   - The upstream certificate is verified, and the Edge fails closed without an intermediate.
 
-Not built yet: URL categories beyond the DNS blocklists, malware scanning, DLP, SafeSearch,
+- **Malware scanning (ADR-0020)** of uploads and file downloads with ClamAV, and **DLP on
+  uploads (ADR-0019)**.
+
+Not built yet: URL categories beyond the DNS blocklists, DLP on downloads, SafeSearch,
 HTTP/2 on the inspected path, PAC and explicit proxy mode.
 
 ## Responsibilities

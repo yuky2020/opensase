@@ -16,6 +16,8 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -474,8 +476,9 @@ func (w *webFlow) serveHTTP(ctx context.Context, c net.Conn) {
 				pr.Out.Header.Set(h.Name, h.Value)
 			}
 		},
-		Transport: tr,
-		ErrorLog:  log.New(io.Discard, "", 0),
+		Transport:      tr,
+		ModifyResponse: w.scanDownload,
+		ErrorLog:       log.New(io.Discard, "", 0),
 		ErrorHandler: func(rw http.ResponseWriter, r *http.Request, err error) {
 			var ce *tls.CertificateVerificationError
 			if errors.As(err, &ce) {
@@ -522,14 +525,147 @@ func (w *webFlow) handle(rw http.ResponseWriter, r *http.Request, rp *httputil.R
 		blockPage(rw, http.StatusForbidden, w.host, "blocked by your organisation's web policy (rule "+rule+")")
 		return
 	}
-	if checks := w.c.DLPChecks(w.host); len(checks) > 0 && r.Body != nil && r.Body != http.NoBody {
-		if rule, ok := w.scanBody(r, checks); !ok {
-			blockPage(rw, http.StatusForbidden, w.host, "the upload contains data your organisation's policy does not allow (rule "+rule+")")
+	checks, av := w.c.DLPChecks(w.host), w.c.Malware().Uploads
+	if (len(checks) > 0 || av) && r.Body != nil && r.Body != http.NoBody {
+		if rule, ok := w.scanBody(r, checks, av); !ok {
+			msg := "the upload contains data your organisation's policy does not allow (rule " + rule + ")"
+			if strings.HasPrefix(rule, "malware:") {
+				msg = "the upload was blocked by the malware scan (" + rule + ")"
+			}
+			blockPage(rw, http.StatusForbidden, w.host, msg)
 			return
 		}
 	}
 	rp.ServeHTTP(rw, r)
 }
+
+// scanMalware scans b (the whole content when complete). It returns false and the rule when
+// the content must be blocked: malware found, or unscanned under BlockUnscanned.
+func (w *webFlow) scanMalware(ctx context.Context, b []byte, complete bool) (string, bool) {
+	block := w.c.Malware().BlockUnscanned
+	if !complete {
+		if block {
+			w.record(policy.ActionBlock, "malware:unscanned")
+			return "malware:unscanned", false
+		}
+		return "", true
+	}
+	sig, err := w.e.av.scan(ctx, b)
+	switch {
+	case err != nil:
+		w.e.log.Warn("malware scan failed; content unscanned", "host", w.host, "err", err)
+		if block {
+			w.record(policy.ActionBlock, "malware:unscanned")
+			return "malware:unscanned", false
+		}
+		return "", true
+	case sig != "":
+		rule := "malware:" + sig
+		w.record(policy.ActionBlock, rule)
+		return rule, false
+	}
+	return "", true
+}
+
+// multipartParts returns the bodies of the parts of a multipart body, or nil. A body that
+// does not parse yields the parts read so far: the whole body is scanned as well.
+func multipartParts(contentType string, body []byte) [][]byte {
+	mt, params, err := mime.ParseMediaType(contentType)
+	if err != nil || !strings.HasPrefix(mt, "multipart/") || params["boundary"] == "" {
+		return nil
+	}
+	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	var out [][]byte
+	for len(out) < 256 {
+		p, err := mr.NextRawPart()
+		if err != nil {
+			break
+		}
+		b, err := io.ReadAll(p)
+		if err != nil {
+			break
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+// fileDownload reports whether a response is a file download to scan: an attachment, or a
+// type that is not page content or media streamed to the browser (ADR-0020).
+func fileDownload(resp *http.Response) bool {
+	if resp.Request != nil && resp.Request.Method == http.MethodHead {
+		return false
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Disposition")), "attachment") {
+		return true
+	}
+	ct := strings.ToLower(strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0]))
+	for _, skip := range []string{"text/", "image/", "video/", "audio/", "font/", "multipart/",
+		"application/json", "application/javascript", "application/x-javascript", "application/xml",
+		"application/grpc", "application/x-ndjson", "application/manifest+json"} {
+		if strings.HasPrefix(ct, skip) {
+			return false
+		}
+	}
+	return true
+}
+
+// scanDownload scans a file download and replaces the response with a block page when it
+// must not reach the device.
+func (w *webFlow) scanDownload(resp *http.Response) error {
+	if !w.c.Malware().Downloads || !fileDownload(resp) {
+		return nil
+	}
+	var rule string
+	var ok bool
+	if resp.StatusCode == http.StatusPartialContent {
+		// A range is not the whole file: it cannot be judged on its own.
+		rule, ok = w.scanMalware(resp.Request.Context(), nil, false)
+	} else {
+		head, err := io.ReadAll(io.LimitReader(resp.Body, maxAVScan+1))
+		if err != nil {
+			return err
+		}
+		complete := len(head) <= maxAVScan
+		if complete {
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(head))
+		} else {
+			resp.Body = struct {
+				io.Reader
+				io.Closer
+			}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+		}
+		rule, ok = w.scanMalware(resp.Request.Context(), head, complete)
+	}
+	if ok {
+		return nil
+	}
+	_ = resp.Body.Close()
+	var page bytes.Buffer
+	rec := &bufferWriter{h: http.Header{}, b: &page}
+	blockPage(rec, http.StatusForbidden, w.host, "the download was blocked by the malware scan ("+rule+")")
+	resp.StatusCode, resp.Status = http.StatusForbidden, "403 Forbidden"
+	resp.Header = rec.h
+	resp.Body = io.NopCloser(&page)
+	resp.ContentLength = int64(page.Len())
+	resp.Header.Set("Content-Length", fmt.Sprint(page.Len()))
+	resp.TransferEncoding = nil
+	return nil
+}
+
+// bufferWriter is a minimal http.ResponseWriter into a buffer.
+type bufferWriter struct {
+	h http.Header
+	b *bytes.Buffer
+}
+
+func (bw *bufferWriter) Header() http.Header         { return bw.h }
+func (bw *bufferWriter) Write(p []byte) (int, error) { return bw.b.Write(p) }
+func (bw *bufferWriter) WriteHeader(int)             {}
 
 // maxDLPScan is how much of a request body DLP scans (ADR-0019). Larger bodies are
 // "unscanned": they pass, unless a rule has BlockUnscanned.
@@ -538,13 +674,19 @@ const maxDLPScan = 8 << 20
 // scanBody runs the DLP checks on the request body. It returns false and the rule when the
 // request must be blocked. The body is replaced so that the scanned bytes are still sent.
 // Matches are recorded, but never what matched.
-func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck) (string, bool) {
-	head, err := io.ReadAll(io.LimitReader(r.Body, maxDLPScan+1))
+func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck, av bool) (string, bool) {
+	limit := 0
+	if len(checks) > 0 {
+		limit = maxDLPScan
+	}
+	if av {
+		limit = max(limit, maxAVScan)
+	}
+	head, err := io.ReadAll(io.LimitReader(r.Body, int64(limit)+1))
 	if err != nil {
 		return "dlp:read-error", false
 	}
-	complete := len(head) <= maxDLPScan
-	if complete {
+	if len(head) <= limit {
 		r.Body = io.NopCloser(bytes.NewReader(head))
 	} else {
 		r.Body = struct {
@@ -552,8 +694,17 @@ func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck) (string, b
 			io.Closer
 		}{io.MultiReader(bytes.NewReader(head), r.Body), r.Body}
 	}
+	if av {
+		// File signatures are anchored at the start of a file, so each part of a multipart
+		// upload is scanned on its own (found by SEC-DP-124), and so is the whole body.
+		for _, blob := range append(multipartParts(r.Header.Get("Content-Type"), head), head) {
+			if rule, ok := w.scanMalware(r.Context(), blob, len(head) <= maxAVScan); !ok {
+				return rule, false
+			}
+		}
+	}
 	enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding")))
-	scannable := complete && (enc == "" || enc == "identity")
+	scannable := len(head) <= maxDLPScan && (enc == "" || enc == "identity")
 	text := head
 	if scannable && strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
 		// Form values carry "+" for spaces and percent-escapes; scan the decoded form.

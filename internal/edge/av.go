@@ -7,7 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -109,4 +111,33 @@ func sanitizeSignature(s string) string {
 		return "unknown"
 	}
 	return b.String()
+}
+
+// OCR for DLP (ADR-0024): images are sent to an ocrd service, which returns their text.
+
+const ocrTimeout = 35 * time.Second
+
+// ocrFunc returns the OCR function for one extraction, or nil when no OCR service is set.
+func (e *Edge) ocrFunc(ctx context.Context) func([]byte) ([]byte, error) {
+	if e.cfg.OCRURL == "" {
+		return nil
+	}
+	return func(img []byte) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(ctx, ocrTimeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(e.cfg.OCRURL, "/")+"/v1/ocr", bytes.NewReader(img))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/octet-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("ocr: %s", resp.Status)
+		}
+		return io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	}
 }

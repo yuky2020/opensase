@@ -657,7 +657,7 @@ func (w *webFlow) scanDownload(resp *http.Response) error {
 			rule, ok = w.scanMalware(resp.Request.Context(), nil, false)
 		}
 		if ok {
-			rule, ok = w.runDLP(dl, resp.Header, nil, false)
+			rule, ok = w.runDLP(resp.Request.Context(), dl, resp.Header, nil, false)
 		}
 	} else {
 		limit := 0
@@ -685,7 +685,7 @@ func (w *webFlow) scanDownload(resp *http.Response) error {
 			rule, ok = w.scanMalware(resp.Request.Context(), head, len(head) <= maxAVScan)
 		}
 		if ok {
-			rule, ok = w.runDLP(dl, resp.Header, head, len(head) <= maxDLPScan)
+			rule, ok = w.runDLP(resp.Request.Context(), dl, resp.Header, head, len(head) <= maxDLPScan)
 		}
 	}
 	if ok {
@@ -755,14 +755,14 @@ func (w *webFlow) scanBody(r *http.Request, checks []policy.DLPCheck, av bool) (
 			}
 		}
 	}
-	return w.runDLP(checks, r.Header, head, len(head) <= maxDLPScan)
+	return w.runDLP(r.Context(), checks, r.Header, head, len(head) <= maxDLPScan)
 }
 
 // runDLP evaluates DLP checks on content with headers h (Content-Encoding, Content-Type).
 // complete is false when only a prefix was read. Containers (ZIP, Office documents, PDF,
 // gzip) are scanned by their extracted text (ADR-0021). It returns false and the rule when
 // the content must be blocked.
-func (w *webFlow) runDLP(checks []policy.DLPCheck, h http.Header, body []byte, complete bool) (string, bool) {
+func (w *webFlow) runDLP(ctx context.Context, checks []policy.DLPCheck, h http.Header, body []byte, complete bool) (string, bool) {
 	if len(checks) == 0 {
 		return "", true
 	}
@@ -786,7 +786,7 @@ func (w *webFlow) runDLP(checks []policy.DLPCheck, h http.Header, body []byte, c
 				parts = append(parts, dec)
 			}
 			for _, p := range parts {
-				ex := dlp.Extract(p)
+				ex := dlp.ExtractWith(p, dlp.Options{OCR: w.e.ocrFunc(ctx)})
 				blobs = append(blobs, ex.Blobs...)
 				scanned = scanned && ex.Complete
 			}

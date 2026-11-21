@@ -16,7 +16,10 @@ Two slices are in place. They scan transfers on the Edge's inspected path (ADR-0
   PDF and gzip files are read by their text within fixed bounds; rules with `downloads` also
   scan file downloads.
 
-Not built yet: OCR, legacy Office (OLE2) and RTF, exact data match, API-mode DLP.
+- **Legacy Office, RTF, images (ADR-0024):** OLE2 streams read as text runs; RTF text; images
+  sent to the isolated `ocrd` (Tesseract) service.
+
+Not built yet: images inside PDF files, exact data match, API-mode DLP.
 
 ## Responsibilities
 - Evaluate extracted plain text and file metadata from HTTP request/response payloads (POST/PUT uploads, file downloads) and SaaS storage objects against DLP Policy Rules.

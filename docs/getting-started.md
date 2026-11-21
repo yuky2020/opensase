@@ -108,7 +108,7 @@ is in [`docs/security/review-2026-11-19.md`](security/review-2026-11-19.md).
 ## Repository layout
 
 ```
-cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
+cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl, ocrd
 internal/       private logic: controlplane, edge, connector
 pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp, categories
 mobile/         gomobile bridge for the Android client

@@ -51,7 +51,8 @@ exchange. There is no classic fallback.
   7-day per-Edge intermediates ([ADR-0018](docs/adr/0018-tls-inspection.md)).
 - 🛡️ **DLP on uploads.** On the inspected path, request bodies are scanned for card numbers,
   IBANs and Italian tax codes (all checksum-validated), private keys, bulk e-mail and custom
-  patterns. The text inside Office documents, PDF files and (nested) ZIP archives is read too,
+  patterns. The text inside Office documents (old and new), PDF and RTF files, (nested) ZIP
+  archives and images (OCR, in an isolated Tesseract service) is read too,
   and rules can cover file downloads. Transfers are blocked or recorded, without ever storing
   the data ([ADR-0019](docs/adr/0019-dlp-request-bodies.md),
   [ADR-0021](docs/adr/0021-dlp-documents-downloads.md)).
@@ -135,7 +136,8 @@ flowchart LR
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](docs/adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](docs/adr/0021-dlp-documents-downloads.md)) | ✅ |
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](docs/adr/0022-web-categories-ut1.md)) | ✅ |
-| OCR and legacy Office formats for DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](docs/adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
+| SafeSearch, images inside PDF, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -253,7 +255,7 @@ is in [`docs/security/review-2026-11-19.md`](docs/security/review-2026-11-19.md)
 ## Repository layout
 
 ```
-cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl
+cmd/            entrypoints: controlplane, edge, connector, opensase-client, opensasectl, ocrd
 internal/       private logic: controlplane, edge, connector
 pkg/            shared libraries: api, policy, pki, store, firewall, dnsfilter, packet, pqsession, peek, saas, dlp, categories
 mobile/         gomobile bridge for the Android client
@@ -274,17 +276,20 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022 and 0023.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023 and 0024.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
 ## Roadmap
 
-1. **SWG and CASB, next slice:** OCR and legacy Office formats for DLP, SafeSearch.
-2. Roles inside a tenant, OIDC sign-in for the portal, and audit shipping to an append-only store.
-3. Control Plane `GET /v1/admin/info` (pinned control URL for the portal's enrollment QR) and policy ETags.
-4. Policy language decision ([ADR-0005](docs/adr/README.md), proposed).
-5. Workload Gateway for the cloud: GENEVE ingress, metadata-based identity, per-workload flows.
+Planned work and known limitations are tracked as [GitHub issues](https://github.com/yuky2020/opensase/issues). The main lines:
+
+1. **SWG and CASB, next slice:** SafeSearch ([#11](https://github.com/yuky2020/opensase/issues/11)), images inside PDF files for OCR ([#12](https://github.com/yuky2020/opensase/issues/12)).
+2. Roles inside a tenant ([#16](https://github.com/yuky2020/opensase/issues/16)), OIDC sign-in for the portal ([#17](https://github.com/yuky2020/opensase/issues/17)), and audit shipping to an append-only store ([#18](https://github.com/yuky2020/opensase/issues/18)).
+3. Control Plane `GET /v1/admin/info` and policy ETags ([#19](https://github.com/yuky2020/opensase/issues/19)).
+4. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).
+5. Workload Gateway for the cloud: GENEVE ingress, per-workload identity ([#21](https://github.com/yuky2020/opensase/issues/21)).
+6. CI for the container images, the e2e and the security suite ([#28](https://github.com/yuky2020/opensase/issues/28)).
 
 ## Contributing and security
 

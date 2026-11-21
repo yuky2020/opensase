@@ -73,7 +73,10 @@ type Config struct {
 	// ClamdAddr is the ClamAV daemon that scans for malware (ADR-0020), host:port. Empty:
 	// content of tenants with malware scanning is unscanned.
 	ClamdAddr string
-	Logger    *slog.Logger
+	// OCRURL is the ocrd service that reads the text of images for DLP (ADR-0024), for
+	// example http://ocr:8090. Empty: images carry no text.
+	OCRURL string
+	Logger *slog.Logger
 }
 
 func (c *Config) defaults() {

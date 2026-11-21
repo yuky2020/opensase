@@ -78,6 +78,8 @@ services:
       EDGE_INSPECT_PORT: ${EDGE_INSPECT_PORT-15002}
       # Malware scanning (ADR-0020): the clamav service (profile "av"). Unreachable = unscanned.
       EDGE_CLAMD: ${EDGE_CLAMD-clamav:3310}
+      # OCR for DLP on images (ADR-0024): the ocr service (profile "av"). Unreachable = unscanned.
+      EDGE_OCR: ${EDGE_OCR-http://ocr:8090}
     # Only the Edge directory: root.crt, edge.crt, edge.key, edge-wg.key.
     volumes:
       - ./pki/edge:/pki:ro
@@ -102,6 +104,31 @@ services:
       timeout: 10s
       retries: 40
       start_period: 60s
+
+  # OCR service for the Edge's DLP (ADR-0024): Tesseract behind a small HTTP API. It parses
+  # untrusted images, so it runs locked down: read-only, no capabilities, unprivileged,
+  # bounded memory and processes, reachable only on the internal network.
+  ocr:
+    profiles: ["av"]
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.ocr
+    image: opensase/ocr:dev
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   # Connector (ADR-0013): outbound only, on the default network (Control Plane, Edge) and
   # on corp, the "data-centre LAN" that the Edge and the Control Plane cannot reach.

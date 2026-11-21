@@ -186,7 +186,8 @@ flowchart LR
 | Malware scanning of uploads and file downloads with ClamAV ([ADR-0020](adr/0020-malware-scanning.md)) | ✅ |
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](adr/0021-dlp-documents-downloads.md)) | ✅ |
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](adr/0022-web-categories-ut1.md)) | ✅ |
-| OCR and legacy Office formats for DLP, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
+| SafeSearch, images inside PDF, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

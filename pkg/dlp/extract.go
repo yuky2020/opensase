@@ -32,12 +32,42 @@ type Extraction struct {
 	Complete bool // false: a bound was hit, or a container was damaged or encrypted
 }
 
+// Options extends extraction.
+type Options struct {
+	// OCR reads the text of an image (ADR-0024). Nil: images carry no text. An error marks the
+	// extraction incomplete.
+	OCR func(image []byte) ([]byte, error)
+}
+
+// Bounds of OCR within one extraction.
+const (
+	maxOCRImages = 20
+	MaxOCRImage  = 10 << 20
+)
+
 // Extract returns the blobs to scan for b: b itself, or for a container (ZIP, gzip, PDF) the
 // content extracted from it, so that nothing is counted twice.
-func Extract(b []byte) Extraction {
-	x := &extractor{budget: MaxExtract, ex: Extraction{Complete: true}}
+func Extract(b []byte) Extraction { return ExtractWith(b, Options{}) }
+
+// ExtractWith is Extract with options.
+func ExtractWith(b []byte, opt Options) Extraction {
+	x := &extractor{budget: MaxExtract, ex: Extraction{Complete: true}, opt: opt}
 	x.add(b, 0)
 	return x.ex
+}
+
+var imageMagic = [][]byte{
+	{0x89, 'P', 'N', 'G'}, {0xFF, 0xD8, 0xFF}, []byte("GIF8"), []byte("II*\x00"), []byte("MM\x00*"), []byte("BM"),
+}
+
+// IsImage reports whether b starts like a PNG, JPEG, GIF, TIFF or BMP image.
+func IsImage(b []byte) bool {
+	for _, m := range imageMagic {
+		if bytes.HasPrefix(b, m) {
+			return true
+		}
+	}
+	return bytes.HasPrefix(b, []byte("RIFF")) && len(b) >= 12 && string(b[8:12]) == "WEBP"
 }
 
 // Decode undoes a Content-Encoding (gzip, x-gzip, deflate) within MaxExtract. ok is false
@@ -75,6 +105,8 @@ func readBounded(r io.Reader, limit int) ([]byte, bool) {
 type extractor struct {
 	budget int
 	ex     Extraction
+	opt    Options
+	images int
 }
 
 // take reserves n bytes of the output budget.
@@ -88,6 +120,10 @@ func (x *extractor) take(n int) bool {
 }
 
 func (x *extractor) add(b []byte, depth int) {
+	if IsImage(b) {
+		x.ocr(b)
+		return
+	}
 	if !isContainer(b) && !looksXML(b) {
 		x.ex.Blobs = append(x.ex.Blobs, b)
 	}
@@ -115,6 +151,26 @@ func (x *extractor) add(b []byte, depth int) {
 		x.add(out, depth+1)
 	case bytes.HasPrefix(b, []byte("%PDF-")):
 		x.pdf(b)
+	case bytes.HasPrefix(b, oleMagic):
+		// Legacy Office (.doc, .xls, .ppt, .msg): the text runs of every stream (ADR-0024).
+		streams, complete, err := oleStreams(b, x.budget)
+		if err != nil || !complete {
+			x.ex.Complete = false
+		}
+		for _, s := range streams {
+			if t := textRuns(s); x.take(len(t)) {
+				x.ex.Blobs = append(x.ex.Blobs, t)
+			}
+		}
+	case bytes.HasPrefix(b, []byte(`{\rtf`)):
+		if t := rtfText(b); x.take(len(t)) {
+			x.ex.Blobs = append(x.ex.Blobs, t)
+		}
+	case bytes.HasPrefix(b, []byte{0xFF, 0xFE}):
+		// UTF-16LE text with a byte order mark.
+		if t := textRuns(b[2:]); x.take(len(t)) {
+			x.ex.Blobs = append(x.ex.Blobs, t)
+		}
 	case looksXML(b):
 		if t := xmlText(b); x.take(len(t)) {
 			x.ex.Blobs = append(x.ex.Blobs, t)
@@ -122,8 +178,29 @@ func (x *extractor) add(b []byte, depth int) {
 	}
 }
 
+// ocr reads the text of an image, within the per-extraction bounds.
+func (x *extractor) ocr(img []byte) {
+	if x.opt.OCR == nil {
+		return
+	}
+	x.images++
+	if x.images > maxOCRImages || len(img) > MaxOCRImage {
+		x.ex.Complete = false
+		return
+	}
+	t, err := x.opt.OCR(img)
+	if err != nil {
+		x.ex.Complete = false
+		return
+	}
+	if x.take(len(t)) {
+		x.ex.Blobs = append(x.ex.Blobs, t)
+	}
+}
+
 func isContainer(b []byte) bool {
-	return bytes.HasPrefix(b, []byte("PK\x03\x04")) || bytes.HasPrefix(b, []byte{0x1f, 0x8b}) || bytes.HasPrefix(b, []byte("%PDF-"))
+	return bytes.HasPrefix(b, []byte("PK\x03\x04")) || bytes.HasPrefix(b, []byte{0x1f, 0x8b}) || bytes.HasPrefix(b, []byte("%PDF-")) ||
+		bytes.HasPrefix(b, oleMagic) || bytes.HasPrefix(b, []byte(`{\rtf`))
 }
 
 func (x *extractor) zip(b []byte, depth int) {

@@ -601,3 +601,50 @@ func TestInspectionCategoryURL(t *testing.T) {
 		t.Fatalf("other path: %d", code)
 	}
 }
+
+// TestInspectionDLPImagesAndLegacy checks ADR-0024: images are read by the OCR service, RTF
+// and legacy formats by their text; an OCR outage follows BlockUnscanned.
+func TestInspectionDLPImagesAndLegacy(t *testing.T) {
+	png := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("fake image data")...)
+	ocr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if r.URL.Path != "/v1/ocr" || !bytes.HasPrefix(b, []byte{0x89, 'P', 'N', 'G'}) {
+			http.Error(w, "bad", 400)
+			return
+		}
+		_, _ = io.WriteString(w, "Carta di credito\n4111 1111 1111 1111\n")
+	}))
+	defer ocr.Close()
+	web := testWeb
+	web.DLP = []policy.DLPRule{{ID: "pci", Detectors: []string{"credit-card"}, Action: policy.ActionBlock, BlockUnscanned: true}}
+
+	z := newInspectFixture(t, web)
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	// No OCR service: an image carries no text and passes.
+	if code, _ := post(t, c, "", string(png)); code != 200 {
+		t.Fatalf("image without OCR: %d", code)
+	}
+	// RTF is read by its text without OCR.
+	if code, _ := post(t, c, "", `{\rtf1\ansi Carta 4111 1111 1111 1111\par}`); code != http.StatusForbidden {
+		t.Fatalf("rtf: %d", code)
+	}
+
+	z.e.cfg.OCRURL = ocr.URL
+	if code, _ := post(t, c, "", string(png)); code != http.StatusForbidden || !z.hasRecord("dlp:pci") {
+		t.Fatalf("image with OCR: %d", code)
+	}
+	// An image inside a ZIP is read too.
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	f, _ := zw.Create("scan.png")
+	_, _ = f.Write(png)
+	_ = zw.Close()
+	if code, _ := post(t, c, "", zb.String()); code != http.StatusForbidden {
+		t.Fatalf("image in zip: %d", code)
+	}
+	// OCR down: the image cannot be read, BlockUnscanned blocks it.
+	z.e.cfg.OCRURL = "http://127.0.0.1:1"
+	if code, _ := post(t, c, "", string(png)); code != http.StatusForbidden || !z.hasRecord("dlp:pci:unscanned") {
+		t.Fatalf("OCR down: %d", code)
+	}
+}

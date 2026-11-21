@@ -26,7 +26,9 @@
 #      domain keeps the server's own certificate; then the example
 #      policy is restored.
 #  13. Web categories (ADR-0022): with "gambling" blocked, a UT1 gambling domain fails DNS at
-#      the Edge and is reset by SNI; the block is recorded; then the policy is restored.
+#      the Edge and is reset by SNI; the block is recorded. SafeSearch (ADR-0025): Google
+#      resolves to its safe hostname and cannot be reached over another address. Then the
+#      policy is restored.
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -378,7 +380,7 @@ if [ "$i" -ge 60 ]; then
   ko "categories: no list loaded on the Control Plane within 5 minutes"
 else
   ok "categories: $(ctl categories 2>/dev/null | head -1)"
-  jq '.categories = ["gambling"]' policy.example.json >.e2e-policy-cat.json
+  jq '.categories = ["gambling"] | .safeSearch = true' policy.example.json >.e2e-policy-cat.json
   ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-cat.json
   i=0
   until cexec dig +time=3 +tries=1 @100.64.0.1 www.0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
@@ -397,6 +399,13 @@ else
     sleep 3
   done
   if [ "$i" -lt 10 ]; then ok "categories: blocks recorded (rule cat:gambling)"; else ko "categories: no cat:gambling flow record"; fi
+  # SafeSearch (ADR-0025): Google resolves to its safe hostname, works there, and cannot be
+  # reached over another address.
+  if cexec dig +time=3 +tries=1 @100.64.0.1 www.google.com A 2>/dev/null | grep -qi 'CNAME.*forcesafesearch.google.com'; then ok "safesearch: www.google.com -> forcesafesearch.google.com"; else ko "safesearch: no CNAME for www.google.com"; fi
+  code="$(cexec curl -s -m 15 -o /dev/null -w '%{http_code}' https://www.google.com/ 2>/dev/null || true)"
+  case "$code" in 2??|3??) ok "safesearch: www.google.com works on the safe address (HTTP $code)" ;; *) ko "safesearch: www.google.com on the safe address: HTTP $code" ;; esac
+  code="$(cexec curl -s -m 15 -o /dev/null -w '%{http_code}' --connect-to www.google.com:443:example.com:443 https://www.google.com/ 2>/dev/null || true)"
+  if [ "$code" = 000 ]; then ok "safesearch: www.google.com over another address reset (safesearch:bypass)"; else ko "safesearch: bypass not blocked: HTTP $code"; fi
   ctl policy set -tenant "$TENANT" -f /work/policy.example.json
   rm -f .e2e-policy-cat.json
 fi

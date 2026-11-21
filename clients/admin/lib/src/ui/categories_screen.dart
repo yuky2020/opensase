@@ -23,18 +23,30 @@ class CategoriesScreen extends ConsumerWidget {
       builder: (p) => AsyncBody(
         value: ref.watch(categoriesProvider),
         onRetry: () => ref.invalidate(categoriesProvider),
-        builder: (cat) =>
-            _CategoriesEditor(key: ValueKey('cat-$tenant'), tenant: tenant, initial: p.categories, catalog: cat),
+        builder: (cat) => _CategoriesEditor(
+          key: ValueKey('cat-$tenant'),
+          tenant: tenant,
+          initial: p.categories,
+          safeSearch: p.safeSearch,
+          catalog: cat,
+        ),
       ),
     ),
   );
 }
 
 class _CategoriesEditor extends ConsumerStatefulWidget {
-  const _CategoriesEditor({super.key, required this.tenant, required this.initial, required this.catalog});
+  const _CategoriesEditor({
+    super.key,
+    required this.tenant,
+    required this.initial,
+    required this.safeSearch,
+    required this.catalog,
+  });
 
   final String tenant;
   final List<String> initial;
+  final bool safeSearch;
   final CategoryCatalog catalog;
 
   @override
@@ -43,6 +55,7 @@ class _CategoriesEditor extends ConsumerStatefulWidget {
 
 class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
   late List<String> _blocked = [...widget.initial];
+  late bool _safe = widget.safeSearch;
   bool _dirty = false;
   bool _saving = false;
   String? _error;
@@ -51,7 +64,10 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
   @override
   void didUpdateWidget(_CategoriesEditor old) {
     super.didUpdateWidget(old);
-    if (!_dirty && !identical(old.initial, widget.initial)) _blocked = [...widget.initial];
+    if (!_dirty && !identical(old.initial, widget.initial)) {
+      _blocked = [...widget.initial];
+      _safe = widget.safeSearch;
+    }
   }
 
   Future<void> _save() async {
@@ -64,6 +80,7 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
       // Re-read the policy so that only the categories change.
       final p = await api.getPolicy(widget.tenant);
       p.categories = [..._blocked]..sort();
+      p.safeSearch = _safe;
       await api.putPolicy(widget.tenant, p);
       if (!mounted) return;
       setState(() => _dirty = false);
@@ -131,6 +148,19 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
                       cat.loadedAt?.toLocal().toString().substring(0, 16) ?? '',
                     ),
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: SwitchListTile(
+              key: const Key('cat_safesearch'),
+              title: Text(l.safeSearch),
+              subtitle: Text(l.safeSearchHelp),
+              value: _safe,
+              onChanged: (v) => setState(() {
+                _safe = v;
+                _dirty = true;
+              }),
             ),
           ),
           if (_blocked.isNotEmpty)

@@ -100,6 +100,7 @@ nav:
       - "0022 Web categories (UT1)": adr/0022-web-categories-ut1.md
       - "0023 HTTP/2 inspected path": adr/0023-http2-inspected-path.md
       - "0024 DLP: legacy Office, OCR": adr/0024-dlp-legacy-office-ocr.md
+      - "0025 SafeSearch": adr/0025-safesearch.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

@@ -333,8 +333,11 @@ void main() {
     expect(find.byKey(const Key('cat_chip_adult')), findsOneWidget);
     await t.tap(find.byKey(const Key('cat_gambling')));
     await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('cat_safesearch')));
+    await t.pumpAndSettle();
     await t.tap(find.byKey(const Key('cat_save')));
     await t.pumpAndSettle();
     expect((put! as Map)['categories'], ['adult', 'gambling']);
+    expect((put! as Map)['safeSearch'], true);
   });
 }

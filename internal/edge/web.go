@@ -114,6 +114,9 @@ func (f *Filter) hostDecision(c *policy.Compiled, flow policy.Flow, dst netip.Ad
 		}
 		return policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: LayerWeb, Log: true}, true
 	}
+	if d, block := f.e.safeSearchDecision(c, flow.Domain, dst); block {
+		return d, true
+	}
 	if cat, ok := f.e.category(c, flow.Domain); ok {
 		return policy.Decision{Action: policy.ActionBlock, RuleID: "cat:" + cat, Layer: LayerWeb, Log: true}, true
 	}

@@ -36,6 +36,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/peek"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/safesearch"
 )
 
 // TLS inspection (ADR-0018). With -inspect-listen, the kernel REDIRECTs tunnel TCP to ports
@@ -477,6 +478,9 @@ func (w *webFlow) serveHTTP(ctx context.Context, c net.Conn) {
 			pr.Out.Host = pr.In.Host
 			for _, h := range w.c.WebHeaders(w.host) {
 				pr.Out.Header.Set(h.Name, h.Value)
+			}
+			if w.c.SafeSearch() {
+				safesearch.Rewrite(w.host, pr.Out.URL, pr.Out.Header)
 			}
 		},
 		Transport:      tr,

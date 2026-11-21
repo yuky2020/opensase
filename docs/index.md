@@ -187,7 +187,8 @@ flowchart LR
 | DLP inside Office, PDF and ZIP files, and on file downloads ([ADR-0021](adr/0021-dlp-documents-downloads.md)) | ✅ |
 | Web categories from the public UT1 list, enforced on DNS and SNI ([ADR-0022](adr/0022-web-categories-ut1.md)) | ✅ |
 | DLP on legacy Office (.doc/.xls/.ppt), RTF and images with OCR ([ADR-0024](adr/0024-dlp-legacy-office-ocr.md)) | ✅ |
-| SafeSearch, images inside PDF, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| SafeSearch for Google, YouTube, Bing and DuckDuckGo, with bypass protection ([ADR-0025](adr/0025-safesearch.md)) | ✅ |
+| Images inside PDF for OCR, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Roadmap
 

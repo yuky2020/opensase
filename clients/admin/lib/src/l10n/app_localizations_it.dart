@@ -869,4 +869,11 @@ class AppLocalizationsIt extends AppLocalizations {
   String categoriesUrls(String n) {
     return '$n pagine (bloccate sul traffico ispezionato)';
   }
+
+  @override
+  String get safeSearch => 'Forza SafeSearch';
+
+  @override
+  String get safeSearchHelp =>
+      'I motori di ricerca (Google, Bing, DuckDuckGo) rispondono con i risultati filtrati e YouTube è in modalità con restrizioni, tramite il DNS dell\'Edge; le connessioni che provano a raggiungerli in altro modo vengono chiuse.';
 }

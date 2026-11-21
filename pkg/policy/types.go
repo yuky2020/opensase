@@ -63,6 +63,9 @@ type Snapshot struct {
 	// category list loaded by the Control Plane. The Edge enforces them on DNS and on the
 	// hostname of every flow.
 	Categories []string `json:"categories,omitempty"`
+	// SafeSearch forces the safe modes of search engines and video sites (ADR-0025), enforced
+	// by the Edge resolver, on flow hostnames and on the inspected path.
+	SafeSearch bool `json:"safeSearch,omitempty"`
 }
 
 // WebPolicy decrypts and controls the HTTPS (and plain HTTP) traffic of the tenant's devices

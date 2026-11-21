@@ -93,6 +93,7 @@ type Compiled struct {
 	web *compiledWeb // ADR-0018; nil when the snapshot has no web policy
 
 	categories []string // ADR-0022
+	safeSearch bool     // ADR-0025
 }
 
 // compiledPrivateApp is a PrivateApp with normalized ports and a precomputed rule ID.
@@ -153,6 +154,9 @@ func (c *Compiled) BlockResponse() string {
 }
 
 var categoryName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// SafeSearch reports whether the device's tenant forces safe search (ADR-0025).
+func (c *Compiled) SafeSearch() bool { return c.safeSearch }
 
 // Categories returns the web categories the device's tenant blocks (ADR-0022).
 func (c *Compiled) Categories() []string { return c.categories }
@@ -270,6 +274,7 @@ func Compile(s *Snapshot) (*Compiled, error) {
 		return nil, verr("categories", "more than 256 categories")
 	}
 	c.categories = slices.Clone(s.Categories)
+	c.safeSearch = s.SafeSearch
 	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 || len(s.Web.DLP) > 0 || s.Web.Malware != (MalwarePolicy{}) {
 		w, err := compileWeb(&s.Web)
 		if err != nil {

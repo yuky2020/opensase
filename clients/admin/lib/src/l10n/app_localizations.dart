@@ -1681,6 +1681,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{n} pages (blocked on inspected traffic)'**
   String categoriesUrls(String n);
+
+  /// No description provided for @safeSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Force SafeSearch'**
+  String get safeSearch;
+
+  /// No description provided for @safeSearchHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.'**
+  String get safeSearchHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

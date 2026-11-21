@@ -314,6 +314,7 @@ type TenantPolicy struct {
 	SaaS           SaaSPolicy                  `json:"saas,omitzero"`         // SaaS app control (ADR-0017)
 	Web            policy.WebPolicy            `json:"web,omitzero"`          // TLS inspection and URL rules, Edge only (ADR-0018)
 	Categories     []string                    `json:"categories,omitempty"`  // web categories to block (ADR-0022)
+	SafeSearch     bool                        `json:"safeSearch,omitempty"`  // force safe search and restricted video modes (ADR-0025)
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`

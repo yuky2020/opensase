@@ -189,6 +189,7 @@ type fixture struct {
 	apps   []policy.PrivateApp // PrivateApps of the snapshots setPeer publishes
 	web    policy.WebPolicy    // Web policy of the snapshots setPeer publishes
 	cats   []string            // Categories of the snapshots setPeer publishes
+	safe   bool                // SafeSearch of the snapshots setPeer publishes
 }
 
 func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
@@ -253,6 +254,7 @@ func (fx *fixture) setPeer(id string, v uint64) {
 		PrivateApps: fx.apps,
 		Web:         fx.web,
 		Categories:  fx.cats,
+		SafeSearch:  fx.safe,
 	}
 	env, err := policy.Sign(snap, fx.kid, fx.sk)
 	if err != nil {

@@ -116,6 +116,7 @@ class TenantPolicy {
     SaasPolicy? saas,
     WebPolicy? web,
     List<String>? categories,
+    this.safeSearch = false,
   }) : saas = saas ?? SaasPolicy(),
        categories = categories ?? [],
        web = web ?? WebPolicy(),
@@ -150,6 +151,9 @@ class TenantPolicy {
   /// Web categories to block (ADR-0022), names from the loaded category list.
   List<String> categories;
 
+  /// Force safe search and restricted video modes (ADR-0025).
+  bool safeSearch;
+
   factory TenantPolicy.fromJson(Json j) {
     final apps = objOrEmpty(j, 'apps');
     return TenantPolicy(
@@ -166,6 +170,7 @@ class TenantPolicy {
       saas: SaasPolicy.fromJson(objOrEmpty(j, 'saas')),
       web: WebPolicy.fromJson(objOrEmpty(j, 'web')),
       categories: strList(j, 'categories'),
+      safeSearch: boolean(j, 'safeSearch'),
     );
   }
 
@@ -185,6 +190,7 @@ class TenantPolicy {
     if (!saas.isEmpty) j['saas'] = saas.toJson();
     if (!web.isEmpty) j['web'] = web.toJson();
     putOmit(j, 'categories', categories);
+    if (safeSearch) j['safeSearch'] = true;
     return j;
   }
 

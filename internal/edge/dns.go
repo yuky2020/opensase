@@ -11,6 +11,7 @@ import (
 
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/safesearch"
 )
 
 // resolver is the Edge DNS resolver on the tunnel addresses. It applies the querying
@@ -66,6 +67,15 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if blocked, list := c.EvaluateDNS(name); blocked {
 		rs.block(w, req, c, d, name, "dns:"+list, q)
 		return
+	}
+	// SafeSearch (ADR-0025): covered names resolve to the provider's safe hostname.
+	if c.SafeSearch() {
+		if target, ok := safesearch.Target(name); ok {
+			sctx, cancel := context.WithTimeout(rs.e.ctx, 5*time.Second)
+			defer cancel()
+			rs.safeAnswer(sctx, w, req, client, name, target, q)
+			return
+		}
 	}
 	// Web categories (ADR-0022), unless the tenant allowed the name explicitly.
 	if cat, ok := rs.e.category(c, name); ok {

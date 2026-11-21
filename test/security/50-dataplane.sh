@@ -116,8 +116,9 @@ T="${SECTEST_TENANT:-acme}"
 orig="$(admin_get "/tenants/$T/policy" 2>/dev/null || true)"
 if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ] || ! admin_get /categories 2>/dev/null | grep -q '"name":"gambling"'; then
   skip SEC-DP-126 "categories: blocked category unreachable by name variations" "no category list loaded or no admin access"
+  skip SEC-DP-130 "safesearch: forced for covered names" "no category list loaded or no admin access"
 else
-  admin_code PUT "/tenants/$T/policy" "$(printf '%s' "$orig" | jq -c '.categories = ["gambling"]')" >/dev/null
+  admin_code PUT "/tenants/$T/policy" "$(printf '%s' "$orig" | jq -c '.categories = ["gambling"] | .safeSearch = true')" >/dev/null
   i=0
   until cexec dig +time=3 +tries=1 @100.64.0.1 0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
     i=$((i + 1))
@@ -134,6 +135,20 @@ else
   [ "$(https_via example.com)" = 000 ] && bad="$bad control:example.com"
   [ -z "$bad" ] && pass SEC-DP-126 "categories: blocked category unreachable by name variations (DNS, SNI)" ||
     fail SEC-DP-126 "categories: blocked category unreachable by name variations (DNS, SNI)" "reachable:$bad"
+  # SafeSearch evasion (ADR-0025): other Google domains, case, YouTube and Bing names, HTTPS
+  # records with address hints, and covered names over another site's address.
+  bad=""
+  for n in WWW.GOOGLE.CO.UK. google.it m.youtube.com www.bing.com duckduckgo.com; do
+    cexec dig +time=3 +tries=1 @100.64.0.1 "$n" A 2>/dev/null | grep -qiE 'CNAME[[:space:]]+(forcesafesearch|restrict|strict|safe)\.' || bad="$bad dns:$n"
+  done
+  cexec dig +time=3 +tries=1 @100.64.0.1 www.google.com TYPE65 2>/dev/null | grep -qiE 'ipv4hint|ipv6hint' && bad="$bad https-hints"
+  for n in www.google.com www.youtube.com; do
+    [ "$(https_via "$n")" = 000 ] || bad="$bad sni:$n"
+  done
+  c="$(cexec curl -s -m 15 -o /dev/null -w '%{http_code}' https://www.google.com/ 2>/dev/null || true)"
+  case "$c" in 2??|3??) ;; *) bad="$bad control:www.google.com=$c" ;; esac
+  [ -z "$bad" ] && pass SEC-DP-130 "safesearch: forced for covered names, no bypass by address or HTTPS hints" ||
+    fail SEC-DP-130 "safesearch: forced for covered names, no bypass by address or HTTPS hints" "$bad"
   admin_code PUT "/tenants/$T/policy" "$orig" >/dev/null
 fi
 

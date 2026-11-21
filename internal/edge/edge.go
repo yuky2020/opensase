@@ -146,6 +146,7 @@ type Edge struct {
 	insp  *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
 	av    scanner                // malware scanner (ADR-0020)
 	cats  atomic.Pointer[catSet] // web categories (ADR-0022)
+	safe  *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -189,6 +190,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		e.insp = newInspector(cp, cfg.InspectRoots)
 	}
 	e.av = clamd{addr: cfg.ClamdAddr}
+	e.safe = newSafeIPs()
 	copy(e.wgPub[:], k.PublicKey().Bytes())
 	e.dec = newDecider(ctx, cp, cfg.Logger)
 	if cfg.FlowLogPath != "" {
@@ -308,6 +310,7 @@ func (e *Edge) run(ctx context.Context) error {
 	go e.flowLoop(ctx)
 	go e.reportLoop(ctx)
 	go e.categoryLoop(ctx)
+	go e.safeSearchLoop(ctx)
 
 	// 6. Session-setup server.
 	srv := &http.Server{

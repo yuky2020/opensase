@@ -863,4 +863,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String categoriesUrls(String n) {
     return '$n pages (blocked on inspected traffic)';
   }
+
+  @override
+  String get safeSearch => 'Force SafeSearch';
+
+  @override
+  String get safeSearchHelp =>
+      'Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.';
 }

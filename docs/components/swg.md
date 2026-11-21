@@ -27,8 +27,10 @@ Two slices are in place.
 - **Web categories (ADR-0022)** from the public UT1 list, on DNS and on the SNI/Host of every
   flow.
 
-Not built yet: SafeSearch,
-PAC and explicit proxy mode. (HTTP/2 on the inspected path: ADR-0023.)
+- **SafeSearch (ADR-0025)** for Google, YouTube, Bing and DuckDuckGo, with a check that flows to
+  those names use the safe addresses.
+
+Not built yet: PAC and explicit proxy mode. (HTTP/2 on the inspected path: ADR-0023.)
 
 ## Responsibilities
 - Terminate and process outbound web sessions via explicit HTTP/HTTPS proxying (CONNECT method, PAC script distribution) and transparent proxy redirection.

@@ -307,6 +307,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 				PrivateApps:   apps,
 				Web:           tp.Web,
 				Categories:    tp.Categories,
+				SafeSearch:    tp.SafeSearch,
 			}
 			env, err := policy.Sign(snap, s.cfg.SigningKeyID, s.cfg.SigningKey)
 			if err != nil {

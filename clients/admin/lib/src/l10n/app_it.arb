@@ -264,5 +264,7 @@
   "categoriesSource": "Fonte: {source} ({licence}), aggiornata il {when}.",
   "categoriesFilter": "Filtra le categorie",
   "categoriesDomains": "{n} domini",
-  "categoriesUrls": "{n} pagine (bloccate sul traffico ispezionato)"
+  "categoriesUrls": "{n} pagine (bloccate sul traffico ispezionato)",
+  "safeSearch": "Forza SafeSearch",
+  "safeSearchHelp": "I motori di ricerca (Google, Bing, DuckDuckGo) rispondono con i risultati filtrati e YouTube è in modalità con restrizioni, tramite il DNS dell'Edge; le connessioni che provano a raggiungerli in altro modo vengono chiuse."
 }

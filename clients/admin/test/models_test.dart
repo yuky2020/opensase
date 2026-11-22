@@ -223,5 +223,30 @@ void main() {
         ..revoked = true;
       expect(c.isOnline(now), isFalse);
     });
+
+    test('TenantOidc fromJson and toJson never stores client secret', () {
+      final json = {
+        'issuer': 'https://idp.example.com',
+        'clientId': 'client-1',
+        'hasSecret': true,
+        'groupRoles': {'admins': 'admin', 'viewers': 'viewer'},
+        'redirectUrl': 'https://cp.test/callback',
+      };
+      final o = TenantOidc.fromJson(json);
+      expect(o.issuer, 'https://idp.example.com');
+      expect(o.clientId, 'client-1');
+      expect(o.hasSecret, isTrue);
+      expect(o.groupRoles, {'admins': 'admin', 'viewers': 'viewer'});
+      expect(o.redirectUrl, 'https://cp.test/callback');
+
+      // toJson without secret
+      final out = o.toJson();
+      expect(out.containsKey('clientSecret'), isFalse);
+      expect(out['issuer'], 'https://idp.example.com');
+
+      // toJson with secret for saving
+      final outWithSecret = o.toJson(clientSecret: 'my-secret');
+      expect(outWithSecret['clientSecret'], 'my-secret');
+    });
   });
 }

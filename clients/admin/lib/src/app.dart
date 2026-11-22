@@ -18,6 +18,8 @@ import 'ui/saas_screen.dart';
 import 'ui/web_screen.dart';
 import 'ui/settings_screen.dart';
 import 'ui/admin_tokens_screen.dart';
+import 'ui/sso_screen.dart';
+import 'ui/oidc_signin_screen.dart';
 import 'ui/audit_screen.dart';
 import 'ui/tenants_screen.dart';
 import 'ui/theme.dart';
@@ -99,6 +101,14 @@ final _dests = <_Dest>[
     AdminTokensScreen.new,
     perTenant: true,
   ),
+  _Dest(
+    '/sso',
+    Icons.badge_outlined,
+    Icons.badge,
+    (c) => c.l10n.navSso,
+    SsoScreen.new,
+    perTenant: true,
+  ),
   _Dest('/audit', Icons.history_outlined, Icons.history, (c) => c.l10n.navAudit, AuditScreen.new, perTenant: true),
   _Dest(
     '/edges',
@@ -145,12 +155,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/overview',
     refreshListenable: auth,
     redirect: (context, state) {
-      final atLogin = state.matchedLocation == '/login';
+      final loc = state.matchedLocation;
+      if (loc == '/oidc-signin') return null;
+      final atLogin = loc == '/login';
       if (!auth.signedIn) return atLogin ? null : '/login';
       return atLogin ? '/overview' : null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: '/oidc-signin',
+        builder: (context, state) => OidcSignInScreen(token: state.uri.queryParameters['token']),
+      ),
       ShellRoute(
         builder: (context, state, child) => AdminShell(location: state.matchedLocation, child: child),
         routes: [
@@ -159,6 +175,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: d.path,
               pageBuilder: (_, _) => NoTransitionPage(child: d.builder()),
             ),
+          GoRoute(
+            path: '/oidc',
+            pageBuilder: (_, _) => const NoTransitionPage(child: SsoScreen()),
+          ),
         ],
       ),
     ],

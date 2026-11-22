@@ -22,6 +22,9 @@
 //	app list         list the tenant's private apps
 //	categories       list the web categories (UT1) the Control Plane loaded
 //	inspection-ca    download the tenant's web inspection root (ADR-0018)
+//	oidc get         print tenant OIDC configuration
+//	oidc set         configure OIDC sign-in for a tenant
+//	oidc delete      remove tenant OIDC configuration
 //	pq-check         TLS handshake check: prints the negotiated key exchange
 //
 // Global flags default to $OPENSASE_URL, $OPENSASE_CA and $OPENSASE_ADMIN_TOKEN. Secrets
@@ -48,6 +51,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -136,6 +140,9 @@ commands:
   info                                    (pinned control URL for enrollment, version)
   dlp-dataset put -tenant ID -name N -kind values|document -file F [-file F2...]   (values: one per line; ADR-0029)
   dlp-dataset list -tenant ID | dlp-dataset delete -tenant ID -name N
+  oidc get -tenant ID [-json]
+  oidc set -tenant ID -issuer URL -client-id ID [-client-secret-file FILE] -group G=ROLE...
+  oidc delete -tenant ID
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
@@ -201,6 +208,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return listCategories(ctx, g, rest)
 	case "dlp-dataset":
 		return dlpDataset(ctx, g, rest)
+	case "oidc":
+		return oidcCmd(ctx, g, rest)
 	case "info":
 		var info api.AdminInfo
 		if err := g.do(ctx, http.MethodGet, "/v1/admin/info", nil, &info); err != nil {
@@ -1062,4 +1071,113 @@ func dlpDataset(ctx context.Context, g *globals, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown dlp-dataset command %q", sub)
+}
+
+// oidcCmd manages tenant OpenID Connect configuration (issue #17, slice B, ADR-0031).
+func oidcCmd(ctx context.Context, g *globals, args []string) error {
+	if len(args) == 0 {
+		return errors.New("oidc get|set|delete")
+	}
+	sub, args := args[0], args[1:]
+	fs := flag.NewFlagSet("oidc "+sub, flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	switch sub {
+	case "get":
+		asJSON := fs.Bool("json", false, "print JSON")
+		_ = fs.Parse(args)
+		var o api.TenantOIDC
+		path := "/v1/admin/tenants/" + url.PathEscape(*tenant) + "/oidc"
+		if err := g.do(ctx, http.MethodGet, path, nil, &o); err != nil {
+			return err
+		}
+		if *asJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(o) //nolint:gosec // G117: the server never returns the secret (HasSecret only), so the field is empty
+		}
+		fmt.Printf("issuer       %s\n", o.Issuer)
+		fmt.Printf("client ID    %s\n", o.ClientID)
+		fmt.Printf("has secret   %t\n", o.HasSecret)
+		fmt.Println("group roles:")
+		grps := make([]string, 0, len(o.GroupRoles))
+		for grp := range o.GroupRoles {
+			grps = append(grps, grp)
+		}
+		sort.Strings(grps)
+		for _, grp := range grps {
+			fmt.Printf("  %s -> %s\n", grp, o.GroupRoles[grp])
+		}
+		fmt.Printf("redirect URL %s\n", o.RedirectURL)
+		return nil
+
+	case "set":
+		issuer := fs.String("issuer", "", "identity provider issuer URL (https)")
+		clientID := fs.String("client-id", "", "client ID")
+		clientSecretFile := fs.String("client-secret-file", "", "file containing client secret (mode 0600)")
+		var groups fileList
+		fs.Var(&groups, "group", "group to role mapping in GROUP=ROLE format (repeatable)")
+		_ = fs.Parse(args)
+
+		if *issuer == "" || *clientID == "" {
+			return errors.New("-issuer, -client-id, and at least one -group G=ROLE are required")
+		}
+
+		groupRoles, err := parseGroupRoles(groups)
+		if err != nil {
+			return err
+		}
+
+		var secret string
+		if *clientSecretFile != "" {
+			s, err := readSecretFile(*clientSecretFile)
+			if err != nil {
+				return err
+			}
+			secret = s
+		}
+
+		req := api.TenantOIDC{
+			Issuer:       *issuer,
+			ClientID:     *clientID,
+			ClientSecret: secret,
+			GroupRoles:   groupRoles,
+		}
+		var out api.TenantOIDC
+		path := "/v1/admin/tenants/" + url.PathEscape(*tenant) + "/oidc"
+		if err := g.do(ctx, http.MethodPut, path, req, &out); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "OIDC configured for tenant %s\n", *tenant)
+		fmt.Printf("redirect URL: %s\n", out.RedirectURL)
+		return nil
+
+	case "delete":
+		_ = fs.Parse(args)
+		path := "/v1/admin/tenants/" + url.PathEscape(*tenant) + "/oidc"
+		if err := g.do(ctx, http.MethodDelete, path, nil, nil); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "OIDC removed for tenant %s\n", *tenant)
+		return nil
+	}
+	return fmt.Errorf("unknown oidc command %q", sub)
+}
+
+func parseGroupRoles(groups []string) (map[string]string, error) {
+	if len(groups) == 0 {
+		return nil, errors.New("at least one -group G=ROLE is required")
+	}
+	groupRoles := make(map[string]string, len(groups))
+	for _, item := range groups {
+		idx := strings.LastIndex(item, "=")
+		if idx <= 0 || idx == len(item)-1 {
+			return nil, fmt.Errorf("invalid -group format %q: expected GROUP=ROLE", item)
+		}
+		role := item[idx+1:]
+		if role != api.TenantRoleAdmin && role != api.TenantRolePolicyEditor && role != api.TenantRoleViewer {
+			return nil, fmt.Errorf("invalid role %q: must be admin, policy-editor, or viewer", role)
+		}
+		groupRoles[item[:idx]] = role
+	}
+	return groupRoles, nil
 }

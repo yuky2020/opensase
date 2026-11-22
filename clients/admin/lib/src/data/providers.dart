@@ -85,6 +85,10 @@ final adminTokensProvider = FutureProvider.family<List<AdminToken>, String>(
   (ref, t) => ref.watch(apiProvider).listAdminTokens(t),
 );
 
+final tenantOidcProvider = FutureProvider.family<TenantOidc?, String>(
+  (ref, t) => ref.watch(apiProvider).getTenantOidc(t),
+);
+
 /// Number of flow records the Activity and Overview screens fetch.
 const flowLimit = 500;
 

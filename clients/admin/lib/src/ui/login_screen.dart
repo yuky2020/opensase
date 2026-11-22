@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../data/browser_nav.dart';
 import '../data/session.dart';
 import 'common.dart';
 
@@ -13,15 +14,31 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _token = TextEditingController();
+  final _oidcTenant = TextEditingController();
   bool _remember = false;
   bool _busy = false;
   bool _obscure = true;
   String? _error;
+  String? _oidcError;
 
   @override
   void dispose() {
     _token.dispose();
+    _oidcTenant.dispose();
     super.dispose();
+  }
+
+  void _submitOidc() {
+    final l = context.l10n;
+    final tenant = _oidcTenant.text.trim();
+    if (tenant.isEmpty) {
+      setState(() => _oidcError = l.loginOidcTenantRequired);
+      return;
+    }
+    setState(() => _oidcError = null);
+    final base = ref.read(apiBaseProvider);
+    final url = buildOidcLoginUrl(tenant, base: base);
+    ref.read(browserNavProvider)(url);
   }
 
   Future<void> _submit() async {
@@ -108,6 +125,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: _busy
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                             : Text(l.loginSubmit),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(l.loginOr, style: tt.bodySmall),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(l.loginOidcTitle, style: tt.titleMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      TextField(
+                        key: const Key('login_oidc_tenant'),
+                        controller: _oidcTenant,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: InputDecoration(
+                          labelText: l.loginOidcTenant,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _submitOidc(),
+                      ),
+                      if (_oidcError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _oidcError!,
+                          key: const Key('login_oidc_error'),
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        key: const Key('login_oidc_submit'),
+                        onPressed: _submitOidc,
+                        icon: const Icon(Icons.corporate_fare),
+                        label: Text(l.loginOidcSubmit),
                       ),
                     ],
                   ),

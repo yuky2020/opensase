@@ -924,3 +924,50 @@ class AuditVerification {
     reason: str(j, 'reason'),
   );
 }
+
+/// api.TenantOIDC: OpenID Connect sign-in for tenant admins (issue #17, slice C, ADR-0031).
+class TenantOidc {
+  TenantOidc({
+    required this.issuer,
+    required this.clientId,
+    this.hasSecret = false,
+    Map<String, String>? groupRoles,
+    this.redirectUrl = '',
+  }) : groupRoles = groupRoles ?? <String, String>{};
+
+  String issuer;
+  String clientId;
+  bool hasSecret;
+  Map<String, String> groupRoles;
+  String redirectUrl;
+
+  factory TenantOidc.fromJson(Json j) {
+    final gr = j['groupRoles'];
+    final mapped = <String, String>{};
+    if (gr is Map) {
+      for (final e in gr.entries) {
+        mapped[e.key.toString()] = e.value.toString();
+      }
+    }
+    return TenantOidc(
+      issuer: str(j, 'issuer'),
+      clientId: str(j, 'clientId'),
+      hasSecret: boolean(j, 'hasSecret'),
+      groupRoles: mapped,
+      redirectUrl: str(j, 'redirectUrl'),
+    );
+  }
+
+  Json toJson({String? clientSecret}) {
+    final j = <String, dynamic>{
+      'issuer': issuer,
+      'clientId': clientId,
+      'groupRoles': groupRoles,
+    };
+    if (clientSecret != null && clientSecret.isNotEmpty) {
+      j['clientSecret'] = clientSecret;
+    }
+    putOmit(j, 'redirectUrl', redirectUrl);
+    return j;
+  }
+}

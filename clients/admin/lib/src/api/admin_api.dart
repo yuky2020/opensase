@@ -234,4 +234,29 @@ class AdminApi {
 
   Future<void> revokeConnector(String tenant, String connector) async =>
       _send('POST', '/v1/admin/tenants/${_seg(tenant)}/connectors/${_seg(connector)}/revoke');
+
+  // --- OIDC ---
+
+  Future<TenantOidc?> getTenantOidc(String tenant) async {
+    try {
+      final v = await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/oidc');
+      if (v == null) return null;
+      return TenantOidc.fromJson(obj(v, 'oidc'));
+    } on ApiException catch (e) {
+      if (e.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  Future<TenantOidc> putTenantOidc(String tenant, TenantOidc oidc, {String? clientSecret}) async {
+    final v = await _send(
+      'PUT',
+      '/v1/admin/tenants/${_seg(tenant)}/oidc',
+      body: oidc.toJson(clientSecret: clientSecret),
+    );
+    return TenantOidc.fromJson(obj(v, 'oidc'));
+  }
+
+  Future<void> deleteTenantOidc(String tenant) async =>
+      _send('DELETE', '/v1/admin/tenants/${_seg(tenant)}/oidc');
 }

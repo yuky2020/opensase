@@ -8,6 +8,7 @@ import 'package:opensase_admin/src/data/providers.dart';
 import 'package:opensase_admin/src/data/session.dart';
 import 'package:opensase_admin/src/ui/admin_tokens_screen.dart';
 import 'package:opensase_admin/src/ui/audit_screen.dart';
+import 'package:opensase_admin/src/ui/sso_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
 import 'package:opensase_admin/src/ui/categories_screen.dart';
 import 'package:opensase_admin/src/ui/saas_screen.dart';
@@ -383,5 +384,48 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('casino.example'), findsNothing);
     expect(find.text('upload.example'), findsOneWidget);
+  });
+
+  testWidgets('Single sign-on screen renders not configured state and allows configuration', (t) async {
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/tenants/acme/oidc', {'error': 'not configured'}, status: 404);
+
+    await _pump(t, cp, const SsoScreen());
+    expect(find.text('Single sign-on is not configured for this tenant.'), findsOneWidget);
+    expect(find.byKey(const Key('sso_configure')), findsOneWidget);
+  });
+
+  testWidgets('Single sign-on screen renders configured tenant, fields, and delete confirmation', (t) async {
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/tenants/acme/oidc', {
+        'issuer': 'https://idp.example.com',
+        'clientId': 'client-xyz',
+        'hasSecret': true,
+        'groupRoles': {
+          'domain-admins': 'admin',
+          'auditors': 'viewer',
+        },
+        'redirectUrl': 'https://cp.test:9443/v1/auth/oidc/callback',
+      });
+    cp.routes['DELETE /v1/admin/tenants/acme/oidc'] = (_) => http204();
+
+    await _pump(t, cp, const SsoScreen());
+
+    expect(find.text('https://idp.example.com'), findsOneWidget);
+    expect(find.text('client-xyz'), findsOneWidget);
+    expect(find.text('Yes'), findsOneWidget);
+    expect(find.text('https://cp.test:9443/v1/auth/oidc/callback'), findsOneWidget);
+    expect(find.text('domain-admins'), findsOneWidget);
+    expect(find.text('auditors'), findsOneWidget);
+    expect(find.text('admin'), findsOneWidget);
+    expect(find.text('viewer'), findsOneWidget);
+
+    await t.tap(find.byKey(const Key('sso_delete')));
+    await t.pumpAndSettle();
+    expect(find.text('Remove Single sign-on configuration?'), findsOneWidget);
+    await t.tap(find.byKey(const Key('confirm_delete')));
+    await t.pumpAndSettle();
+
+    expect(cp.requests.any((r) => r.method == 'DELETE' && r.url.path == '/v1/admin/tenants/acme/oidc'), isTrue);
   });
 }

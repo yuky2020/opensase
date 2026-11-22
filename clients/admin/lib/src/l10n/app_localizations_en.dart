@@ -956,4 +956,97 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get webDlpDatasetsHelp =>
       'Exact values or protected documents uploaded with opensasectl dlp-dataset put; only their hashes are stored.';
+
+  @override
+  String get loginOidcTitle => 'Sign in with your organisation';
+
+  @override
+  String get loginOidcTenant => 'Tenant ID';
+
+  @override
+  String get loginOidcTenantRequired => 'Enter the tenant ID';
+
+  @override
+  String get loginOidcSubmit => 'Sign in with your organisation';
+
+  @override
+  String get loginOr => 'or';
+
+  @override
+  String get navSso => 'Single sign-on';
+
+  @override
+  String get ssoTitle => 'Single sign-on';
+
+  @override
+  String get ssoSubtitle => 'Authenticate portal administrators via an external identity provider.';
+
+  @override
+  String get ssoNotConfigured => 'Single sign-on is not configured for this tenant.';
+
+  @override
+  String get ssoConfigure => 'Configure SSO';
+
+  @override
+  String get ssoIssuer => 'Issuer URL';
+
+  @override
+  String get ssoClientId => 'Client ID';
+
+  @override
+  String get ssoSecretSet => 'Client secret configured';
+
+  @override
+  String get ssoRedirectUrl => 'Redirect URL';
+
+  @override
+  String get ssoRedirectUrlHelp => 'Register this callback URL with your identity provider.';
+
+  @override
+  String get ssoGroupRoles => 'Group to role mapping';
+
+  @override
+  String get ssoGroup => 'Identity provider group';
+
+  @override
+  String get ssoRole => 'Tenant role';
+
+  @override
+  String get ssoAddGroupMapping => 'Add group mapping';
+
+  @override
+  String get ssoEditTitle => 'Configure Single sign-on';
+
+  @override
+  String get ssoClientSecret => 'Client secret';
+
+  @override
+  String get ssoClientSecretHelp => 'Leave empty to keep the currently configured secret.';
+
+  @override
+  String get ssoDeleteConfirmTitle => 'Remove Single sign-on configuration?';
+
+  @override
+  String get ssoDeleteConfirmBody => 'Administrators will no longer be able to sign in via the identity provider.';
+
+  @override
+  String get ssoSaved => 'Single sign-on configuration saved';
+
+  @override
+  String get ssoDeleted => 'Single sign-on configuration removed';
+
+  @override
+  String get ssoErrorIssuer => 'Issuer must be HTTPS (or HTTP on localhost)';
+
+  @override
+  String get ssoErrorClientId => 'Client ID is required';
+
+  @override
+  String get ssoErrorGroups => 'At least one group mapping is required';
+
+  @override
+  String get yes => 'Yes';
+
+  @override
+  String get no => 'No';
 }

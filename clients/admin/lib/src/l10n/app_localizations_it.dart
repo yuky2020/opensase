@@ -962,4 +962,97 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get webDlpDatasetsHelp =>
       'Valori esatti o documenti protetti caricati con opensasectl dlp-dataset put; ne vengono conservati solo gli hash.';
+
+  @override
+  String get loginOidcTitle => 'Accedi con la tua organizzazione';
+
+  @override
+  String get loginOidcTenant => 'ID tenant';
+
+  @override
+  String get loginOidcTenantRequired => 'Inserisci l\'ID del tenant';
+
+  @override
+  String get loginOidcSubmit => 'Accedi con la tua organizzazione';
+
+  @override
+  String get loginOr => 'oppure';
+
+  @override
+  String get navSso => 'Single sign-on';
+
+  @override
+  String get ssoTitle => 'Single sign-on';
+
+  @override
+  String get ssoSubtitle => 'Autentica gli amministratori del portale tramite un provider di identità esterno.';
+
+  @override
+  String get ssoNotConfigured => 'Il Single sign-on non è configurato per questo tenant.';
+
+  @override
+  String get ssoConfigure => 'Configura SSO';
+
+  @override
+  String get ssoIssuer => 'URL dell\'emittente';
+
+  @override
+  String get ssoClientId => 'ID client';
+
+  @override
+  String get ssoSecretSet => 'Segreto client configurato';
+
+  @override
+  String get ssoRedirectUrl => 'URL di reindirizzamento';
+
+  @override
+  String get ssoRedirectUrlHelp => 'Registra questo URL di callback presso il tuo provider di identità.';
+
+  @override
+  String get ssoGroupRoles => 'Mappatura gruppi-ruoli';
+
+  @override
+  String get ssoGroup => 'Gruppo provider di identità';
+
+  @override
+  String get ssoRole => 'Ruolo tenant';
+
+  @override
+  String get ssoAddGroupMapping => 'Aggiungi mappatura gruppo';
+
+  @override
+  String get ssoEditTitle => 'Configura Single sign-on';
+
+  @override
+  String get ssoClientSecret => 'Segreto client';
+
+  @override
+  String get ssoClientSecretHelp => 'Lascia vuoto per mantenere il segreto attualmente configurato.';
+
+  @override
+  String get ssoDeleteConfirmTitle => 'Rimuovere la configurazione di Single sign-on?';
+
+  @override
+  String get ssoDeleteConfirmBody => 'Gli amministratori non potranno più accedere tramite il provider di identità.';
+
+  @override
+  String get ssoSaved => 'Configurazione Single sign-on salvata';
+
+  @override
+  String get ssoDeleted => 'Configurazione Single sign-on rimossa';
+
+  @override
+  String get ssoErrorIssuer => 'L\'emittente deve essere HTTPS (o HTTP su localhost)';
+
+  @override
+  String get ssoErrorClientId => 'L\'ID client è obbligatorio';
+
+  @override
+  String get ssoErrorGroups => 'È richiesta almeno una mappatura di gruppo';
+
+  @override
+  String get yes => 'Sì';
+
+  @override
+  String get no => 'No';
 }

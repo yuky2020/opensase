@@ -1843,6 +1843,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Exact values or protected documents uploaded with opensasectl dlp-dataset put; only their hashes are stored.'**
   String get webDlpDatasetsHelp;
+
+  /// No description provided for @loginOidcTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with your organisation'**
+  String get loginOidcTitle;
+
+  /// No description provided for @loginOidcTenant.
+  ///
+  /// In en, this message translates to:
+  /// **'Tenant ID'**
+  String get loginOidcTenant;
+
+  /// No description provided for @loginOidcTenantRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the tenant ID'**
+  String get loginOidcTenantRequired;
+
+  /// No description provided for @loginOidcSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with your organisation'**
+  String get loginOidcSubmit;
+
+  /// No description provided for @loginOr.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get loginOr;
+
+  /// No description provided for @navSso.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on'**
+  String get navSso;
+
+  /// No description provided for @ssoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on'**
+  String get ssoTitle;
+
+  /// No description provided for @ssoSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticate portal administrators via an external identity provider.'**
+  String get ssoSubtitle;
+
+  /// No description provided for @ssoNotConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on is not configured for this tenant.'**
+  String get ssoNotConfigured;
+
+  /// No description provided for @ssoConfigure.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure SSO'**
+  String get ssoConfigure;
+
+  /// No description provided for @ssoIssuer.
+  ///
+  /// In en, this message translates to:
+  /// **'Issuer URL'**
+  String get ssoIssuer;
+
+  /// No description provided for @ssoClientId.
+  ///
+  /// In en, this message translates to:
+  /// **'Client ID'**
+  String get ssoClientId;
+
+  /// No description provided for @ssoSecretSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Client secret configured'**
+  String get ssoSecretSet;
+
+  /// No description provided for @ssoRedirectUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Redirect URL'**
+  String get ssoRedirectUrl;
+
+  /// No description provided for @ssoRedirectUrlHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Register this callback URL with your identity provider.'**
+  String get ssoRedirectUrlHelp;
+
+  /// No description provided for @ssoGroupRoles.
+  ///
+  /// In en, this message translates to:
+  /// **'Group to role mapping'**
+  String get ssoGroupRoles;
+
+  /// No description provided for @ssoGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Identity provider group'**
+  String get ssoGroup;
+
+  /// No description provided for @ssoRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Tenant role'**
+  String get ssoRole;
+
+  /// No description provided for @ssoAddGroupMapping.
+  ///
+  /// In en, this message translates to:
+  /// **'Add group mapping'**
+  String get ssoAddGroupMapping;
+
+  /// No description provided for @ssoEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure Single sign-on'**
+  String get ssoEditTitle;
+
+  /// No description provided for @ssoClientSecret.
+  ///
+  /// In en, this message translates to:
+  /// **'Client secret'**
+  String get ssoClientSecret;
+
+  /// No description provided for @ssoClientSecretHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave empty to keep the currently configured secret.'**
+  String get ssoClientSecretHelp;
+
+  /// No description provided for @ssoDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Single sign-on configuration?'**
+  String get ssoDeleteConfirmTitle;
+
+  /// No description provided for @ssoDeleteConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrators will no longer be able to sign in via the identity provider.'**
+  String get ssoDeleteConfirmBody;
+
+  /// No description provided for @ssoSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on configuration saved'**
+  String get ssoSaved;
+
+  /// No description provided for @ssoDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on configuration removed'**
+  String get ssoDeleted;
+
+  /// No description provided for @ssoErrorIssuer.
+  ///
+  /// In en, this message translates to:
+  /// **'Issuer must be HTTPS (or HTTP on localhost)'**
+  String get ssoErrorIssuer;
+
+  /// No description provided for @ssoErrorClientId.
+  ///
+  /// In en, this message translates to:
+  /// **'Client ID is required'**
+  String get ssoErrorClientId;
+
+  /// No description provided for @ssoErrorGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'At least one group mapping is required'**
+  String get ssoErrorGroups;
+
+  /// No description provided for @yes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get yes;
+
+  /// No description provided for @no.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get no;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

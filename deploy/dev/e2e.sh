@@ -485,6 +485,19 @@ else
 fi
 log "offline: restarting the control plane"
 docker compose up -d --wait controlplane >/dev/null 2>&1 || docker compose up -d controlplane >/dev/null 2>&1
+# Leave the stack as later suites expect it (issue #29): the Edge resynced with the Control
+# Plane and the client's tunnel carrying traffic again.
+i=0
+until cexec curl -s -m 8 -o /dev/null https://example.com/ 2>/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -ge 30 ]; then
+    ko "after the Control Plane is back, the client tunnel does not carry traffic within 90s"
+    docker compose --profile e2e logs --since 5m client edge 2>&1 | grep -vE '"DEBUG"|"event":"flow"' | tail -40 >&2
+    break
+  fi
+  sleep 3
+done
+[ "$i" -lt 30 ] && ok "client tunnel carries traffic after the Control Plane is back"
 
 echo
 if [ "$FAIL" -eq 0 ]; then

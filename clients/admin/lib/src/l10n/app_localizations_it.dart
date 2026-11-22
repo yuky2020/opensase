@@ -898,4 +898,55 @@ class AppLocalizationsIt extends AppLocalizations {
   String auditChainHead(int id, String hash) {
     return 'Testa: voce $id, $hash (conservane una copia per verificare la storia in futuro)';
   }
+
+  @override
+  String get navSecurityEvents => 'Eventi di sicurezza';
+
+  @override
+  String get secEventsHelp =>
+      'Blocchi e rilevazioni di DLP, scansione malware, regole URL, categorie web, SafeSearch, controllo SaaS e ispezione TLS, dai flussi recenti del tenant. Il dato trovato non viene mai registrato.';
+
+  @override
+  String secAll(int n) {
+    return 'Tutti · $n';
+  }
+
+  @override
+  String get secEmpty => 'Nessun evento di sicurezza nei flussi recenti.';
+
+  @override
+  String get secFieldKind => 'Tipo';
+
+  @override
+  String get secFieldRule => 'Regola';
+
+  @override
+  String get secFieldHost => 'Host';
+
+  @override
+  String get secFieldDevice => 'Dispositivo';
+
+  @override
+  String get secLogged => 'Registrato';
+
+  @override
+  String get secKindDlp => 'DLP';
+
+  @override
+  String get secKindMalware => 'Malware';
+
+  @override
+  String get secKindUrl => 'Regola URL';
+
+  @override
+  String get secKindCategory => 'Categoria';
+
+  @override
+  String get secKindSafeSearch => 'SafeSearch';
+
+  @override
+  String get secKindSaas => 'SaaS';
+
+  @override
+  String get secKindInspection => 'Ispezione';
 }

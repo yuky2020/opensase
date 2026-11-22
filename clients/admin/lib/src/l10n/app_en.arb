@@ -440,5 +440,28 @@
         "type": "String"
       }
     }
+  },
+  "navSecurityEvents": "Security events",
+  "secEventsHelp": "Blocks and detections from DLP, malware scanning, URL rules, web categories, SafeSearch, SaaS control and TLS inspection, from the tenant's recent flows. The matched data itself is never recorded.",
+  "secAll": "All · {n}",
+  "secEmpty": "No security events in the recent flows.",
+  "secFieldKind": "Kind",
+  "secFieldRule": "Rule",
+  "secFieldHost": "Host",
+  "secFieldDevice": "Device",
+  "secLogged": "Logged",
+  "secKindDlp": "DLP",
+  "secKindMalware": "Malware",
+  "secKindUrl": "URL rule",
+  "secKindCategory": "Category",
+  "secKindSafeSearch": "SafeSearch",
+  "secKindSaas": "SaaS",
+  "secKindInspection": "Inspection",
+  "@secAll": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
   }
 }

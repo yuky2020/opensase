@@ -11,6 +11,7 @@ import 'package:opensase_admin/src/ui/audit_screen.dart';
 import 'package:opensase_admin/src/ui/infra_screens.dart';
 import 'package:opensase_admin/src/ui/categories_screen.dart';
 import 'package:opensase_admin/src/ui/saas_screen.dart';
+import 'package:opensase_admin/src/ui/security_events_screen.dart';
 import 'package:opensase_admin/src/ui/web_screen.dart';
 import 'package:opensase_admin/src/ui/tenants_screen.dart';
 import 'package:opensase_admin/src/ui/users_screen.dart';
@@ -355,5 +356,32 @@ void main() {
     await t.pumpAndSettle();
     expect((put! as Map)['categories'], ['adult', 'gambling']);
     expect((put! as Map)['safeSearch'], true);
+  });
+
+  testWidgets('security events list DLP and category blocks and filter by kind', (t) async {
+    Map<String, Object> flow(String rule, String host, String action) => {
+      'start': '2026-11-22T06:00:00Z',
+      'flow': {'protocol': 'tcp', 'dstIp': '1.2.3.4', 'dstPort': 443, 'domain': host},
+      'decision': {'action': action, 'ruleId': rule, 'layer': 'web'},
+      'where': 'edge',
+      'deviceId': 'd1',
+    };
+    final cp = FakeControlPlane()
+      ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/tenants/acme/flows', {
+        'records': [
+          flow('dlp:pci', 'upload.example', 'block'),
+          flow('cat:gambling', 'casino.example', 'block'),
+          flow('block-smtp', 'smtp.example', 'block'),
+        ],
+      });
+    await _pump(t, cp, const SecurityEventsScreen());
+    expect(find.text('upload.example'), findsOneWidget);
+    expect(find.text('casino.example'), findsOneWidget);
+    expect(find.text('smtp.example'), findsNothing);
+    await t.tap(find.byKey(const Key('sec_dlp')));
+    await t.pumpAndSettle();
+    expect(find.text('casino.example'), findsNothing);
+    expect(find.text('upload.example'), findsOneWidget);
   });
 }

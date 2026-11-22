@@ -128,7 +128,7 @@ flowchart LR
 | ZTNA through the Connector | ✅ |
 | Private Edge: tenant binding, signed offline cache, local flow log | ✅ |
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
-| Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
+| Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity, security events) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](docs/adr/0016-tenant-admin-tokens.md)) | ✅ |
 | Admin audit log: every admin write, with its actor and result, hash-chained and verifiable ([ADR-0028](docs/adr/0028-audit-hash-chain.md)) | ✅ |
 | Pinned control URL for enrollment QR codes (`GET /v1/admin/info`), policy ETags against lost updates | ✅ |

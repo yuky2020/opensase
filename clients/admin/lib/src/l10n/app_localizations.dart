@@ -1723,6 +1723,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Head: entry {id}, {hash} (keep a copy to check the history later)'**
   String auditChainHead(int id, String hash);
+
+  /// No description provided for @navSecurityEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'Security events'**
+  String get navSecurityEvents;
+
+  /// No description provided for @secEventsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocks and detections from DLP, malware scanning, URL rules, web categories, SafeSearch, SaaS control and TLS inspection, from the tenant\'s recent flows. The matched data itself is never recorded.'**
+  String get secEventsHelp;
+
+  /// No description provided for @secAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All · {n}'**
+  String secAll(int n);
+
+  /// No description provided for @secEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No security events in the recent flows.'**
+  String get secEmpty;
+
+  /// No description provided for @secFieldKind.
+  ///
+  /// In en, this message translates to:
+  /// **'Kind'**
+  String get secFieldKind;
+
+  /// No description provided for @secFieldRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Rule'**
+  String get secFieldRule;
+
+  /// No description provided for @secFieldHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Host'**
+  String get secFieldHost;
+
+  /// No description provided for @secFieldDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Device'**
+  String get secFieldDevice;
+
+  /// No description provided for @secLogged.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get secLogged;
+
+  /// No description provided for @secKindDlp.
+  ///
+  /// In en, this message translates to:
+  /// **'DLP'**
+  String get secKindDlp;
+
+  /// No description provided for @secKindMalware.
+  ///
+  /// In en, this message translates to:
+  /// **'Malware'**
+  String get secKindMalware;
+
+  /// No description provided for @secKindUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'URL rule'**
+  String get secKindUrl;
+
+  /// No description provided for @secKindCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Category'**
+  String get secKindCategory;
+
+  /// No description provided for @secKindSafeSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'SafeSearch'**
+  String get secKindSafeSearch;
+
+  /// No description provided for @secKindSaas.
+  ///
+  /// In en, this message translates to:
+  /// **'SaaS'**
+  String get secKindSaas;
+
+  /// No description provided for @secKindInspection.
+  ///
+  /// In en, this message translates to:
+  /// **'Inspection'**
+  String get secKindInspection;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -3,6 +3,21 @@
 ## Purpose
 The OpenSASE Admin Portal is a single-page web application (SPA) providing an administrative interface and self-service user portal over the Control Plane Public API. It enables tenant administrators to manage identity providers, configure and simulate granular security Policies, inspect node fleets, and analyze real-time telemetry. It also serves as the end-user portal for Client device enrollment and authorized Application Segment discovery, while treating the CLI and Terraform provider as first-class API consumers.
 
+## Current implementation
+
+A Flutter web app (`clients/admin`), served by the Control Plane at `/admin/`. It has pages
+for:
+- tenants, users and provisioning keys (with the enrollment QR code), devices;
+- the policy editor, private apps, SaaS apps, web categories (with SafeSearch), web
+  inspection (URL rules, headers, DLP, malware);
+- connectors and Edges;
+- admin tokens (with roles), audit (with the hash chain state);
+- activity, and **security events** (issue #26).
+
+The security events page lists the DLP, malware, URL rule, category, SafeSearch, SaaS and
+inspection blocks of the tenant's recent flows, with counts and a filter per kind. Flow records
+never hold the matched data, so neither does the page.
+
 ## Responsibilities
 - Deliver an interactive, responsive administrative user interface built with React and TypeScript.
 - Authenticate administrators and end users against configured OIDC/SAML Identity Providers, supporting role-based access control (RBAC) with fine-grained scoping.

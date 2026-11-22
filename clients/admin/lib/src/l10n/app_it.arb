@@ -271,5 +271,21 @@
   "adminTokensFieldRoleHelp": "admin (tutto nel tenant), policy-editor (lettura e modifica della policy) o viewer (sola lettura)",
   "auditChainOk": "Catena di audit integra: {n} voci verificate",
   "auditChainBroken": "Catena di audit interrotta alla voce {id}: {reason}",
-  "auditChainHead": "Testa: voce {id}, {hash} (conservane una copia per verificare la storia in futuro)"
+  "auditChainHead": "Testa: voce {id}, {hash} (conservane una copia per verificare la storia in futuro)",
+  "navSecurityEvents": "Eventi di sicurezza",
+  "secEventsHelp": "Blocchi e rilevazioni di DLP, scansione malware, regole URL, categorie web, SafeSearch, controllo SaaS e ispezione TLS, dai flussi recenti del tenant. Il dato trovato non viene mai registrato.",
+  "secAll": "Tutti · {n}",
+  "secEmpty": "Nessun evento di sicurezza nei flussi recenti.",
+  "secFieldKind": "Tipo",
+  "secFieldRule": "Regola",
+  "secFieldHost": "Host",
+  "secFieldDevice": "Dispositivo",
+  "secLogged": "Registrato",
+  "secKindDlp": "DLP",
+  "secKindMalware": "Malware",
+  "secKindUrl": "Regola URL",
+  "secKindCategory": "Categoria",
+  "secKindSafeSearch": "SafeSearch",
+  "secKindSaas": "SaaS",
+  "secKindInspection": "Ispezione"
 }

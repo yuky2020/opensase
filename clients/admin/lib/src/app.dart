@@ -6,6 +6,7 @@ import 'data/providers.dart';
 import 'data/session.dart';
 import 'l10n/app_localizations.dart';
 import 'ui/activity_screen.dart';
+import 'ui/security_events_screen.dart';
 import 'ui/common.dart';
 import 'ui/infra_screens.dart';
 import 'ui/login_screen.dart';
@@ -113,6 +114,14 @@ final _dests = <_Dest>[
     Icons.list_alt,
     (c) => c.l10n.navActivity,
     ActivityScreen.new,
+    perTenant: true,
+  ),
+  _Dest(
+    '/security-events',
+    Icons.shield_outlined,
+    Icons.shield,
+    (c) => c.l10n.navSecurityEvents,
+    SecurityEventsScreen.new,
     perTenant: true,
   ),
   _Dest('/settings', Icons.settings_outlined, Icons.settings, (c) => c.l10n.navSettings, SettingsScreen.new),

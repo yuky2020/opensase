@@ -49,8 +49,8 @@ automation needs non-interactive credentials anyway.
 - A tenant admin can mint more tokens for its own tenant. This is no escalation, and revocation
   handles a compromise. A token cannot be minted for another tenant (404).
 - The audit log lives in the same database as the data it describes, so an attacker with write
-  access to the database can alter it. Shipping it to an append-only store (the observability
-  pipeline) is future work.
+  access to the database can alter it. ADR-0028 makes such changes detectable: the log is
+  hash-chained, and its head is logged and can be pinned.
 - Still to come:
   - OIDC or SAML sign-in for the portal, mapping IdP groups to these scopes.
 - Added later:

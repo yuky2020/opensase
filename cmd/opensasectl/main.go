@@ -132,6 +132,7 @@ commands:
   admin-token revoke -tenant ID -id ID
   whoami
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
+  audit verify [-id N -hash H]            (check the audit hash chain; with -id/-hash also a head published earlier)
   info                                    (pinned control URL for enrollment, version)
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
@@ -190,6 +191,9 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 	case "whoami":
 		return whoami(ctx, g)
 	case "audit":
+		if len(rest) > 0 && rest[0] == "verify" {
+			return auditVerify(ctx, g, rest[1:])
+		}
 		return audit(ctx, g, rest)
 	case "categories":
 		return listCategories(ctx, g, rest)
@@ -958,4 +962,36 @@ func listCategories(ctx context.Context, g *globals, args []string) error {
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", c.Name, c.Type, c.Domains, c.Title)
 	}
 	return tw.Flush()
+}
+
+// auditVerify checks the admin audit hash chain (ADR-0028). It exits non-zero when the chain
+// is broken or a pinned head does not match.
+func auditVerify(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("audit verify", flag.ExitOnError)
+	id := fs.Int64("id", 0, "entry ID of a head hash published earlier")
+	hash := fs.String("hash", "", "the hash published for -id")
+	_ = fs.Parse(args)
+	path := "/v1/admin/audit/verify"
+	if *id > 0 && *hash != "" {
+		path += fmt.Sprintf("?id=%d&hash=%s", *id, url.QueryEscape(*hash))
+	}
+	var v api.AuditVerification
+	if err := g.do(ctx, http.MethodGet, path, nil, &v); err != nil {
+		return err
+	}
+	fmt.Printf("entries %d, head entry %d, head %s\n", v.Entries, v.HeadID, v.Head)
+	if v.AnchorID > 0 {
+		fmt.Printf("entries up to %d removed by retention (anchored)\n", v.AnchorID)
+	}
+	if v.Pinned != "" {
+		fmt.Printf("published head of entry %d: %s\n", *id, v.Pinned)
+	}
+	if v.BadID != 0 {
+		return fmt.Errorf("audit chain broken at entry %d: %s", v.BadID, v.Reason)
+	}
+	if !v.OK {
+		return errors.New("audit history does not match the published head")
+	}
+	fmt.Println("audit chain OK")
+	return nil
 }

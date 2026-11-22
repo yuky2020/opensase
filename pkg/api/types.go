@@ -64,6 +64,7 @@
 //	POST /v1/admin/tenants/{t}/admin-tokens/{id}/revoke -> 204 | 404
 //	GET  /v1/admin/tenants/{t}/audit?limit=   -> []AuditEntry (admin writes on that tenant, newest first)
 //	GET  /v1/admin/audit?limit=&tenant=       -> []AuditEntry (super-admin: every entry, or one tenant)
+//	GET  /v1/admin/audit/verify[?id=N&hash=H] -> AuditVerification (super-admin; hash chain check, ADR-0028)
 //	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
 //	GET  /v1/admin/categories             -> CategoryCatalog (the loaded category list, ADR-0022)
@@ -475,4 +476,17 @@ type AdminInfo struct {
 	RootSHA256 string   `json:"rootSha256"`
 	Version    string   `json:"version"`
 	Features   []string `json:"features,omitempty"`
+}
+
+// AuditVerification is the result of checking the admin audit hash chain (ADR-0028).
+type AuditVerification struct {
+	OK       bool   `json:"ok"`
+	Entries  int    `json:"entries"`
+	HeadID   int64  `json:"headId"`
+	Head     string `json:"head"` // hex SHA-256 of the newest entry: publish it to pin the history
+	AnchorID int64  `json:"anchorId,omitempty"`
+	BadID    int64  `json:"badId,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	// Pinned is the result of the id/hash check: match, mismatch, missing or removed by retention.
+	Pinned string `json:"pinned,omitempty"`
 }

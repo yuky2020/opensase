@@ -855,3 +855,34 @@ class AdminInfo {
     features: strList(j, 'features'),
   );
 }
+
+/// api.AuditVerification: the admin audit hash chain check (ADR-0028).
+class AuditVerification {
+  AuditVerification({
+    this.ok = false,
+    this.entries = 0,
+    this.headId = 0,
+    this.head = '',
+    this.anchorId = 0,
+    this.badId = 0,
+    this.reason = '',
+  });
+
+  bool ok;
+  int entries;
+  int headId;
+  String head;
+  int anchorId;
+  int badId;
+  String reason;
+
+  factory AuditVerification.fromJson(Json j) => AuditVerification(
+    ok: boolean(j, 'ok'),
+    entries: integer(j, 'entries'),
+    headId: integer(j, 'headId'),
+    head: str(j, 'head'),
+    anchorId: integer(j, 'anchorId'),
+    badId: integer(j, 'badId'),
+    reason: str(j, 'reason'),
+  );
+}

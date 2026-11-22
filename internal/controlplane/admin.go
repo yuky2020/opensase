@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strconv"
@@ -271,6 +272,58 @@ func (s *Server) auditAdmin(next http.Handler) http.Handler {
 
 // handleListAudit serves /v1/admin/tenants/{t}/audit (that tenant) and /v1/admin/audit
 // (super-admin: everything, or ?tenant=).
+// handleVerifyAudit recomputes the audit hash chain (issue #18, ADR-0028), super-admin only.
+// With ?id=N&hash=H it also checks that entry N still has the hash H published earlier, which
+// detects a history rewritten end to end.
+func (s *Server) handleVerifyAudit(w http.ResponseWriter, r *http.Request) {
+	v, err := s.cfg.Store.VerifyAudit(r.Context())
+	if err != nil {
+		s.internalErr(w, r, "verify audit", err)
+		return
+	}
+	out := api.AuditVerification{Entries: v.Entries, HeadID: v.HeadID, Head: hex.EncodeToString(v.Head), AnchorID: v.AnchorID, BadID: v.BadID, Reason: v.Reason}
+	if idStr, want := r.URL.Query().Get("id"), r.URL.Query().Get("hash"); idStr != "" && want != "" {
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 {
+			writeErr(w, http.StatusBadRequest, "id must be a positive integer")
+			return
+		}
+		h, err := s.cfg.Store.AuditHashAt(r.Context(), id)
+		switch {
+		case errors.Is(err, store.ErrNotFound) && id <= v.AnchorID:
+			out.Pinned = "removed by retention"
+		case errors.Is(err, store.ErrNotFound):
+			out.Pinned = "missing"
+		case err != nil:
+			s.internalErr(w, r, "audit hash", err)
+			return
+		case hex.EncodeToString(h) == strings.ToLower(want):
+			out.Pinned = "match"
+		default:
+			out.Pinned = "mismatch"
+		}
+	}
+	out.OK = out.BadID == 0 && out.Pinned != "mismatch" && out.Pinned != "missing"
+	writeJSON(w, http.StatusOK, out)
+}
+
+// logAuditHead logs the head of the audit chain, so that log shipping keeps a copy outside
+// the database to compare with later (ADR-0028).
+func (s *Server) logAuditHead(ctx context.Context) {
+	v, err := s.cfg.Store.VerifyAudit(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.log.Warn("audit chain check failed", "err", err)
+		}
+		return
+	}
+	if v.BadID != 0 {
+		s.log.Error("audit chain broken", "entry", v.BadID, "reason", v.Reason)
+		return
+	}
+	s.log.Info("audit chain head", "entry", v.HeadID, "hash", hex.EncodeToString(v.Head), "entries", v.Entries)
+}
+
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	f := store.AuditFilter{AllTenants: true}
 	if t := chi.URLParam(r, "t"); t != "" {

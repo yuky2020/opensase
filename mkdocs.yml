@@ -103,6 +103,7 @@ nav:
       - "0025 SafeSearch": adr/0025-safesearch.md
       - "0026 PDF: CID fonts, images": adr/0026-pdf-structure-cid-images.md
       - "0027 Tenant roles": adr/0027-tenant-roles.md
+      - "0028 Audit hash chain": adr/0028-audit-hash-chain.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

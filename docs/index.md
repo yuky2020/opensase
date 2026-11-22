@@ -179,7 +179,7 @@ flowchart LR
 | Workload Gateway (routed subnet, NAT, DNS divert, MSS clamp, kill switch) | ✅ |
 | Admin portal (tenants, users, policy, private apps, SaaS apps, web categories, web inspection, infrastructure, admin tokens, audit, activity) | ✅ |
 | Tenant-scoped admin tokens: super-admin plus per-tenant admins ([ADR-0016](adr/0016-tenant-admin-tokens.md)) | ✅ |
-| Admin audit log: every admin write, with its actor and result | ✅ |
+| Admin audit log: every admin write, with its actor and result, hash-chained and verifiable ([ADR-0028](adr/0028-audit-hash-chain.md)) | ✅ |
 | Pinned control URL for enrollment QR codes (`GET /v1/admin/info`), policy ETags against lost updates | ✅ |
 | Web and SaaS control without decryption: TLS SNI / HTTP Host enforcement, SaaS catalog, app discovery ([ADR-0017](adr/0017-web-saas-control-sni.md)) | ✅ |
 | Opt-in TLS inspection: URL rules (path, method), request header injection, bypass list, HTTP/2 ([ADR-0018](adr/0018-tls-inspection.md), [ADR-0023](adr/0023-http2-inspected-path.md)) | ✅ |

@@ -510,4 +510,32 @@ func TestTenantIsolation(t *testing.T) {
 		}
 		return nil
 	})
+
+	// Tamper-evident audit (issue #18, ADR-0028): the live chain verifies, a published head
+	// is checked, and tenant admins cannot run the check.
+	check(t, "SEC-TEN-028", "admin audit hash chain verifies and pins a published head", "", func(t *testing.T) error {
+		v, err := decode[api.AuditVerification](f.admin("GET", "/audit/verify", nil))
+		if err != nil {
+			return err
+		}
+		if !v.OK || v.BadID != 0 || v.Entries == 0 {
+			return fmt.Errorf("chain: %+v", v)
+		}
+		p, err := decode[api.AuditVerification](f.admin("GET", fmt.Sprintf("/audit/verify?id=%d&hash=%s", v.HeadID, v.Head), nil))
+		if err != nil || p.Pinned != "match" {
+			return fmt.Errorf("pinned head: %+v: %w", p, err)
+		}
+		bad, err := decode[api.AuditVerification](f.admin("GET", fmt.Sprintf("/audit/verify?id=%d&hash=%s", v.HeadID, strings.Repeat("ab", 32)), nil))
+		if err != nil || bad.OK || bad.Pinned != "mismatch" {
+			return fmt.Errorf("wrong head accepted: %+v: %w", bad, err)
+		}
+		c, err := decode[api.AdminTokenCreated](f.admin("POST", "/tenants/"+f.tA+"/admin-tokens", api.AdminTokenRequest{Name: "sec-audit", ValidFor: 600}))
+		if err != nil {
+			return err
+		}
+		if r := do(f.anon(), "GET", f.cpURL+"/v1/admin/audit/verify", nil, map[string]string{"Authorization": "Bearer " + c.Token}); r.code != http.StatusForbidden {
+			return fmt.Errorf("tenant admin ran the check: %s", r)
+		}
+		return nil
+	})
 }

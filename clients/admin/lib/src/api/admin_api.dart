@@ -194,6 +194,10 @@ class AdminApi {
       _send('POST', '/v1/admin/tenants/${_seg(tenant)}/admin-tokens/${_seg(id)}/revoke');
 
   /// Admin writes on [tenant], newest first.
+  /// Checks the audit hash chain (super-admin only, ADR-0028).
+  Future<AuditVerification> verifyAudit() async =>
+      AuditVerification.fromJson(obj(await _send('GET', '/v1/admin/audit/verify'), 'verification'));
+
   Future<List<AuditEntry>> listAudit(String tenant, {int limit = 500}) async => _list(
     await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/audit', query: {'limit': '$limit'}),
     AuditEntry.fromJson,

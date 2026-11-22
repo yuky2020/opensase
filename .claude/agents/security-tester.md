@@ -57,7 +57,9 @@ stays readable. Describe the fix in the report. The lead fixes the product.
      apps);
    - a Private Edge (ADR-0014) receiving another tenant's devices, decisions or flows;
    - tenant roles (ADR-0027): a viewer or policy editor token writing, minting tokens or
-     keys, or reaching routes outside its role through path tricks.
+     keys, or reaching routes outside its role through path tricks;
+   - audit tampering (ADR-0028): a changed, removed or forged audit entry, or a rewritten
+     retention anchor, must break `audit verify`; tenant admins must not run it.
 3. **PKI and TLS:**
    - classic (non-PQ) TLS refused on every listener;
    - a wrong SPIFFE URI;

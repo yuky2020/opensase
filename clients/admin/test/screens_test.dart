@@ -155,6 +155,7 @@ void main() {
   testWidgets('audit shows token names and results', (t) async {
     final cp = FakeControlPlane()
       ..json('GET /v1/admin/whoami', {'role': 'super'})
+      ..json('GET /v1/admin/audit/verify', {'ok': true, 'entries': 3, 'headId': 3, 'head': 'ab' * 32})
       ..json('GET /v1/admin/tenants/acme/admin-tokens', [
         {
           'id': 't1',
@@ -190,6 +191,8 @@ void main() {
     expect(find.text('super-admin'), findsOneWidget);
     expect(find.text('204'), findsOneWidget);
     expect(find.text('/v1/admin/tenants/acme/policy'), findsOneWidget);
+    expect(find.byKey(const Key('audit_chain')), findsOneWidget);
+    expect(find.textContaining('3 entries verified'), findsOneWidget);
   });
 
   testWidgets('SaaS: category block with an exemption is saved; discovered apps are shown', (t) async {

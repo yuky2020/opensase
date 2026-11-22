@@ -268,5 +268,8 @@
   "safeSearch": "Forza SafeSearch",
   "safeSearchHelp": "I motori di ricerca (Google, Bing, DuckDuckGo) rispondono con i risultati filtrati e YouTube è in modalità con restrizioni, tramite il DNS dell'Edge; le connessioni che provano a raggiungerli in altro modo vengono chiuse.",
   "adminTokensFieldRole": "Ruolo",
-  "adminTokensFieldRoleHelp": "admin (tutto nel tenant), policy-editor (lettura e modifica della policy) o viewer (sola lettura)"
+  "adminTokensFieldRoleHelp": "admin (tutto nel tenant), policy-editor (lettura e modifica della policy) o viewer (sola lettura)",
+  "auditChainOk": "Catena di audit integra: {n} voci verificate",
+  "auditChainBroken": "Catena di audit interrotta alla voce {id}: {reason}",
+  "auditChainHead": "Testa: voce {id}, {hash} (conservane una copia per verificare la storia in futuro)"
 }

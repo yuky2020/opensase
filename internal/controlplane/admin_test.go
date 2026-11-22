@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -344,5 +345,33 @@ func TestAdminInfoAndPolicyETag(t *testing.T) {
 	resp, _ = e.do(e.admin, "GET", "/v1/admin/tenants/acme/policy", nil, auth)
 	if resp.Header.Get("ETag") != r1.Header.Get("ETag") {
 		t.Fatalf("ETag after GET %q vs PUT %q", resp.Header.Get("ETag"), r1.Header.Get("ETag"))
+	}
+}
+
+// TestAuditVerify covers issue #18 at the API: the chain verifies, a published head is
+// checked, and only the super-admin may run it.
+func TestAuditVerify(t *testing.T) {
+	e := newEnv(t)
+	e.setupTenant(1)
+	e.adminDo("PUT", "/v1/admin/tenants/acme/policy", examplePolicy(), 204)
+	var v api.AuditVerification
+	_ = json.Unmarshal(e.adminDo("GET", "/v1/admin/audit/verify", nil, 200), &v)
+	if !v.OK || v.Entries < 3 || len(v.Head) != 64 {
+		t.Fatalf("verify %+v", v)
+	}
+	path := fmt.Sprintf("/v1/admin/audit/verify?id=%d&hash=%s", v.HeadID, v.Head)
+	var p api.AuditVerification
+	_ = json.Unmarshal(e.adminDo("GET", path, nil, 200), &p)
+	if !p.OK || p.Pinned != "match" {
+		t.Fatalf("pinned %+v", p)
+	}
+	_ = json.Unmarshal(e.adminDo("GET", fmt.Sprintf("/v1/admin/audit/verify?id=%d&hash=%s", v.HeadID, strings.Repeat("0", 64)), nil, 200), &p)
+	if p.OK || p.Pinned != "mismatch" {
+		t.Fatalf("wrong pin %+v", p)
+	}
+	var c api.AdminTokenCreated
+	_ = json.Unmarshal(e.adminDo("POST", "/v1/admin/tenants/acme/admin-tokens", api.AdminTokenRequest{Name: "a"}, 201), &c)
+	if resp, _ := e.do(e.admin, "GET", "/v1/admin/audit/verify", nil, map[string]string{"Authorization": "Bearer " + c.Token}); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("tenant admin: %d", resp.StatusCode)
 	}
 }

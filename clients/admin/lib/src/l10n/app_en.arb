@@ -410,5 +410,35 @@
   "safeSearch": "Force SafeSearch",
   "safeSearchHelp": "Search engines (Google, Bing, DuckDuckGo) answer with their safe results and YouTube runs in restricted mode, through DNS at the Edge; connections that try to reach them another way are reset.",
   "adminTokensFieldRole": "Role",
-  "adminTokensFieldRoleHelp": "admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)"
+  "adminTokensFieldRoleHelp": "admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)",
+  "auditChainOk": "Audit chain intact: {n} entries verified",
+  "auditChainBroken": "Audit chain broken at entry {id}: {reason}",
+  "auditChainHead": "Head: entry {id}, {hash} (keep a copy to check the history later)",
+  "@auditChainOk": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "@auditChainBroken": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "@auditChainHead": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      },
+      "hash": {
+        "type": "String"
+      }
+    }
+  }
 }

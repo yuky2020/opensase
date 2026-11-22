@@ -877,4 +877,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get adminTokensFieldRoleHelp =>
       'admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)';
+
+  @override
+  String auditChainOk(int n) {
+    return 'Audit chain intact: $n entries verified';
+  }
+
+  @override
+  String auditChainBroken(int id, String reason) {
+    return 'Audit chain broken at entry $id: $reason';
+  }
+
+  @override
+  String auditChainHead(int id, String hash) {
+    return 'Head: entry $id, $hash (keep a copy to check the history later)';
+  }
 }

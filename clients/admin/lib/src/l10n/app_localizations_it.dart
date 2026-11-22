@@ -883,4 +883,19 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get adminTokensFieldRoleHelp =>
       'admin (tutto nel tenant), policy-editor (lettura e modifica della policy) o viewer (sola lettura)';
+
+  @override
+  String auditChainOk(int n) {
+    return 'Catena di audit integra: $n voci verificate';
+  }
+
+  @override
+  String auditChainBroken(int id, String reason) {
+    return 'Catena di audit interrotta alla voce $id: $reason';
+  }
+
+  @override
+  String auditChainHead(int id, String hash) {
+    return 'Testa: voce $id, $hash (conservane una copia per verificare la storia in futuro)';
+  }
 }

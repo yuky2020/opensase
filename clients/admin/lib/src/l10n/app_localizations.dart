@@ -1705,6 +1705,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'admin (everything in the tenant), policy-editor (read, and edit the policy) or viewer (read only)'**
   String get adminTokensFieldRoleHelp;
+
+  /// No description provided for @auditChainOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Audit chain intact: {n} entries verified'**
+  String auditChainOk(int n);
+
+  /// No description provided for @auditChainBroken.
+  ///
+  /// In en, this message translates to:
+  /// **'Audit chain broken at entry {id}: {reason}'**
+  String auditChainBroken(int id, String reason);
+
+  /// No description provided for @auditChainHead.
+  ///
+  /// In en, this message translates to:
+  /// **'Head: entry {id}, {hash} (keep a copy to check the history later)'**
+  String auditChainHead(int id, String hash);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

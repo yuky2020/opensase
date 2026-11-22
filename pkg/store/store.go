@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
@@ -33,7 +34,8 @@ var (
 
 // Store wraps the SQLite database. It is safe for concurrent use.
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	auditMu sync.Mutex // serialises audit appends so the hash chain never forks
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -53,7 +55,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
 	if err := s.migrate(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
+		return nil, err
+	}
+	if err := s.chainLegacyAudit(ctx); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return s, nil

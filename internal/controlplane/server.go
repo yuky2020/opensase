@@ -221,6 +221,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/edges", s.handleListEdges)
 			r.Post("/edges/{e}/revoke", s.handleRevokeEdge)
 			r.Get("/audit", s.handleListAudit)
+			r.Get("/audit/verify", s.handleVerifyAudit)
 		})
 		r.Route("/tenants/{t}", func(r chi.Router) {
 			r.Use(requireTenantScope, requireTenantRole)
@@ -326,6 +327,7 @@ func (s *Server) maintain(ctx context.Context) {
 		if _, err := s.cfg.Store.DeleteAuditBefore(ctx, s.now().Add(-s.cfg.AuditRetention)); err != nil && ctx.Err() == nil {
 			s.log.Warn("audit retention failed", "err", err)
 		}
+		s.logAuditHead(ctx)
 		s.flowLimit.prune()
 		s.enrollLimit.prune()
 		select {

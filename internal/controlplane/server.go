@@ -77,6 +77,7 @@ type Config struct {
 	CategoriesFile    string
 	CategoriesURL     string
 	CategoriesRefresh time.Duration
+	OIDCClient        *http.Client     // optional; default timeout 10s (issue #17)
 	Logger            *slog.Logger     // default slog.Default()
 	Now               func() time.Time // default time.Now
 }
@@ -101,6 +102,11 @@ type Server struct {
 	cats atomic.Pointer[catState] // web category list (ADR-0022)
 
 	policyMu sync.Mutex // serialises If-Match checks and policy writes (issue #19)
+
+	oidcMu        sync.Mutex
+	oidcProviders map[string]*oidcProviderEntry // key: tenant ID
+	oidcPending   map[string]pendingOIDCLogin   // key: state
+	oidcClient    *http.Client
 }
 
 // New validates cfg and returns a Server.
@@ -139,13 +145,20 @@ func New(cfg Config) (*Server, error) {
 		cfg.Now = time.Now
 	}
 	s := &Server{
-		cfg:      cfg,
-		log:      cfg.Logger,
-		now:      cfg.Now,
-		notify:   newNotifier(),
-		compiled: newCompiledCache(),
-		decide:   map[string]*decideEntry{},
-		polls:    newPollLimiter(maxLongPollsPerDev),
+		cfg:           cfg,
+		log:           cfg.Logger,
+		now:           cfg.Now,
+		notify:        newNotifier(),
+		compiled:      newCompiledCache(),
+		decide:        map[string]*decideEntry{},
+		polls:         newPollLimiter(maxLongPollsPerDev),
+		oidcProviders: make(map[string]*oidcProviderEntry),
+		oidcPending:   make(map[string]pendingOIDCLogin),
+	}
+	if cfg.OIDCClient != nil {
+		s.oidcClient = cfg.OIDCClient
+	} else {
+		s.oidcClient = &http.Client{Timeout: 10 * time.Second}
 	}
 	s.flowLimit = newRateLimiter(cfg.FlowRate, time.Minute, cfg.Now)
 	s.enrollLimit = newRateLimiter(cfg.EnrollRate, time.Minute, cfg.Now)
@@ -179,6 +192,8 @@ func (s *Server) Handler() http.Handler {
 
 	r.With(short, s.limitEnroll).Post("/v1/enroll", s.handleEnroll)
 	r.Get("/v1/pki/ca", s.handlePKI)
+	r.Get("/v1/auth/oidc/{tenant}/login", s.handleOIDCLogin)
+	r.Get("/v1/auth/oidc/callback", s.handleOIDCCallback)
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireDevice)
@@ -245,6 +260,9 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/dlp-datasets/{name}", s.handlePutDataset)
 			r.Get("/dlp-datasets", s.handleListDatasets)
 			r.Delete("/dlp-datasets/{name}", s.handleDeleteDataset)
+			r.Get("/oidc", s.handleGetTenantOIDC)
+			r.Put("/oidc", s.handlePutTenantOIDC)
+			r.Delete("/oidc", s.handleDeleteTenantOIDC)
 		})
 	})
 	if s.cfg.PortalDir != "" {

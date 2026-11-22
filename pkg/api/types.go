@@ -73,6 +73,11 @@
 //	GET  /v1/edge/dlp-datasets?tenant=T&names=a,b   -> EdgeDatasets (edge cert; edge must serve T)
 //	GET  /v1/admin/categories             -> CategoryCatalog (the loaded category list, ADR-0022)
 //	GET  /v1/admin/tenants/{t}/inspection-ca  -> PEM of the tenant's web inspection root (ADR-0018), to install on devices
+//	GET  /v1/admin/tenants/{t}/oidc       -> TenantOIDC (HasSecret, RedirectURL; secret omitted)
+//	PUT  /v1/admin/tenants/{t}/oidc       TenantOIDC -> TenantOIDC (admin role only)
+//	DELETE /v1/admin/tenants/{t}/oidc     -> 204 | 404 (admin role only)
+//	GET  /v1/auth/oidc/{tenant}/login     -> 302 to IdP authorize URL (no auth)
+//	GET  /v1/auth/oidc/callback?state=&code= -> 303 to /admin/#/oidc-signin?token=... (no auth)
 //
 // Admin portal: the Control Plane serves the static Flutter web build at /admin/ (flag -portal-dir).
 //
@@ -528,4 +533,17 @@ type EdgeDataset struct {
 	Kind   string `json:"kind"`
 	Key    []byte `json:"key"`
 	Hashes []byte `json:"hashes"`
+}
+
+// TenantOIDC configures OpenID Connect sign-in for tenant admins (issue #17, slice B, ADR-0031).
+// GroupRoles maps IdP group names to tenant roles ("admin", "policy-editor", "viewer").
+// On GET, ClientSecret is omitted and HasSecret indicates whether a secret is configured.
+// RedirectURL is the callback URL to configure with the identity provider.
+type TenantOIDC struct {
+	Issuer       string            `json:"issuer"`
+	ClientID     string            `json:"clientId"`
+	ClientSecret string            `json:"clientSecret,omitempty"`
+	HasSecret    bool              `json:"hasSecret,omitempty"`
+	GroupRoles   map[string]string `json:"groupRoles"`
+	RedirectURL  string            `json:"redirectUrl,omitempty"`
 }

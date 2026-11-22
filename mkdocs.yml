@@ -107,6 +107,7 @@ nav:
       - "0028 Audit hash chain": adr/0028-audit-hash-chain.md
       - "0029 DLP exact data match": adr/0029-dlp-exact-data-match.md
       - "0030 ECH and HTTP/3": adr/0030-ech-and-http3.md
+      - "0031 Portal OIDC sign-in": adr/0031-portal-oidc-sign-in.md
   - Security:
       - Security policy: security-policy.md
       - Test suite: security/test-suite.md

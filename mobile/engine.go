@@ -60,6 +60,7 @@ type Engine struct {
 	stateDir string
 	platform Platform
 	protect  protectFunc
+	hosts    *hostCache
 	log      *slog.Logger
 
 	opMu    sync.Mutex // serialises Enroll/Unenroll/TunnelConfig/Start/Stop
@@ -123,6 +124,7 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 	if platform != nil {
 		e.protect = platform.Protect
 	}
+	e.hosts = newHostCache(e.protect)
 	e.log = slog.New(&eventHandler{emit: e.emitRaw, level: slog.LevelInfo})
 	nt := policy.NetworkUnknown
 	e.network.Store(&nt)
@@ -153,7 +155,7 @@ func (e *Engine) setIdentity(en *enrollment) {
 		return
 	}
 	tr := &swapTransport{}
-	tr.swap(pqTransport(mtlsConfig(en, pki.ServerControlPlane, ""), e.protect, true))
+	tr.swap(pqTransport(mtlsConfig(en, pki.ServerControlPlane, ""), e.protect, e.hosts, true))
 	id := &identity{enrollment: en, cp: &http.Client{Transport: tr}, tr: tr}
 	keys := snapshotKeys(en.resp.SnapshotKeys)
 	id.keys.Store(&keys)
@@ -211,7 +213,7 @@ func (e *Engine) Enroll(controlURL, provisioningKey, deviceName string) error {
 		Platform:        platformName(),
 		CSRPEM:          string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})),
 	}
-	client := &http.Client{Transport: pqTransport(tlsCfg, e.protect, false), Timeout: 30 * time.Second}
+	client := &http.Client{Transport: pqTransport(tlsCfg, e.protect, e.hosts, false), Timeout: 30 * time.Second}
 	defer client.CloseIdleConnections()
 	var resp api.EnrollResponse
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

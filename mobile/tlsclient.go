@@ -50,15 +50,19 @@ func dialer(protect protectFunc) *net.Dialer {
 // pqTransport builds an HTTP transport whose every connection is TLS 1.3 with
 // X25519MLKEM768 (pqsession.Harden) and is verified with pqsession.CheckPostQuantum after
 // the handshake, before any request is sent.
-func pqTransport(base *tls.Config, protect protectFunc, keepAlive bool) *http.Transport {
+func pqTransport(base *tls.Config, protect protectFunc, hosts *hostCache, keepAlive bool) *http.Transport {
 	d := dialer(protect)
+	dial := d.DialContext
+	if hosts != nil {
+		dial = hosts.dialContext(d)
+	}
 	return &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, err
 			}
-			raw, err := d.DialContext(ctx, network, addr)
+			raw, err := dial(ctx, network, addr)
 			if err != nil {
 				return nil, err
 			}

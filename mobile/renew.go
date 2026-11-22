@@ -142,7 +142,7 @@ func (e *Engine) renew(ctx context.Context, id *identity) error {
 		return fmt.Errorf("renew: persist: %w", err)
 	}
 	id.cert.Store(cert)
-	id.tr.swap(pqTransport(mtlsConfig(id.enrollment, pki.ServerControlPlane, ""), e.protect, true))
+	id.tr.swap(pqTransport(mtlsConfig(id.enrollment, pki.ServerControlPlane, ""), e.protect, e.hosts, true))
 	e.log.Info("device certificate renewed", "notAfter", cert.Leaf.NotAfter.UTC().Format(time.RFC3339))
 	return nil
 }

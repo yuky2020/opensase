@@ -16,12 +16,12 @@ if [ -z "$(cexec dig +short +time=5 +tries=1 @100.64.0.1 example.com A 2>/dev/nu
   skip SEC-DP-100 "client container tunnel up" "Edge resolver does not answer through the tunnel"
   exit 0
 fi
-# The tunnel must carry real traffic, not only answer DNS (issue #29): wait for it, and keep
+# The tunnel must carry real traffic, not only answer DNS (issue #29): wait for it (a client reconnecting after an Edge restart backs off for up to about 3 minutes), and keep
 # the evidence when it does not, instead of skipping every check one by one.
 i=0
 until cexec curl -s -m 8 -o /dev/null https://example.com/ 2>/dev/null; do
   i=$((i + 1))
-  if [ "$i" -ge 30 ]; then
+  if [ "$i" -ge 80 ]; then
     diag="${SECTEST_RESULTS}.dataplane-diag.log"
     {
       echo "== $(date -u +%FT%TZ) client tunnel does not carry traffic"
@@ -29,7 +29,7 @@ until cexec curl -s -m 8 -o /dev/null https://example.com/ 2>/dev/null; do
       cexec ip route get 1.1.1.1 2>&1
       dc --profile e2e logs --since 10m client edge 2>&1 | grep -vE '"DEBUG"|"event":"flow"' | tail -120
     } >"$diag" 2>&1
-    fail SEC-DP-100 "client container tunnel carries traffic" "no HTTPS through the tunnel within 90s; diagnostics in $diag"
+    fail SEC-DP-100 "client container tunnel carries traffic" "no HTTPS through the tunnel within about 4 minutes; diagnostics in $diag"
     exit 0
   fi
   sleep 3

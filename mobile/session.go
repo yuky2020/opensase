@@ -82,7 +82,7 @@ func (e *Engine) setupSession(ctx context.Context, en *enrollment, edge api.Edge
 	// A dedicated client without keep-alives: every epoch is a fresh TLS handshake and
 	// therefore a fresh ML-KEM encapsulation (ADR-0002).
 	// The Edge must prove spiffe://opensase/edge/<EdgeInfo.ID> (review #1).
-	client := &http.Client{Transport: pqTransport(mtlsConfig(en, pki.ServerEdge, edge.ID), e.protect, false), Timeout: 20 * time.Second}
+	client := &http.Client{Transport: pqTransport(mtlsConfig(en, pki.ServerEdge, edge.ID), e.protect, e.hosts, false), Timeout: 20 * time.Second}
 	defer client.CloseIdleConnections()
 	httpResp, err := doJSON(ctx, client, http.MethodPost, joinURL(edge.SessionURL, "/v1/session"), nil, &req, &s.resp)
 	if err != nil {
@@ -136,10 +136,7 @@ func (e *Engine) resolveEndpoint(ctx context.Context, hostport string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("invalid WireGuard endpoint %q: %w", hostport, err)
 	}
-	r := &net.Resolver{PreferGo: false, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-		return dialer(e.protect).DialContext(ctx, network, address)
-	}}
-	ips, err := r.LookupNetIP(ctx, "ip", host)
+	ips, err := e.hosts.resolve(ctx, host)
 	if err != nil || len(ips) == 0 {
 		return "", fmt.Errorf("resolve WireGuard endpoint %q: %w", host, err)
 	}

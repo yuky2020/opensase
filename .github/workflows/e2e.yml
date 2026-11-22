@@ -87,8 +87,7 @@ jobs:
           name: e2e-sectest-results
           path: |
             ${{ runner.temp }}/e2e.log
-            ${{ runner.temp }}/sectest.txt
-            ${{ runner.temp }}/sectest.txt.go.log
+            ${{ runner.temp }}/sectest.txt*
             ${{ runner.temp }}/sectest.log
             ${{ runner.temp }}/compose-ps.txt
             ${{ runner.temp }}/compose.log

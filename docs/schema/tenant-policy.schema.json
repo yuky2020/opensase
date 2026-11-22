@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensase.org/schema/tenant-policy.schema.json",
+  "title": "OpenSASE TenantPolicy",
+  "description": "Tenant-level security policy document for OpenSASE.",
+  "type": "object",
+  "properties": {
+    "defaultAction": {
+      "type": "string",
+      "enum": ["allow", "block", "ask"],
+      "description": "Default fallback action when no firewall rule matches."
+    },
+    "allowUserRules": {
+      "type": "boolean",
+      "description": "Whether user-defined firewall rules are evaluated after tenant rules."
+    },
+    "lockdown": {
+      "type": "boolean",
+      "description": "Whether missing apps and unclassified traffic are blocked in lockdown mode."
+    },
+    "rules": {
+      "type": "array",
+      "description": "Ordered list of tenant firewall rules evaluated per flow.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["tenant", "user"]
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["allow", "block", "ask"]
+          },
+          "match": {
+            "type": "object",
+            "properties": {
+              "apps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "networks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["wifi", "cellular", "roaming", "ethernet", "unknown"]
+                }
+              },
+              "protocols": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "cidrs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "to": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "log": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "apps": {
+      "type": "object",
+      "description": "Tenant-mandated per-app network policies keyed by application identifier.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "wifi": {
+            "type": "string",
+            "enum": ["allow", "block", "ask"]
+          },
+          "cellular": {
+            "type": "string",
+            "enum": ["allow", "block", "ask"]
+          },
+          "roaming": {
+            "type": "string",
+            "enum": ["allow", "block", "ask"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dns": {
+      "type": "object",
+      "description": "DNS filtering policy including blocklists, block domains, and allow domains.",
+      "properties": {
+        "blockResponse": {
+          "type": "string",
+          "enum": ["nxdomain", "zero"]
+        },
+        "blocklists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "allowDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blockDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "privateApps": {
+      "type": "array",
+      "description": "ZTNA private applications published through connectors with access entitlements.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "to": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "connectorGroup": {
+            "type": "string"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "saas": {
+      "type": "object",
+      "description": "SaaS application control policy for catalog applications and categories.",
+      "properties": {
+        "blockApps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blockCategories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowApps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "web": {
+      "type": "object",
+      "description": "Web inspection policy for TLS decryption, URL rules, request headers, DLP, and malware scanning.",
+      "properties": {
+        "inspect": {
+          "type": "boolean"
+        },
+        "bypass": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "pathPrefixes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "action": {
+                "type": "string",
+                "enum": ["allow", "block"]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "dlp": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "detectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "datasets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "minMatches": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "type": "string",
+                "enum": ["allow", "block"]
+              },
+              "blockUnscanned": {
+                "type": "boolean"
+              },
+              "downloads": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "malware": {
+          "type": "object",
+          "properties": {
+            "uploads": {
+              "type": "boolean"
+            },
+            "downloads": {
+              "type": "boolean"
+            },
+            "blockUnscanned": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "categories": {
+      "type": "array",
+      "description": "Web category names blocked across DNS and flow hostnames.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safeSearch": {
+      "type": "boolean",
+      "description": "Whether safe search mode is enforced on search engines and video platforms."
+    },
+    "decideBlockDomains": {
+      "type": "array",
+      "description": "Domain names blocked by cloud decision API for deferred flows.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decideBlockCidrs": {
+      "type": "array",
+      "description": "Destination CIDR prefixes blocked by cloud decision API for deferred flows.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decideDefault": {
+      "type": "string",
+      "enum": ["allow", "block"],
+      "description": "Fallback action for flows deferred to the cloud decision API."
+    }
+  },
+  "additionalProperties": false
+}

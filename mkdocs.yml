@@ -87,6 +87,7 @@ nav:
   - Decisions (ADRs):
       - adr/README.md
       - "0002 PQ client tunnel": adr/0002-client-tunnel-wireguard-pq-psk.md
+      - "0005 Policy language": adr/0005-policy-language.md
       - "0012 Android client first": adr/0012-android-client-first.md
       - "0013 ZTNA Connector": adr/0013-ztna-connector.md
       - "0014 Private Edge": adr/0014-private-edge.md

@@ -44,8 +44,9 @@ jobs:
         run: |
           scripts/ci-categories-fixture.sh
           # The Control Plane serves the portal from this directory; the portal is built and
-          # tested in the CI workflow, an empty directory is enough here.
+          # tested in the CI workflow, a placeholder page is enough here.
           mkdir -p clients/admin/build/web
+          printf '<!doctype html><title>OpenSASE admin</title>\n' >clients/admin/build/web/index.html
           # Keep the fixture: no download of the real category list.
           printf 'CATEGORIES_URL=\n' >>deploy/dev/.env
 

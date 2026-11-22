@@ -143,11 +143,12 @@ func tamperPart(part string) string {
 	if len(part) == 0 {
 		return "x"
 	}
+	// Change the first character: the last one may carry only padding bits.
 	b := []byte(part)
-	if b[len(b)-1] == 'A' {
-		b[len(b)-1] = 'B'
+	if b[0] == 'A' {
+		b[0] = 'B'
 	} else {
-		b[len(b)-1] = 'A'
+		b[0] = 'A'
 	}
 	return string(b)
 }

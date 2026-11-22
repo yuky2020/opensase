@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+// b64 decodes base64url without padding and refuses non-canonical encodings, so a token
+// has exactly one serialisation.
+var b64 = base64.RawURLEncoding.Strict()
+
 const maxTokenBytes = 64 * 1024
 
 type jwkKey struct {
@@ -169,7 +173,7 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, nonce string) (*Claim
 		return nil, errors.New("invalid compact JWS format")
 	}
 
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	headerBytes, err := b64.DecodeString(parts[0])
 	if err != nil {
 		return nil, errors.New("invalid base64url in header")
 	}
@@ -188,7 +192,7 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, nonce string) (*Claim
 		return nil, err
 	}
 
-	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sigBytes, err := b64.DecodeString(parts[2])
 	if err != nil {
 		return nil, errors.New("invalid base64url in signature")
 	}
@@ -201,11 +205,11 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, nonce string) (*Claim
 		if key.Kty != "RSA" {
 			return nil, errors.New("key type must be RSA for RS256")
 		}
-		nBytes, err := base64.RawURLEncoding.DecodeString(key.N)
+		nBytes, err := b64.DecodeString(key.N)
 		if err != nil {
 			return nil, errors.New("invalid RSA modulus encoding")
 		}
-		eBytes, err := base64.RawURLEncoding.DecodeString(key.E)
+		eBytes, err := b64.DecodeString(key.E)
 		if err != nil {
 			return nil, errors.New("invalid RSA exponent encoding")
 		}
@@ -232,11 +236,11 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, nonce string) (*Claim
 		if key.Crv != "P-256" {
 			return nil, errors.New("curve must be P-256 for ES256")
 		}
-		xBytes, err := base64.RawURLEncoding.DecodeString(key.X)
+		xBytes, err := b64.DecodeString(key.X)
 		if err != nil {
 			return nil, errors.New("invalid EC x coordinate encoding")
 		}
-		yBytes, err := base64.RawURLEncoding.DecodeString(key.Y)
+		yBytes, err := b64.DecodeString(key.Y)
 		if err != nil {
 			return nil, errors.New("invalid EC y coordinate encoding")
 		}
@@ -268,7 +272,7 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, nonce string) (*Claim
 		return nil, fmt.Errorf("unsupported algorithm: %s", header.Alg)
 	}
 
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	payloadBytes, err := b64.DecodeString(parts[1])
 	if err != nil {
 		return nil, errors.New("invalid base64url in payload")
 	}

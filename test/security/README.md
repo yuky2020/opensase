@@ -33,6 +33,9 @@ OPENSASE_SECTEST=1 go test -v -run TestDataPlane ./test/security/go/
 
 Requirements: docker, Go, curl and openssl with X25519MLKEM768 (OpenSSL >= 3.5).
 
+In CI, `.github/workflows/e2e.yml` runs the suite after `e2e.sh` against a stack built from
+the commit (see `deploy/dev/README.md`, "Offline and CI runs").
+
 The results go to `$SECTEST_RESULTS` (a temp file by default). The Go log is next to it, at
 `$SECTEST_RESULTS.go.log`.
 

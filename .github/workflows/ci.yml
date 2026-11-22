@@ -112,3 +112,17 @@ jobs:
         run: |
           make portal-test
           make portal
+
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build every dev stack image
+        working-directory: deploy/dev
+        # Compose needs the variable to parse the file; no stack is started here.
+        env:
+          OPENSASE_ADMIN_TOKEN: build-only
+        run: docker compose --profile e2e --profile av build

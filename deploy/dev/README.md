@@ -19,6 +19,21 @@ Checks performed by `e2e.sh`:
 - Certificate renewal: verifies the certificate renewal (device certificates with 24h lifetime are renewed with POST /v1/renew; the e2e client uses `-renew-now`).
 - Deployment hardening: verifies the Edge runs as non-root and sees only its PKI files, and the Control Plane does not mount pki/edge.
 
+### Offline and CI runs
+
+The Control Plane downloads the UT1 category list (about 26 MB) on first start. For runs
+without that download, write a small fixture archive and turn downloads off:
+
+```sh
+scripts/ci-categories-fixture.sh          # writes deploy/dev/data/categories.tar.gz
+echo 'CATEGORIES_URL=' >>deploy/dev/.env  # keep the fixture
+```
+
+The fixture holds only the names the suites test (`0-casino.info` in `gambling`, and a URL
+entry). The workflow `.github/workflows/e2e.yml` does this, builds every image, runs
+`e2e.sh` and `make sectest` on each push to main, nightly and on demand, and uploads the
+results and the compose logs as the artefact `e2e-sectest-results`.
+
 ## Files
 
 | File / Directory | Description |

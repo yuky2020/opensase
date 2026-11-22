@@ -1,0 +1,94 @@
+name: E2E and security suite
+
+# Brings up the dev stack (deploy/dev) with every image built from this commit, then runs
+# deploy/dev/e2e.sh and make sectest (issue #28). The category list is a small fixture
+# (scripts/ci-categories-fixture.sh), so the only Internet use is the public test sites the
+# suites browse through the tunnel (example.com, example.org, a search engine).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Dev stack, e2e and sectest
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install test tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils netcat-openbsd jq
+          # The suites talk to the stack with X25519MLKEM768 only: curl and openssl need OpenSSL 3.5+.
+          openssl version
+          curl --version | head -1
+
+      - name: Prepare offline inputs
+        run: |
+          scripts/ci-categories-fixture.sh
+          # The Control Plane serves the portal from this directory; the portal is built and
+          # tested in the CI workflow, an empty directory is enough here.
+          mkdir -p clients/admin/build/web
+          # Keep the fixture: no download of the real category list.
+          printf 'CATEGORIES_URL=\n' >>deploy/dev/.env
+
+      - name: Build images
+        working-directory: deploy/dev
+        # Compose needs the variable to parse the file; bootstrap.sh generates the real token.
+        env:
+          OPENSASE_ADMIN_TOKEN: build-only
+        run: docker compose --profile e2e --profile av build
+
+      - name: Bootstrap the stack
+        run: deploy/dev/bootstrap.sh
+
+      - name: End-to-end tests
+        run: deploy/dev/e2e.sh 2>&1 | tee "$RUNNER_TEMP/e2e.log"; exit "${PIPESTATUS[0]}"
+        shell: bash
+
+      - name: Security suite
+        if: ${{ !cancelled() }}
+        run: |
+          deploy/dev/bootstrap.sh
+          sleep 30
+          SECTEST_RESULTS="$RUNNER_TEMP/sectest.txt" make sectest 2>&1 | tee "$RUNNER_TEMP/sectest.log"
+          exit "${PIPESTATUS[0]}"
+        shell: bash
+
+      - name: Collect logs
+        if: ${{ always() }}
+        working-directory: deploy/dev
+        run: |
+          docker compose --profile e2e --profile av ps -a >"$RUNNER_TEMP/compose-ps.txt" 2>&1 || true
+          docker compose --profile e2e --profile av logs --no-color --tail 2000 >"$RUNNER_TEMP/compose.log" 2>&1 || true
+
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-sectest-results
+          path: |
+            ${{ runner.temp }}/e2e.log
+            ${{ runner.temp }}/sectest.txt
+            ${{ runner.temp }}/sectest.txt.go.log
+            ${{ runner.temp }}/sectest.log
+            ${{ runner.temp }}/compose-ps.txt
+            ${{ runner.temp }}/compose.log
+          if-no-files-found: warn

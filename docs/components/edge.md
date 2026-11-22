@@ -81,8 +81,9 @@ opensasectl inspection-ca -tenant acme -o acme-inspection.crt   # root to instal
 edge -clamd clamav:3310 ...                     # malware scanning (ADR-0020); dev: --profile av
 ```
 
-- The kernel REDIRECTs tunnel TCP to ports 80 and 443 to the listener. Connections of tenants
-  without `web.inspect`, and bypassed hosts, are spliced unchanged.
+- The kernel REDIRECTs tunnel TCP to ports 80 and 443 of the devices whose policy needs it (the
+  `OSASE_INSPECT` chain, kept by the Edge, issue #22) to the listener. Bypassed hosts are
+  spliced unchanged; other devices do not go through the listener at all.
 - For inspecting tenants the Edge terminates TLS with leaves signed by its own 7-day
   intermediate, which it gets from the Control Plane for a key that never leaves the Edge.
   It applies `web.rules` and `web.headers` per request and verifies the upstream certificate.

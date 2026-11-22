@@ -123,6 +123,8 @@ func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e.triggerReport()
+	// The device's first connection must already take the right path (issue #22).
+	e.reconcileInspect(r.Context())
 	e.log.InfoContext(r.Context(), "session established", "tenant", id.TenantID, "device", id.DeviceID,
 		"session", resp.SessionID, "epoch", resp.Epoch, "ipv4", resp.TunnelIPv4, "kex", "X25519MLKEM768")
 	writeJSON(w, http.StatusOK, resp)

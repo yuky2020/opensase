@@ -121,10 +121,16 @@ PQ-capable browser and server keep a post-quantum key exchange on both legs.
 
 ## Consequences
 
-- With the listener on, all tunnel web traffic of that Edge passes through a userspace proxy,
-  even for tenants that do not inspect (they get a splice). Inspection is therefore an Edge
-  flag, off by default, as well as a tenant opt-in. Per-device redirection with dynamic kernel
-  rules is a possible optimization.
+- In this slice, with the listener on, all tunnel web traffic of that Edge passed through a
+  userspace proxy, even for tenants that do not inspect (they got a splice). Since issue #22 the
+  redirect is per device:
+  - PREROUTING jumps to an `OSASE_INSPECT` chain, which holds one `-s <tunnel address>/32 -j
+    REDIRECT` rule per device whose policy enables inspection or has web rules;
+  - the Edge reconciles the chain after every peer sync and synchronously when a session is
+    set up, so a device's first connection already takes the right path;
+  - other devices' web traffic is forwarded by the kernel, without the proxy;
+  - if the Edge cannot manage the chain (no NET_ADMIN), it falls back to redirecting every
+    device, which is still correct because non-inspecting devices are spliced.
 - The listener waits up to 10 seconds for the client's first bytes. A protocol on port 80 or
   443 where the server speaks first does not work through an Edge with the listener on.
 - Devices that do not trust the inspection root fail the TLS handshake on inspected sites.

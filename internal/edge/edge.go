@@ -147,6 +147,7 @@ type Edge struct {
 	av    scanner                // malware scanner (ADR-0020)
 	cats  atomic.Pointer[catSet] // web categories (ADR-0022)
 	safe  *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
+	redir *inspectRedirect       // per-device inspection redirect (issue #22); nil without inspection
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -189,6 +190,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 	if cfg.InspectListen != listenOff {
 		e.insp = newInspector(cp, cfg.InspectRoots)
 		e.insp.onIssued = e.saveInspection
+		e.redir = &inspectRedirect{ipt: runIPTables}
 	}
 	e.av = clamd{addr: cfg.ClamdAddr}
 	e.safe = newSafeIPs()
@@ -402,6 +404,10 @@ func (e *Edge) redirectInspect(ctx context.Context, tunName string) error {
 	if err != nil {
 		return fmt.Errorf("edge: -inspect-listen %q: %w", e.cfg.InspectListen, err)
 	}
+	if e.setupInspectRedirect(ctx, tunName) {
+		e.reconcileInspect(ctx)
+		return nil
+	}
 	e.ensureRedirect(ctx, "inspection", []string{"PREROUTING", "-i", tunName, "!", "-d", SyntheticPrefix.String(), "-p", "tcp", "-m", "multiport", "--dports", "80,443", "-j", "REDIRECT", "--to-ports", port})
 	return nil
 }
@@ -499,6 +505,7 @@ func (e *Edge) syncPeers(ctx context.Context) error {
 	if err := e.saveState(b, peers); err != nil {
 		e.log.Warn("state cache not written", "err", err)
 	}
+	e.reconcileInspect(ctx)
 	return nil
 }
 

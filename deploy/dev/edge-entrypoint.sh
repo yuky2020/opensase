@@ -40,11 +40,15 @@ iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-m
 iptables -t nat -C PREROUTING -i "$TUN" -d "$SYNTH" -p tcp -j REDIRECT --to-ports "$ZTNA_PORT" 2>/dev/null ||
   iptables -t nat -A PREROUTING -i "$TUN" -d "$SYNTH" -p tcp -j REDIRECT --to-ports "$ZTNA_PORT"
 
-# TLS inspection (ADR-0018): tunnel TCP to ports 80/443 goes to the inspection listener.
-# After the ZTNA rule, and synthetic addresses are excluded anyway.
+# TLS inspection (ADR-0018, issue #22): tunnel TCP to ports 80/443 jumps to OSASE_INSPECT,
+# where the Edge keeps one REDIRECT rule per device whose policy needs inspection. After the
+# ZTNA rule, and synthetic addresses are excluded anyway.
 if [ -n "$INSPECT_PORT" ]; then
-  iptables -t nat -C PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports "$INSPECT_PORT" 2>/dev/null ||
-    iptables -t nat -A PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports "$INSPECT_PORT"
+  iptables -t nat -N OSASE_INSPECT 2>/dev/null || iptables -t nat -F OSASE_INSPECT
+  # Drop the blanket rule of older versions.
+  while iptables -t nat -D PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports "$INSPECT_PORT" 2>/dev/null; do :; done
+  iptables -t nat -C PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j OSASE_INSPECT 2>/dev/null ||
+    iptables -t nat -A PREROUTING -i "$TUN" ! -d "$SYNTH" -p tcp -m multiport --dports 80,443 -j OSASE_INSPECT
 fi
 
 # FORWARD: default drop, explicit accepts.

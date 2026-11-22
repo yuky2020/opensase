@@ -296,6 +296,13 @@ while :; do
   [ "$i" -ge 15 ] && break
   sleep 2
 done
+# Issue #22: only devices whose policy inspects are redirected to the listener.
+cip="$(cexec ip -4 -o addr show "$TUN" | awk '{print $4}' | cut -d/ -f1)"
+if docker compose exec -T edge iptables -w -t nat -S OSASE_INSPECT 2>/dev/null | grep -q -- "-s $cip/32"; then
+  ok "inspection redirect installed for this device only ($cip)"
+else
+  ko "no per-device inspection redirect for $cip"
+fi
 case "$issuer" in
   *"web inspection $TENANT"*) ok "inspected: example.com served by the Edge with the tenant inspection root ($issuer)" ;;
   *) ko "example.com not inspected (issuer '$issuer')" ;;
@@ -366,6 +373,11 @@ until cexec curl -s -m 10 -o /dev/null https://example.com/ 2>/dev/null; do
   sleep 2
 done
 if [ "$i" -lt 20 ]; then ok "inspection off again after the policy is restored"; else ko "inspection still on 40s after the policy was restored"; fi
+if docker compose exec -T edge iptables -w -t nat -S OSASE_INSPECT 2>/dev/null | grep -q -- "-s $cip/32"; then
+  ko "inspection redirect still installed for $cip after the policy was restored"
+else
+  ok "inspection redirect removed with the policy (traffic forwarded by the kernel again)"
+fi
 sleep 2 # the state cache is written right after the sync
 
 # 13. Web categories (ADR-0022): the UT1 list on the Control Plane, "gambling" blocked.

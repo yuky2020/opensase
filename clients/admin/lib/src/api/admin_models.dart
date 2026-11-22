@@ -599,6 +599,7 @@ class SaasApp {
 class WebPolicy {
   WebPolicy({
     this.inspect = false,
+    this.blockEch = false,
     List<String>? bypass,
     List<WebRule>? rules,
     List<WebHeader>? headers,
@@ -613,6 +614,9 @@ class WebPolicy {
   /// Decrypt TLS at the Edge. Without it, rules and headers apply to plain HTTP only.
   bool inspect;
 
+  /// Remove ECH configurations from DNS HTTPS/SVCB answers at the Edge (ADR-0030).
+  bool blockEch;
+
   /// Domains never decrypted (pinned apps, banking, health).
   List<String> bypass;
 
@@ -626,10 +630,11 @@ class WebPolicy {
   /// Malware scanning (ADR-0020).
   MalwarePolicy malware;
 
-  bool get isEmpty => !inspect && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty && malware.isEmpty;
+  bool get isEmpty => !inspect && !blockEch && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty && malware.isEmpty;
 
   factory WebPolicy.fromJson(Json j) => WebPolicy(
     inspect: boolean(j, 'inspect'),
+    blockEch: boolean(j, 'blockECH'),
     bypass: strList(j, 'bypass'),
     rules: objList(j, 'rules', WebRule.fromJson),
     headers: objList(j, 'headers', WebHeader.fromJson),
@@ -640,6 +645,7 @@ class WebPolicy {
   Json toJson() {
     final j = <String, dynamic>{};
     if (inspect) j['inspect'] = true;
+    if (blockEch) j['blockECH'] = true;
     putOmit(j, 'bypass', bypass);
     putOmit(j, 'rules', [for (final r in rules) r.toJson()]);
     putOmit(j, 'headers', [for (final h in headers) h.toJson()]);
@@ -647,6 +653,24 @@ class WebPolicy {
     if (!malware.isEmpty) j['malware'] = malware.toJson();
     return j;
   }
+
+  WebPolicy copyWith({
+    bool? inspect,
+    bool? blockEch,
+    List<String>? bypass,
+    List<WebRule>? rules,
+    List<WebHeader>? headers,
+    List<DlpRule>? dlp,
+    MalwarePolicy? malware,
+  }) => WebPolicy(
+    inspect: inspect ?? this.inspect,
+    blockEch: blockEch ?? this.blockEch,
+    bypass: bypass ?? this.bypass,
+    rules: rules ?? this.rules,
+    headers: headers ?? this.headers,
+    dlp: dlp ?? this.dlp,
+    malware: malware ?? this.malware,
+  );
 }
 
 /// policy.WebRule: matches requests by host, path prefix and method.

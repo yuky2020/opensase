@@ -712,6 +712,12 @@ class AppLocalizationsIt extends AppLocalizations {
       'L\'Edge termina il TLS con un certificato della root di ispezione del tenant e controlla ogni richiesta. Il traffico web QUIC e IPv6 di questi dispositivi viene rifiutato, così i browser usano TCP ispezionato.';
 
   @override
+  String get webBlockEch => 'Blocca Encrypted Client Hello';
+
+  @override
+  String get webBlockEchHelp => 'Rimuove ECH dalle risposte DNS così l\'Edge vede i nomi reali dei server';
+
+  @override
   String get webBypass => 'Non decifrare mai';
 
   @override

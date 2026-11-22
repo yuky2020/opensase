@@ -275,7 +275,7 @@ func Compile(s *Snapshot) (*Compiled, error) {
 	}
 	c.categories = slices.Clone(s.Categories)
 	c.safeSearch = s.SafeSearch
-	if s.Web.Inspect || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 || len(s.Web.DLP) > 0 || s.Web.Malware != (MalwarePolicy{}) {
+	if s.Web.Inspect || s.Web.BlockECH || len(s.Web.Bypass) > 0 || len(s.Web.Rules) > 0 || len(s.Web.Headers) > 0 || len(s.Web.DLP) > 0 || s.Web.Malware != (MalwarePolicy{}) {
 		w, err := compileWeb(&s.Web)
 		if err != nil {
 			return nil, err

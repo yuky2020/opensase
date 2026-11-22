@@ -706,6 +706,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'The Edge terminates TLS with a certificate from the tenant\'s inspection root and checks every request. QUIC and IPv6 web traffic of these devices is refused, so browsers use inspected TCP.';
 
   @override
+  String get webBlockEch => 'Block Encrypted Client Hello';
+
+  @override
+  String get webBlockEchHelp => 'Remove ECH from DNS answers so the Edge sees real server names';
+
+  @override
   String get webBypass => 'Never decrypt';
 
   @override

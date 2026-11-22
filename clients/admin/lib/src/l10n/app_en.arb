@@ -319,6 +319,8 @@
   "webHelp": "Decrypt the tenant's HTTPS at the Edge to enforce URL rules and set request headers. Devices must trust the tenant's inspection root.",
   "webInspect": "Inspect TLS",
   "webInspectHelp": "The Edge terminates TLS with a certificate from the tenant's inspection root and checks every request. QUIC and IPv6 web traffic of these devices is refused, so browsers use inspected TCP.",
+  "webBlockEch": "Block Encrypted Client Hello",
+  "webBlockEchHelp": "Remove ECH from DNS answers so the Edge sees real server names",
   "webBypass": "Never decrypt",
   "webBypassHelp": "One domain per line (*.bank.example). For certificate-pinned apps, banking and health sites.",
   "webRules": "URL rules",

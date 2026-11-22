@@ -1400,6 +1400,18 @@ abstract class AppLocalizations {
   /// **'The Edge terminates TLS with a certificate from the tenant\'s inspection root and checks every request. QUIC and IPv6 web traffic of these devices is refused, so browsers use inspected TCP.'**
   String get webInspectHelp;
 
+  /// No description provided for @webBlockEch.
+  ///
+  /// In en, this message translates to:
+  /// **'Block Encrypted Client Hello'**
+  String get webBlockEch;
+
+  /// No description provided for @webBlockEchHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove ECH from DNS answers so the Edge sees real server names'**
+  String get webBlockEchHelp;
+
   /// No description provided for @webBypass.
   ///
   /// In en, this message translates to:

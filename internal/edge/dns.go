@@ -131,6 +131,9 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			rs.e.snoop.add(client, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
 		}
 	}
+	if c.BlockECH() {
+		stripECH(resp)
+	}
 	resp.Id = req.Id
 	_ = w.WriteMsg(resp)
 }

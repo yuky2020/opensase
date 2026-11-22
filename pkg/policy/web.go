@@ -31,12 +31,13 @@ var reservedHeaders = map[string]bool{
 }
 
 type compiledWeb struct {
-	inspect bool
-	bypass  domainSet
-	rules   []compiledWebRule
-	headers []compiledWebHeader
-	dlp     []compiledDLP
-	malware MalwarePolicy
+	inspect  bool
+	blockECH bool
+	bypass   domainSet
+	rules    []compiledWebRule
+	headers  []compiledWebHeader
+	dlp      []compiledDLP
+	malware  MalwarePolicy
 }
 
 type compiledDLP struct {
@@ -71,7 +72,7 @@ type compiledWebHeader struct {
 }
 
 func compileWeb(w *WebPolicy) (*compiledWeb, error) {
-	cw := &compiledWeb{inspect: w.Inspect, malware: w.Malware}
+	cw := &compiledWeb{inspect: w.Inspect, blockECH: w.BlockECH, malware: w.Malware}
 	var err error
 	if cw.bypass, err = buildSet(w.Bypass, "", "web.bypass"); err != nil {
 		return nil, err
@@ -248,6 +249,9 @@ func (c *Compiled) Inspects(host string) bool {
 // InspectEnabled reports whether TLS inspection is on for the device (some hosts may still be
 // bypassed).
 func (c *Compiled) InspectEnabled() bool { return c.web != nil && c.web.inspect }
+
+// BlockECH reports whether ECH configurations should be removed from DNS HTTPS/SVCB answers (ADR-0030).
+func (c *Compiled) BlockECH() bool { return c != nil && c.web != nil && c.web.blockECH }
 
 // HasWebRules reports whether requests need to be evaluated at all (any rule, header or DLP
 // rule).

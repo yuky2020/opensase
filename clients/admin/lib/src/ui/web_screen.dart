@@ -274,6 +274,14 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
                     onChanged: (v) => _edit(() => _p.inspect = v),
                   ),
                   SwitchListTile(
+                    key: const Key('web_block_ech'),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l.webBlockEch, style: text.titleMedium),
+                    subtitle: Text(l.webBlockEchHelp),
+                    value: _p.blockEch,
+                    onChanged: (v) => _edit(() => _p.blockEch = v),
+                  ),
+                  SwitchListTile(
                     key: const Key('web_av_uploads'),
                     contentPadding: EdgeInsets.zero,
                     title: Text(l.webAvUploads),

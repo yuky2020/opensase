@@ -1,1 +1,1 @@
-{"permissions":{"allow":["command(ls)","command(cat)","command(grep)","command(rg)","command(find)","command(head)","command(tail)","command(wc)","command(pwd)","command(mkdir)","command(tree)","command(file)","command(diff)"]}}
+{"permissions": {"allow": ["command(ls)", "command(cat)", "command(grep)", "command(rg)", "command(find)", "command(head)", "command(tail)", "command(wc)", "command(pwd)", "command(mkdir)", "command(tree)", "command(file)", "command(diff)", "read_file(/home/matt/claude/opensase)", "read_file(/home/matt/claude/opensase/**)"]}}

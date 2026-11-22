@@ -74,6 +74,8 @@ type WebPolicy struct {
 	// Inspect turns TLS interception on. Without it Rules and Headers apply to plain HTTP
 	// only, and HTTPS is controlled by hostname alone (ADR-0017).
 	Inspect bool `json:"inspect,omitempty"`
+	// BlockECH removes ECH configurations from DNS HTTPS/SVCB answers at the Edge resolver (ADR-0030), so clients send the real server name in the clear.
+	BlockECH bool `json:"blockECH,omitempty"`
 	// Bypass lists domains whose TLS is never decrypted: certificate-pinned apps, banking,
 	// health. Same syntax as Match.Domains.
 	Bypass []string `json:"bypass,omitempty"`

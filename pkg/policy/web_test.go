@@ -58,8 +58,40 @@ func TestWebDecide(t *testing.T) {
 		t.Errorf("headers for other host %+v", h)
 	}
 	none, _ := Compile(webSnapshot(WebPolicy{}))
-	if none.Inspects("app.example") || none.HasWebRules() {
+	if none.Inspects("app.example") || none.HasWebRules() || none.BlockECH() {
 		t.Error("empty web policy inspects")
+	}
+}
+
+func TestBlockECH(t *testing.T) {
+	tests := []struct {
+		name     string
+		w        WebPolicy
+		wantECH  bool
+		wantInsp bool
+	}{
+		{"empty", WebPolicy{}, false, false},
+		{"inspect_only", WebPolicy{Inspect: true}, false, true},
+		{"ech_only", WebPolicy{BlockECH: true}, true, false},
+		{"both", WebPolicy{Inspect: true, BlockECH: true}, true, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Compile(webSnapshot(tc.w))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := c.BlockECH(); got != tc.wantECH {
+				t.Errorf("BlockECH() = %v, want %v", got, tc.wantECH)
+			}
+			if got := c.InspectEnabled(); got != tc.wantInsp {
+				t.Errorf("InspectEnabled() = %v, want %v", got, tc.wantInsp)
+			}
+		})
+	}
+	var nilC *Compiled
+	if nilC.BlockECH() {
+		t.Error("nil Compiled BlockECH() = true, want false")
 	}
 }
 

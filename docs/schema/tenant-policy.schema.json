@@ -255,6 +255,10 @@
         "inspect": {
           "type": "boolean"
         },
+        "blockECH": {
+          "type": "boolean",
+          "description": "Removes ECH configurations from DNS HTTPS and SVCB answers at the Edge resolver (ADR-0030) so clients send the real server name in the clear."
+        },
         "bypass": {
           "type": "array",
           "items": {

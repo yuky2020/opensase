@@ -5,7 +5,10 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -197,5 +200,56 @@ func TestNewHostCache(t *testing.T) {
 	}
 	if hc.lookup == nil {
 		t.Fatal("newHostCache lookup func is nil")
+	}
+}
+
+func TestReadNameservers(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{"two servers and comments", write("a", "# c\n; c\nsearch x\nnameserver 192.0.2.1\nnameserver 192.0.2.2\n"), []string{"192.0.2.1:53", "192.0.2.2:53"}},
+		{"tunnel resolver skipped", write("b", "nameserver 100.64.0.1\nnameserver 127.0.0.11\n"), []string{"127.0.0.11:53"}},
+		{"ipv6", write("c", "nameserver 2001:db8::1\n"), []string{"[2001:db8::1]:53"}},
+		{"only tunnel", write("d", "nameserver 100.64.0.1\n"), nil},
+		{"missing file", filepath.Join(dir, "none"), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := readNameservers(tt.path); !slices.Equal(got, tt.want) {
+				t.Errorf("readNameservers = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDNSTargets(t *testing.T) {
+	boot := []string{"127.0.0.11:53"}
+	tests := []struct {
+		name    string
+		address string
+		boot    []string
+		want    []string
+	}{
+		{"tunnel resolver redirected", "100.64.0.1:53", boot, boot},
+		{"tunnel resolver without boot servers", "100.64.0.1:53", nil, []string{"100.64.0.1:53"}},
+		{"other resolver kept", "192.0.2.53:53", boot, []string{"192.0.2.53:53"}},
+		{"name kept", "dns.example:53", boot, []string{"dns.example:53"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dnsTargets(tt.address, tt.boot); !slices.Equal(got, tt.want) {
+				t.Errorf("dnsTargets(%q) = %v, want %v", tt.address, got, tt.want)
+			}
+		})
 	}
 }

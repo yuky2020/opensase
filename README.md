@@ -142,7 +142,8 @@ flowchart LR
 | SafeSearch for Google, YouTube, Bing and DuckDuckGo, with bypass protection ([ADR-0025](docs/adr/0025-safesearch.md)) | ✅ |
 | DLP on scanned PDFs (OCR) and PDFs with CID fonts ([ADR-0026](docs/adr/0026-pdf-structure-cid-images.md)); brotli and zstd bodies | ✅ |
 | Roles inside a tenant: admin, policy-editor, viewer ([ADR-0027](docs/adr/0027-tenant-roles.md)) | ✅ |
-| Exact data match, OIDC for the portal, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| DLP exact data match and document fingerprints ([ADR-0029](docs/adr/0029-dlp-exact-data-match.md)) | ✅ |
+| OIDC for the portal, ICAP engines, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -281,7 +282,7 @@ Everything below is also published as a searchable site at
 - [`CONTEXT.md`](CONTEXT.md): domain glossary. Use these terms in code and docs.
 - [`docs/architecture.md`](docs/architecture.md): goals, principles, traffic flows and the technology baseline.
 - [`docs/components/`](docs/components): one spec per component (Edge, Control Plane, Connector, Workload Gateway, SWG, CASB, DLP, …).
-- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025, 0026, 0027 and 0028.
+- [`docs/adr/`](docs/adr/README.md): architecture decisions. Accepted so far: 0002, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025, 0026, 0027, 0028 and 0029.
 - [`docs/security/`](docs/security): security review and security test reports.
 - [`docs/effort-estimate.md`](docs/effort-estimate.md): sizing and phases.
 
@@ -289,7 +290,7 @@ Everything below is also published as a searchable site at
 
 Planned work and known limitations are tracked as [GitHub issues](https://github.com/yuky2020/opensase/issues). The main lines:
 
-1. **DLP, next slice:** exact data match and fingerprints ([#15](https://github.com/yuky2020/opensase/issues/15)).
+1. **Content scanning:** ICAP engines next to ClamAV ([#25](https://github.com/yuky2020/opensase/issues/25)).
 2. OIDC sign-in for the portal ([#17](https://github.com/yuky2020/opensase/issues/17)).
 3. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).
 4. Workload Gateway for the cloud: GENEVE ingress, per-workload identity ([#21](https://github.com/yuky2020/opensase/issues/21)).

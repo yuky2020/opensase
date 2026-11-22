@@ -463,5 +463,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "webDlpDatasets": "Datasets (comma-separated)",
+  "webDlpDatasetsHelp": "Exact values or protected documents uploaded with opensasectl dlp-dataset put; only their hashes are stored."
 }

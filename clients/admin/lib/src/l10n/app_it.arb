@@ -287,5 +287,7 @@
   "secKindCategory": "Categoria",
   "secKindSafeSearch": "SafeSearch",
   "secKindSaas": "SaaS",
-  "secKindInspection": "Ispezione"
+  "secKindInspection": "Ispezione",
+  "webDlpDatasets": "Dataset (separati da virgola)",
+  "webDlpDatasetsHelp": "Valori esatti o documenti protetti caricati con opensasectl dlp-dataset put; ne vengono conservati solo gli hash."
 }

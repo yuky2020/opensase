@@ -134,20 +134,21 @@ type Edge struct {
 	wgPub [32]byte
 	ipv6  bool
 
-	reg   *registry
-	trust atomic.Pointer[trust]
-	ct    *conntrack
-	dec   *decider
-	snoop *snoop
-	flows *flowLog
-	guard *guard
-	synth *synthMap              // synthetic PrivateApp addresses (ADR-0013)
-	hub   *connectorHub          // live Connector broker connections
-	insp  *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
-	av    scanner                // malware scanner (ADR-0020)
-	cats  atomic.Pointer[catSet] // web categories (ADR-0022)
-	safe  *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
-	redir *inspectRedirect       // per-device inspection redirect (issue #22); nil without inspection
+	reg      *registry
+	trust    atomic.Pointer[trust]
+	ct       *conntrack
+	dec      *decider
+	snoop    *snoop
+	flows    *flowLog
+	guard    *guard
+	synth    *synthMap              // synthetic PrivateApp addresses (ADR-0013)
+	hub      *connectorHub          // live Connector broker connections
+	insp     *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
+	av       scanner                // malware scanner (ADR-0020)
+	cats     atomic.Pointer[catSet] // web categories (ADR-0022)
+	safe     *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
+	redir    *inspectRedirect       // per-device inspection redirect (issue #22); nil without inspection
+	datasets *datasetCache          // DLP datasets (ADR-0029)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -194,6 +195,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 	}
 	e.av = clamd{addr: cfg.ClamdAddr}
 	e.safe = newSafeIPs()
+	e.datasets = newDatasetCache()
 	copy(e.wgPub[:], k.PublicKey().Bytes())
 	e.dec = newDecider(ctx, cp, cfg.Logger)
 	if cfg.FlowLogPath != "" {
@@ -323,6 +325,7 @@ func (e *Edge) run(ctx context.Context) error {
 	go e.reportLoop(ctx)
 	go e.categoryLoop(ctx)
 	go e.safeSearchLoop(ctx)
+	go e.datasetLoop(ctx)
 
 	// 6. Session-setup server.
 	srv := &http.Server{

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/textproto"
 	"path"
+	"slices"
 	"strings"
 
 	"golang.org/x/net/http/httpguts"
@@ -51,7 +52,8 @@ type DLPCheck struct {
 	MinMatches     int
 	BlockUnscanned bool
 	Downloads      bool
-	Matcher        *dlp.Matcher
+	Matcher        *dlp.Matcher // nil when the rule has only datasets
+	Datasets       []string     // tenant DLP datasets (ADR-0029)
 }
 
 type compiledWebRule struct {
@@ -153,11 +155,18 @@ func compileWeb(w *WebPolicy) (*compiledWeb, error) {
 		if r.MinMatches < 0 || r.MinMatches > 100000 {
 			return nil, verr(field+".minMatches", "must be 0..100000")
 		}
-		m, err := dlp.Compile(r.Detectors, r.Patterns)
-		if err != nil {
-			return nil, verr(field, "%v", err)
+		for j, n := range r.Datasets {
+			if !categoryName.MatchString(n) {
+				return nil, verr(fmt.Sprintf("%s.datasets[%d]", field, j), "invalid dataset name %q", n)
+			}
 		}
-		cd := compiledDLP{all: len(r.Domains) == 0, check: DLPCheck{ID: r.ID, Action: r.Action, MinMatches: max(r.MinMatches, 1), BlockUnscanned: r.BlockUnscanned, Downloads: r.Downloads, Matcher: m}}
+		var m *dlp.Matcher
+		if len(r.Detectors) > 0 || len(r.Patterns) > 0 || len(r.Datasets) == 0 {
+			if m, err = dlp.Compile(r.Detectors, r.Patterns); err != nil {
+				return nil, verr(field, "%v", err)
+			}
+		}
+		cd := compiledDLP{all: len(r.Domains) == 0, check: DLPCheck{ID: r.ID, Action: r.Action, MinMatches: max(r.MinMatches, 1), BlockUnscanned: r.BlockUnscanned, Downloads: r.Downloads, Matcher: m, Datasets: slices.Clone(r.Datasets)}}
 		if cd.hosts, err = buildSet(r.Domains, "", field+".domains"); err != nil {
 			return nil, err
 		}
@@ -172,6 +181,23 @@ func (c *Compiled) Malware() MalwarePolicy {
 		return MalwarePolicy{}
 	}
 	return c.web.malware
+}
+
+// DLPDatasets returns the dataset names used by the device's DLP rules (ADR-0029), sorted.
+func (c *Compiled) DLPDatasets() []string {
+	if c.web == nil {
+		return nil
+	}
+	var out []string
+	for _, d := range c.web.dlp {
+		for _, n := range d.check.Datasets {
+			if !slices.Contains(out, n) {
+				out = append(out, n)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // DLPChecks returns the DLP rules that apply to requests to host, in policy order.

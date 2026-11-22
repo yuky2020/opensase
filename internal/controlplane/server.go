@@ -205,6 +205,7 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/v1/edge/sessions", s.handleEdgeSessions)
 		r.With(short).Post("/v1/edge/inspection-ca", s.handleInspectionCA)
 		r.Get("/v1/edge/categories", s.handleEdgeCategories)
+		r.Get("/v1/edge/dlp-datasets", s.handleEdgeDatasets)
 	})
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Use(short, s.requireAdmin, s.auditAdmin)
@@ -241,6 +242,9 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/admin-tokens/{id}/revoke", s.handleRevokeAdminToken)
 			r.Get("/audit", s.handleListAudit)
 			r.Get("/inspection-ca", s.handleGetInspectionRoot)
+			r.Put("/dlp-datasets/{name}", s.handlePutDataset)
+			r.Get("/dlp-datasets", s.handleListDatasets)
+			r.Delete("/dlp-datasets/{name}", s.handleDeleteDataset)
 		})
 	})
 	if s.cfg.PortalDir != "" {

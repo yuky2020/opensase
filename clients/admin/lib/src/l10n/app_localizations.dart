@@ -1819,6 +1819,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Inspection'**
   String get secKindInspection;
+
+  /// No description provided for @webDlpDatasets.
+  ///
+  /// In en, this message translates to:
+  /// **'Datasets (comma-separated)'**
+  String get webDlpDatasets;
+
+  /// No description provided for @webDlpDatasetsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Exact values or protected documents uploaded with opensasectl dlp-dataset put; only their hashes are stored.'**
+  String get webDlpDatasetsHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -803,14 +803,25 @@ func (w *webFlow) runDLP(ctx context.Context, checks []policy.DLPCheck, h http.H
 	}
 	for _, ch := range checks {
 		n := 0
+		missing := false
 		for _, b := range blobs {
-			for _, c := range ch.Matcher.Counts(b) {
-				n += c
+			if ch.Matcher != nil {
+				for _, c := range ch.Matcher.Counts(b) {
+					n += c
+				}
+			}
+			for _, name := range ch.Datasets {
+				d := w.e.datasets.get(w.tenant, name)
+				if d == nil {
+					missing = true // not loaded: this rule cannot be fully evaluated
+					continue
+				}
+				n += d.Count(b)
 			}
 		}
 		rule := "dlp:" + ch.ID
 		hit := n >= ch.MinMatches
-		if !hit && !scanned && ch.BlockUnscanned {
+		if !hit && (!scanned || missing) && ch.BlockUnscanned {
 			hit, rule = true, rule+":unscanned"
 		}
 		if !hit {

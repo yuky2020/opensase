@@ -67,6 +67,10 @@
 //	GET  /v1/admin/audit/verify[?id=N&hash=H] -> AuditVerification (super-admin; hash chain check, ADR-0028)
 //	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
+//	PUT  /v1/admin/tenants/{t}/dlp-datasets/{name}  DLPDatasetRequest -> DLPDataset (ADR-0029; only hashes are kept)
+//	GET  /v1/admin/tenants/{t}/dlp-datasets         -> []DLPDataset
+//	DELETE /v1/admin/tenants/{t}/dlp-datasets/{name} -> 204 | 404
+//	GET  /v1/edge/dlp-datasets?tenant=T&names=a,b   -> EdgeDatasets (edge cert; edge must serve T)
 //	GET  /v1/admin/categories             -> CategoryCatalog (the loaded category list, ADR-0022)
 //	GET  /v1/admin/tenants/{t}/inspection-ca  -> PEM of the tenant's web inspection root (ADR-0018), to install on devices
 //
@@ -492,4 +496,36 @@ type AuditVerification struct {
 	Reason   string `json:"reason,omitempty"`
 	// Pinned is the result of the id/hash check: match, mismatch, missing or removed by retention.
 	Pinned string `json:"pinned,omitempty"`
+}
+
+// DLPDatasetRequest creates or replaces a DLP dataset (ADR-0029). For kind "values", Values
+// are the records to protect (1 to 4 words each). For kind "document", Documents are files
+// (text, Office, PDF, ZIP...) whose text is fingerprinted. The Control Plane keeps only keyed
+// hashes and discards the content.
+type DLPDatasetRequest struct {
+	Kind      string   `json:"kind"`
+	Values    []string `json:"values,omitempty"`
+	Documents [][]byte `json:"documents,omitempty"`
+}
+
+// DLPDataset describes a stored dataset.
+type DLPDataset struct {
+	Name      string    `json:"name"`
+	Kind      string    `json:"kind"`
+	Entries   int       `json:"entries"` // distinct values or document shingles
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// EdgeDatasets carries datasets to an Edge: the HMAC key and the sorted 64-bit hashes
+// (8 bytes each, big-endian).
+type EdgeDatasets struct {
+	Datasets []EdgeDataset `json:"datasets"`
+}
+
+// EdgeDataset is one dataset for an Edge.
+type EdgeDataset struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Key    []byte `json:"key"`
+	Hashes []byte `json:"hashes"`
 }

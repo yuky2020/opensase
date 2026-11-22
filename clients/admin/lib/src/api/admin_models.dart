@@ -710,7 +710,9 @@ class DlpRule {
     this.action = 'block',
     this.blockUnscanned = false,
     this.downloads = false,
+    List<String>? datasets,
   }) : domains = domains ?? [],
+       datasets = datasets ?? [],
        detectors = detectors ?? [],
        patterns = patterns ?? [];
 
@@ -734,6 +736,9 @@ class DlpRule {
   /// Also scan file downloads (ADR-0021).
   bool downloads;
 
+  /// Tenant DLP datasets by name (ADR-0029).
+  List<String> datasets;
+
   factory DlpRule.fromJson(Json j) => DlpRule(
     id: str(j, 'id'),
     domains: strList(j, 'domains'),
@@ -743,6 +748,7 @@ class DlpRule {
     action: str(j, 'action'),
     blockUnscanned: boolean(j, 'blockUnscanned'),
     downloads: boolean(j, 'downloads'),
+    datasets: strList(j, 'datasets'),
   );
 
   Json toJson() {
@@ -750,6 +756,7 @@ class DlpRule {
     putOmit(j, 'domains', domains);
     putOmit(j, 'detectors', detectors);
     putOmit(j, 'patterns', patterns);
+    putOmit(j, 'datasets', datasets);
     if (minMatches > 0) j['minMatches'] = minMatches;
     if (blockUnscanned) j['blockUnscanned'] = true;
     if (downloads) j['downloads'] = true;

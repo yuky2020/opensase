@@ -159,6 +159,7 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
           initial: 'credit-card',
           validator: (s) => _split(s).any((d) => !DlpRule.builtinDetectors.contains(d)) ? l.webDlpUnknown : null,
         ),
+        FieldSpec('datasets', l.webDlpDatasets, helper: l.webDlpDatasetsHelp),
         FieldSpec('patterns', l.webDlpPatterns),
         FieldSpec('domains', l.webDlpDomains),
         FieldSpec(
@@ -180,12 +181,13 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
       for (final p in v['patterns']!.split('\n'))
         if (p.trim().isNotEmpty) p.trim(),
     ];
-    if (_split(v['detectors']!).isEmpty && patterns.isEmpty) return;
+    if (_split(v['detectors']!).isEmpty && patterns.isEmpty && _split(v['datasets']!).isEmpty) return;
     _edit(
       () => _p.dlp.add(
         DlpRule(
           id: v['id']!,
           detectors: _split(v['detectors']!),
+          datasets: _split(v['datasets']!),
           patterns: patterns,
           domains: _split(v['domains']!),
           minMatches: int.parse(v['min']!) == 1 ? 0 : int.parse(v['min']!),
@@ -377,7 +379,7 @@ class _WebEditorState extends ConsumerState<_WebEditor> {
                         color: d.action == 'allow' ? context.verdicts.allow : context.verdicts.block,
                       ),
                       title: Text(
-                        '${d.id} · ${[...d.detectors, if (d.patterns.isNotEmpty) l.webDlpPatternCount(d.patterns.length)].join(', ')}',
+                        '${d.id} · ${[...d.detectors, ...d.datasets.map((x) => '#$x'), if (d.patterns.isNotEmpty) l.webDlpPatternCount(d.patterns.length)].join(', ')}',
                       ),
                       subtitle: Text(
                         [

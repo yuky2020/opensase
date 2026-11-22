@@ -134,6 +134,8 @@ commands:
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
   audit verify [-id N -hash H]            (check the audit hash chain; with -id/-hash also a head published earlier)
   info                                    (pinned control URL for enrollment, version)
+  dlp-dataset put -tenant ID -name N -kind values|document -file F [-file F2...]   (values: one per line; ADR-0029)
+  dlp-dataset list -tenant ID | dlp-dataset delete -tenant ID -name N
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
@@ -197,6 +199,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return audit(ctx, g, rest)
 	case "categories":
 		return listCategories(ctx, g, rest)
+	case "dlp-dataset":
+		return dlpDataset(ctx, g, rest)
 	case "info":
 		var info api.AdminInfo
 		if err := g.do(ctx, http.MethodGet, "/v1/admin/info", nil, &info); err != nil {
@@ -994,4 +998,68 @@ func auditVerify(ctx context.Context, g *globals, args []string) error {
 	}
 	fmt.Println("audit chain OK")
 	return nil
+}
+
+type fileList []string
+
+func (f *fileList) String() string     { return strings.Join(*f, ",") }
+func (f *fileList) Set(v string) error { *f = append(*f, v); return nil }
+
+// dlpDataset manages DLP datasets (ADR-0029). Values and documents are read locally and sent
+// once; the Control Plane keeps only keyed hashes.
+func dlpDataset(ctx context.Context, g *globals, args []string) error {
+	if len(args) == 0 {
+		return errors.New("dlp-dataset put|list|delete")
+	}
+	sub, args := args[0], args[1:]
+	fs := flag.NewFlagSet("dlp-dataset "+sub, flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	name := fs.String("name", "", "dataset name")
+	kind := fs.String("kind", "values", "values | document")
+	var files fileList
+	fs.Var(&files, "file", "values file (one per line) or document (repeatable)")
+	_ = fs.Parse(args)
+	base := "/v1/admin/tenants/" + url.PathEscape(*tenant) + "/dlp-datasets"
+	switch sub {
+	case "list":
+		var ds []api.DLPDataset
+		if err := g.do(ctx, http.MethodGet, base, nil, &ds); err != nil {
+			return err
+		}
+		tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+		fmt.Fprintln(tw, "NAME\tKIND\tENTRIES\tUPDATED")
+		for _, d := range ds {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", d.Name, d.Kind, d.Entries, d.UpdatedAt.Local().Format(time.DateTime))
+		}
+		return tw.Flush()
+	case "delete":
+		return g.do(ctx, http.MethodDelete, base+"/"+url.PathEscape(*name), nil, nil)
+	case "put":
+		if *name == "" || len(files) == 0 {
+			return errors.New("-name and at least one -file are required")
+		}
+		req := api.DLPDatasetRequest{Kind: *kind}
+		for _, f := range files {
+			b, err := os.ReadFile(f) //nolint:gosec // G304: files named by the operator
+			if err != nil {
+				return err
+			}
+			if *kind == "values" {
+				for _, line := range strings.Split(string(b), "\n") {
+					if line = strings.TrimSpace(line); line != "" {
+						req.Values = append(req.Values, line)
+					}
+				}
+			} else {
+				req.Documents = append(req.Documents, b)
+			}
+		}
+		var d api.DLPDataset
+		if err := g.do(ctx, http.MethodPut, base+"/"+url.PathEscape(*name), req, &d); err != nil {
+			return err
+		}
+		fmt.Printf("dataset %s (%s): %d entries\n", d.Name, d.Kind, d.Entries)
+		return nil
+	}
+	return fmt.Errorf("unknown dlp-dataset command %q", sub)
 }

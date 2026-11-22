@@ -180,7 +180,9 @@ if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ]; then
   exit 0
 fi
 admin_get "/tenants/$T/inspection-ca" 2>/dev/null | cexec sh -c 'cat >/tmp/sec-inspect.crt'
-web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}], malware: {uploads: true, downloads: true}} | .categories = ["gambling"]')"
+# An exact data match dataset (ADR-0029): two made-up records.
+admin_code PUT "/tenants/$T/dlp-datasets/sec-customers" '{"kind":"values","values":["Zorro Testovic","SEC-ACCT-424242"]}' >/dev/null
+web="$(printf '%s' "$orig" | jq -c '.web = {inspect: true, rules: [{id: "sec-blocked", domains: ["example.com"], pathPrefixes: ["/blocked"], action: "block"}], dlp: [{id: "sec-pci", detectors: ["credit-card", "iban"], action: "block", blockUnscanned: true}, {id: "sec-edm", datasets: ["sec-customers"], action: "block"}], malware: {uploads: true, downloads: true}} | .categories = ["gambling"]')"
 if [ "$(admin_code PUT "/tenants/$T/policy" "$web")" != 204 ]; then
   skip SEC-DP-120 "inspection: requests must match the connection's host" "could not enable inspection"
   exit 0
@@ -297,10 +299,22 @@ else
     [ "$i" -lt 20 ] && pass SEC-DP-128 "inspection: category URL entry refused by path ($h)" ||
       fail SEC-DP-128 "inspection: category URL entry refused by path ($h)" "https://$entry not refused"
   fi
+  # Exact data match (ADR-0029): a protected record in an upload, reformatted.
+  i=0
+  until cexec curl -s -m 12 --cacert /tmp/sec-inspect.crt --data 'note=call ZORRO   testovic' https://example.com/ 2>/dev/null | grep -q "rule dlp:sec-edm)"; do
+    i=$((i + 1))
+    [ "$i" -ge 25 ] && break
+    sleep 2
+  done
+  if [ "$i" -lt 25 ] && [ "$(ins --data 'note=lunch with anna' https://example.com/)" != 403 ]; then
+    pass SEC-DP-131 "inspection: exact data match blocks a protected record, not other text"
+  else
+    fail SEC-DP-131 "inspection: exact data match blocks a protected record, not other text" "protected record not refused (or clean text refused)"
+  fi
   # The Edge must not hide a bad server certificate: an SNI the server has no certificate for.
   c="$(ins --connect-to untrusted.opensase.test:443:example.com:443 https://untrusted.opensase.test/)"
   [ "$c" = 502 ] && pass SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" ||
     fail SEC-DP-122 "inspection: upstream certificate is verified (no silent MITM of a bad server)" "HTTP $c"
 fi
 admin_code PUT "/tenants/$T/policy" "$orig" >/dev/null
-
+admin_code DELETE "/tenants/$T/dlp-datasets/sec-customers" >/dev/null

@@ -22,7 +22,10 @@ Two slices are in place. They scan transfers on the Edge's inspected path (ADR-0
 - **PDF structure (ADR-0026):** object streams, ToUnicode CMaps of CID fonts, text operators;
   images inside PDF files sent to OCR.
 
-Not built yet: exact data match, API-mode DLP.
+- **Exact data match and fingerprints (ADR-0029):** tenant datasets of records or documents,
+  stored as keyed hashes only, matched at the Edge.
+
+Not built yet: API-mode DLP.
 
 ## Responsibilities
 - Evaluate extracted plain text and file metadata from HTTP request/response payloads (POST/PUT uploads, file downloads) and SaaS storage objects against DLP Policy Rules.

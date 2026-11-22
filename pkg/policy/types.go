@@ -100,9 +100,12 @@ type MalwarePolicy struct {
 
 // DLPRule finds sensitive data in uploads, and optionally file downloads (pkg/dlp).
 type DLPRule struct {
-	ID         string   `json:"id"`
-	Domains    []string `json:"domains,omitempty"`    // empty = every host on the inspected path
-	Detectors  []string `json:"detectors,omitempty"`  // built-in detectors (pkg/dlp.Detectors)
+	ID        string   `json:"id"`
+	Domains   []string `json:"domains,omitempty"`   // empty = every host on the inspected path
+	Detectors []string `json:"detectors,omitempty"` // built-in detectors (pkg/dlp.Detectors)
+	// Datasets are tenant DLP datasets by name (ADR-0029): exact values or protected
+	// documents. Each match (a value, or a distinct document shingle) counts towards MinMatches.
+	Datasets   []string `json:"datasets,omitempty"`
 	Patterns   []string `json:"patterns,omitempty"`   // RE2 regular expressions, case-insensitive
 	MinMatches int      `json:"minMatches,omitempty"` // matches needed to trigger; 0 means 1
 	// Action is block (403) or allow (the request goes through and is recorded).

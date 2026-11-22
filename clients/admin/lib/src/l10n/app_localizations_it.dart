@@ -949,4 +949,11 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get secKindInspection => 'Ispezione';
+
+  @override
+  String get webDlpDatasets => 'Dataset (separati da virgola)';
+
+  @override
+  String get webDlpDatasetsHelp =>
+      'Valori esatti o documenti protetti caricati con opensasectl dlp-dataset put; ne vengono conservati solo gli hash.';
 }

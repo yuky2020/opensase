@@ -23,6 +23,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -59,6 +60,7 @@ type fakeCP struct {
 	// categories is the category list Categories serves (ADR-0022); nil answers 503.
 	categories *categories.DB
 	catGets    []string
+	datasets   map[string][]api.EdgeDataset // tenant -> datasets served by Datasets
 }
 
 func (f *fakeCP) Categories(_ context.Context, names []string, etag string) ([]byte, string, bool, error) {
@@ -76,6 +78,21 @@ func (f *fakeCP) Categories(_ context.Context, names []string, etag string) ([]b
 		return nil, "", false, err
 	}
 	return b.Bytes(), "v1", false, nil
+}
+
+func (f *fakeCP) Datasets(_ context.Context, tenant string, names []string) (api.EdgeDatasets, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.datasets == nil {
+		return api.EdgeDatasets{}, errors.New("no datasets")
+	}
+	out := api.EdgeDatasets{}
+	for _, d := range f.datasets[tenant] {
+		if slices.Contains(names, d.Name) {
+			out.Datasets = append(out.Datasets, d)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeCP) InspectionCA(_ context.Context, r api.InspectionCARequest) (api.InspectionCAResponse, error) {

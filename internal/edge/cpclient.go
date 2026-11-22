@@ -31,6 +31,8 @@ type controlPlane interface {
 	InspectionCA(ctx context.Context, req api.InspectionCARequest) (api.InspectionCAResponse, error)
 	// Categories fetches category data (ADR-0022). With etag set, notModified reports 304.
 	Categories(ctx context.Context, names []string, etag string) (body []byte, newETag string, notModified bool, err error)
+	// Datasets fetches a tenant's DLP datasets (ADR-0029).
+	Datasets(ctx context.Context, tenant string, names []string) (api.EdgeDatasets, error)
 }
 
 // cpClient talks to the Control Plane over PQ TLS with the edge certificate.
@@ -118,6 +120,13 @@ func (c *cpClient) ReportSessions(ctx context.Context, s api.EdgeSessions) error
 func (c *cpClient) InspectionCA(ctx context.Context, req api.InspectionCARequest) (api.InspectionCAResponse, error) {
 	var out api.InspectionCAResponse
 	err := c.do(ctx, http.MethodPost, "/v1/edge/inspection-ca", req, &out)
+	return out, err
+}
+
+// Datasets fetches the named DLP datasets of a tenant.
+func (c *cpClient) Datasets(ctx context.Context, tenant string, names []string) (api.EdgeDatasets, error) {
+	var out api.EdgeDatasets
+	err := c.do(ctx, http.MethodGet, "/v1/edge/dlp-datasets?tenant="+url.QueryEscape(tenant)+"&names="+url.QueryEscape(strings.Join(names, ",")), nil, &out)
 	return out, err
 }
 

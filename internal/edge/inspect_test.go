@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -23,6 +24,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/dlp"
 	"github.com/yuky2020/opensase/pkg/packet"
 	"github.com/yuky2020/opensase/pkg/policy"
 )
@@ -670,5 +672,53 @@ func TestInspectionDLPBrotliZstd(t *testing.T) {
 		if code, body := post(t, c, up.hdr, up.body); code != http.StatusForbidden || !strings.Contains(body, "rule dlp:pci)") {
 			t.Errorf("%s: %d %q", name, code, body)
 		}
+	}
+}
+
+// TestInspectionDLPDatasets covers ADR-0029 at the Edge: uploads with a protected value or an
+// excerpt of a protected document are blocked; a dataset that is not loaded follows
+// BlockUnscanned.
+func TestInspectionDLPDatasets(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	pack := func(hs []uint64) []byte {
+		b := make([]byte, 8*len(hs))
+		for i, h := range hs {
+			binary.BigEndian.PutUint64(b[8*i:], h)
+		}
+		return b
+	}
+	doc := "Project Falcon will acquire Example Industries for 42 euro per share before the end of March."
+	web := testWeb
+	web.DLP = []policy.DLPRule{
+		{ID: "customers", Datasets: []string{"customers"}, Action: policy.ActionBlock},
+		{ID: "falcon", Datasets: []string{"falcon"}, MinMatches: 3, Action: policy.ActionBlock},
+		{ID: "missing", Datasets: []string{"not-uploaded"}, Domains: []string{"strict.example"}, Action: policy.ActionBlock, BlockUnscanned: true},
+	}
+	z := newInspectFixture(t, web)
+	z.cp.mu.Lock()
+	z.cp.datasets = map[string][]api.EdgeDataset{"acme": {
+		{Name: "customers", Kind: "values", Key: key, Hashes: pack(dlp.ValueHashes(key, []string{"Mario Rossi", "ACCT-1234"}))},
+		{Name: "falcon", Kind: "document", Key: key, Hashes: pack(dlp.ShingleHashes(key, doc))},
+	}}
+	z.cp.mu.Unlock()
+	if err := z.e.syncDatasets(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c := tls.Client(z.dial(), &tls.Config{ServerName: "example.com", RootCAs: z.root, MinVersion: tls.VersionTLS12})
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"protected value":  {"note: call MARIO ROSSI about acct-1234", http.StatusForbidden},
+		"document excerpt": {"fwd: project falcon will acquire example industries for 42 euro per share", http.StatusForbidden},
+		"unrelated":        {"lunch at noon with Anna", 200},
+		"one shingle only": {"project falcon will acquire example industries for 42", 200},
+	} {
+		if code, _ := post(t, c, "", tc.body); code != tc.want {
+			t.Errorf("%s: %d want %d", name, code, tc.want)
+		}
+	}
+	if !z.hasRecord("dlp:customers") || !z.hasRecord("dlp:falcon") {
+		t.Error("dataset blocks not recorded")
 	}
 }

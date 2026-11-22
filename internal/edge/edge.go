@@ -73,6 +73,9 @@ type Config struct {
 	// ClamdAddr is the ClamAV daemon that scans for malware (ADR-0020), host:port. Empty:
 	// content of tenants with malware scanning is unscanned.
 	ClamdAddr string
+	// ICAPURL is an ICAP service (icap://host[:port]/service, RFC 3507) that scans for
+	// malware instead of clamd (issue #25).
+	ICAPURL string
 	// OCRURL is the ocrd service that reads the text of images for DLP (ADR-0024), for
 	// example http://ocr:8090. Empty: images carry no text.
 	OCRURL string
@@ -194,6 +197,13 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		e.redir = &inspectRedirect{ipt: runIPTables}
 	}
 	e.av = clamd{addr: cfg.ClamdAddr}
+	if cfg.ICAPURL != "" {
+		ic, err := newICAP(cfg.ICAPURL)
+		if err != nil {
+			return nil, err
+		}
+		e.av = ic
+	}
 	e.safe = newSafeIPs()
 	e.datasets = newDatasetCache()
 	copy(e.wgPub[:], k.PublicKey().Bytes())

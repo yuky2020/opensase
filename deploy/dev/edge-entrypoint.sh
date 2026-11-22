@@ -16,6 +16,7 @@ EDGE_IP6="fd7a:5a5e::1"
 SYNTH="100.96.0.0/12"                  # synthetic PrivateApp addresses (ADR-0013)
 ZTNA_PORT="${EDGE_ZTNA_PORT:-15001}"  # must match -ztna-listen
 OCR="${EDGE_OCR:-}"                    # OCR service URL for DLP (ADR-0024); adds -ocr
+ICAP="${EDGE_ICAP:-}"                  # ICAP malware service icap://host/service (issue #25); overrides clamd
 CLAMD="${EDGE_CLAMD:-}"                # malware scanner host:port (ADR-0020); adds -clamd
 INSPECT_PORT="${EDGE_INSPECT_PORT:-}"  # TLS inspection (ADR-0018); empty = off; adds -inspect-listen
 ALLOW_PRIVATE="${EDGE_ALLOW_PRIVATE:-0}"
@@ -112,6 +113,9 @@ if [ -n "$INSPECT_PORT" ]; then
 fi
 if [ -n "$CLAMD" ]; then
   set -- "$@" -clamd "$CLAMD"
+fi
+if [ -n "$ICAP" ]; then
+  set -- "$@" -icap "$ICAP"
 fi
 if [ -n "$OCR" ]; then
   set -- "$@" -ocr "$OCR"

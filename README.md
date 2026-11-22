@@ -62,7 +62,7 @@ exchange. There is no classic fallback.
   ([ADR-0022](docs/adr/0022-web-categories-ut1.md)). SafeSearch can be forced for Google,
   YouTube, Bing and DuckDuckGo ([ADR-0025](docs/adr/0025-safesearch.md)).
 - 🦠 **Malware scanning.** Uploads and file downloads on the inspected path are scanned by a
-  ClamAV daemon next to the Edge, with fail-open or fail-closed behaviour chosen per tenant
+  ClamAV daemon (or any ICAP engine) next to the Edge, with fail-open or fail-closed behaviour chosen per tenant
   ([ADR-0020](docs/adr/0020-malware-scanning.md)).
 - 🏷️ **Multi-tenant Control Plane.**
   - a per-tenant intermediate CA, and 24h certificates with SPIFFE IDs;
@@ -143,7 +143,7 @@ flowchart LR
 | DLP on scanned PDFs (OCR) and PDFs with CID fonts ([ADR-0026](docs/adr/0026-pdf-structure-cid-images.md)); brotli and zstd bodies | ✅ |
 | Roles inside a tenant: admin, policy-editor, viewer ([ADR-0027](docs/adr/0027-tenant-roles.md)) | ✅ |
 | DLP exact data match and document fingerprints ([ADR-0029](docs/adr/0029-dlp-exact-data-match.md)) | ✅ |
-| OIDC for the portal, ICAP engines, cloud GENEVE ingress for the gateway | 🗺️ planned |
+| OIDC for the portal, cloud GENEVE ingress for the gateway | 🗺️ planned |
 
 ## Quick start (dev stack)
 
@@ -290,7 +290,7 @@ Everything below is also published as a searchable site at
 
 Planned work and known limitations are tracked as [GitHub issues](https://github.com/yuky2020/opensase/issues). The main lines:
 
-1. **Content scanning:** ICAP engines next to ClamAV ([#25](https://github.com/yuky2020/opensase/issues/25)).
+1. **Web:** HTTP/3 and Encrypted Client Hello ([#24](https://github.com/yuky2020/opensase/issues/24)).
 2. OIDC sign-in for the portal ([#17](https://github.com/yuky2020/opensase/issues/17)).
 3. Policy language decision ([#20](https://github.com/yuky2020/opensase/issues/20), ADR-0005 proposed).
 4. Workload Gateway for the cloud: GENEVE ingress, per-workload identity ([#21](https://github.com/yuky2020/opensase/issues/21)).

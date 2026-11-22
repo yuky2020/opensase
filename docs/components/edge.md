@@ -79,6 +79,7 @@ edge -tenant acme -state-dir /var/lib/opensase-edge -flow-log /var/lib/opensase-
 edge -inspect-listen 0.0.0.0:15002 ...          # dev compose: EDGE_INSPECT_PORT (default 15002)
 opensasectl inspection-ca -tenant acme -o acme-inspection.crt   # root to install on devices
 edge -clamd clamav:3310 ...                     # malware scanning (ADR-0020); dev: --profile av
+edge -icap icap://scanner:1344/avscan ...       # or an ICAP engine (RFC 3507, issue #25)
 ```
 
 - The kernel REDIRECTs tunnel TCP to ports 80 and 443 of the devices whose policy needs it (the

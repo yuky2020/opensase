@@ -188,6 +188,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 	}
 	if cfg.InspectListen != listenOff {
 		e.insp = newInspector(cp, cfg.InspectRoots)
+		e.insp.onIssued = e.saveInspection
 	}
 	e.av = clamd{addr: cfg.ClamdAddr}
 	e.safe = newSafeIPs()
@@ -245,6 +246,15 @@ func (e *Edge) run(ctx context.Context) error {
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
+	}
+
+	// Cached web categories and inspection intermediates (issue #23): enforced from the start,
+	// refreshed when the Control Plane answers.
+	if e.cfg.StateDir != "" {
+		if err := e.loadCategories(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			e.log.Warn("web category cache unusable", "err", err)
+		}
+		e.loadInspection()
 	}
 
 	// 2. WireGuard on a kernel TUN wrapped by the policy filter.

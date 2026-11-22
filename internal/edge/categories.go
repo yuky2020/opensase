@@ -108,6 +108,7 @@ func (e *Edge) syncCategories(ctx context.Context, now time.Time) error {
 		return err
 	}
 	e.cats.Store(&catSet{db: db, names: want, etag: newTag, at: now})
+	e.saveCategories(want, newTag, body) // offline start (issue #23)
 	e.log.Info("web categories updated", "categories", strings.Join(want, ","), "bytes", len(body))
 	return nil
 }

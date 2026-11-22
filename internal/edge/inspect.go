@@ -80,8 +80,10 @@ type inspector struct {
 	roots *x509.CertPool // verifies upstream servers; nil = system roots
 	// dialOK vets the original destination (upstreamOK; tests allow loopback).
 	dialOK func(netip.Addr) bool
-	now    func() time.Time
-	sf     singleflight.Group
+	// onIssued is called with every new intermediate (the Edge caches it, issue #23).
+	onIssued func(tenant string, ca *inspectCA)
+	now      func() time.Time
+	sf       singleflight.Group
 
 	mu  sync.Mutex
 	cas map[string]*inspectCA
@@ -181,6 +183,9 @@ func (in *inspector) fetch(ctx context.Context, tenant string) (*inspectCA, erro
 	in.mu.Lock()
 	in.cas[tenant] = ca
 	in.mu.Unlock()
+	if in.onIssued != nil {
+		in.onIssued(tenant, ca)
+	}
 	return ca, nil
 }
 

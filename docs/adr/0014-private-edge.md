@@ -67,6 +67,30 @@ While offline:
   With `-flow-log FILE` the Edge also appends every flow record to a local JSONL file. The file
   is rotated to `FILE.1` at 64 MiB, so on-prem auditing does not depend on the cloud.
 
+### Web categories and inspection while offline (issue #23)
+
+Two more caches sit next to `state.json`, signed the same way with the Edge's certificate key:
+- `categories.cache` holds the web categories in force (ADR-0022), in their compact wire form,
+  with their ETag;
+- `inspect-<tenant>.cache` holds a tenant's inspection intermediate (ADR-0018), its key and
+  the leaf key.
+
+Both are written when the Control Plane delivers new data and loaded at start.
+
+On load:
+- a file that does not verify, belongs to another tenant than the Edge's `-tenant`, or is named
+  for another tenant than it contains is ignored;
+- an intermediate must also still be valid, chain to its root as a leaf-only CA, and match its
+  key.
+
+A Private Edge restarted during an outage therefore keeps:
+- enforcing categories, instead of failing open;
+- inspecting TLS, instead of refusing inspected connections, for up to the intermediate's
+  7 days.
+
+The intermediate key is stored 0600 in the state directory, next to the Edge's own certificate
+key. A disk thief gains no more than that key already gives, for at most a week.
+
 ### Local breakout
 
 This is not new: the Edge already NATs tunnel traffic out of its own uplink. A Private Edge

@@ -131,9 +131,9 @@ PQ-capable browser and server keep a post-quantum key exchange on both legs.
   That is the intended result, but rolling inspection out needs the root installed first.
   Android apps ignore user-installed CAs unless they opt in, so on Android inspection is
   practical for browsers and managed apps; pinned or unmanaged apps belong in `bypass`.
-- The intermediate is held in memory only. A Private Edge restarted while the Control Plane is
-  down cannot inspect until it gets one, and refuses inspected connections meanwhile (fail
-  closed).
+- The intermediate was held in memory only in this slice: a Private Edge restarted while the
+  Control Plane is down could not inspect. It is now cached, signed, in the state directory
+  (issue #23, ADR-0014).
 - Not covered yet:
   - HTTP/2 to the client or the server (added by ADR-0023);
   - URL categories, DLP and malware scanning of bodies;

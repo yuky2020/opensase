@@ -91,7 +91,8 @@ That size rules out the existing paths:
   are ignored. The portal's Web categories page shows the categories seen in recent flows, so
   an admin can see what users visit before choosing what to block.
 - **Freshness.** A new UT1 release reaches the Edges within a day plus an hour.
-- After an Edge restart without the Control Plane, categories wait for it (the list is not in
-  the signed state cache). This is consistent with fail open.
+- After an Edge restart without the Control Plane, categories are loaded from a signed cache in
+  the state directory (issue #23, ADR-0014), and revalidated with their ETag when the Control
+  Plane answers.
 - The list could be replaced by another source in the same archive layout, as many SquidGuard
   lists are, without code changes.

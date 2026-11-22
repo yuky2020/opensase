@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -39,6 +40,7 @@ const envProvisioningKey = "OPENSASE_PROVISIONING_KEY"
 type options struct {
 	state, control, key, keyFile, name, ca, network, tunName string
 	gateway                                                  string
+	geneveListen, healthListen                               string
 	enroll, routes, verbose, renewNow                        bool
 	statusEvery                                              time.Duration
 }
@@ -57,6 +59,8 @@ func main() {
 	flag.StringVar(&o.tunName, "tun", "osase0", "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
 	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
+	flag.StringVar(&o.geneveListen, "geneve-listen", "", "GENEVE ingress listen address, e.g. :6081 (requires -gateway)")
+	flag.StringVar(&o.healthListen, "health-listen", "", "HTTP health check listen address, e.g. :8080 (requires -gateway)")
 	flag.BoolVar(&o.verbose, "v", false, "debug logging")
 	flag.DurationVar(&o.statusEvery, "status-every", 30*time.Second, "print status JSON at this interval (0 = never)")
 	flag.Parse()
@@ -82,12 +86,23 @@ func hostname() string {
 
 // stubPlatform implements mobile.Platform for Linux: no UID attribution, nothing to protect
 // (bypass is done with host routes), events printed as JSON lines on stdout.
-type stubPlatform struct{ verbose bool }
+type stubPlatform struct {
+	verbose bool
+	onState func(state string)
+}
 
 func (stubPlatform) ConnectionOwnerUID(int, string, int, string, int) int { return -1 }
 func (stubPlatform) PackagesForUID(int) string                            { return "" }
 func (stubPlatform) Protect(int) bool                                     { return true }
 func (p stubPlatform) OnEvent(kind, payload string) {
+	if kind == "state" && p.onState != nil {
+		var s struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal([]byte(payload), &s) == nil {
+			p.onState(s.State)
+		}
+	}
 	switch kind {
 	case "log":
 		return // already printed by the slog handler
@@ -100,6 +115,12 @@ func (p stubPlatform) OnEvent(kind, payload string) {
 }
 
 func run(o options, log *slog.Logger) error {
+	if o.geneveListen != "" && o.gateway == "" {
+		return errors.New("-geneve-listen requires -gateway")
+	}
+	if o.healthListen != "" && o.gateway == "" {
+		return errors.New("-health-listen requires -gateway")
+	}
 	var gwCIDRs []netip.Prefix
 	if o.gateway != "" {
 		var err error
@@ -120,7 +141,13 @@ func run(o options, log *slog.Logger) error {
 			return err
 		}
 	}
-	eng, err := mobile.NewEngine(o.state, stubPlatform{verbose: o.verbose})
+	var tunnelUp atomic.Bool
+	eng, err := mobile.NewEngine(o.state, stubPlatform{
+		verbose: o.verbose,
+		onState: func(st string) {
+			tunnelUp.Store(st == mobile.StateConnected)
+		},
+	})
 	if err != nil {
 		return err
 	}
@@ -193,6 +220,9 @@ func run(o options, log *slog.Logger) error {
 	if err := eng.StartDevice(dev, o.network); err != nil {
 		return err
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	if gwCIDRs != nil {
 		dns := netip.MustParseAddr("100.64.0.1")
 		for _, d := range tc.DNS {
@@ -201,20 +231,37 @@ func run(o options, log *slog.Logger) error {
 				break
 			}
 		}
-		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log)
+		gnvDev := ""
+		if o.geneveListen != "" {
+			gnvDev = geneveTUNName
+			gnvIngress, err := startGeneveIngress(ctx, o.geneveListen, gwCIDRs, log)
+			if err != nil {
+				eng.Stop()
+				return fmt.Errorf("geneve ingress: %w", err)
+			}
+			defer func() { _ = gnvIngress.Close() }()
+			log.Info("geneve ingress active", "listen", o.geneveListen, "tun", geneveTUNName)
+		}
+		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log, gnvDev)
 		if err != nil {
 			eng.Stop()
 			return fmt.Errorf("workload gateway: %w", err)
 		}
 		defer cleanup()
 	}
+	if o.healthListen != "" {
+		healthSrv, err := startHealthServer(ctx, o.healthListen, tunnelUp.Load, log)
+		if err != nil {
+			eng.Stop()
+			return fmt.Errorf("health server: %w", err)
+		}
+		defer healthSrv.Close()
+		log.Info("health server active", "listen", o.healthListen)
+	}
 	fmt.Println(eng.Status())
 	if o.renewNow {
 		renewNow(eng, log)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	var tick <-chan time.Time
 	if o.statusEvery > 0 {
 		t := time.NewTicker(o.statusEvery)

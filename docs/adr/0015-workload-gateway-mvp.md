@@ -60,3 +60,34 @@ opensase-client -gateway 10.30.0.0/24[,CIDR...] -enroll -control URL -key-file F
 - A single gateway is a single point of failure. HA for now is several gateways, each with its own
   device identity, behind the network's own redundancy (for example two route next hops with
   health checks).
+
+## Addendum: GENEVE ingress (issue #21, slice A)
+
+To support placement behind a cloud gateway load balancer that delivers workload traffic encapsulated in GENEVE (RFC 8926, UDP port 6081), `cmd/opensase-client` adds GENEVE ingress and health checking capabilities.
+
+### Flags
+- `-geneve-listen ADDR` (e.g. `:6081`): starts a UDP listener for GENEVE-encapsulated traffic and creates a dedicated TUN interface named `osase-gnv` (MTU 1400).
+- `-health-listen ADDR` (e.g. `:8080`): serves an HTTP health check endpoint (`GET /healthz`) answering 200 `ok` while the tunnel is up (`connected`) and 503 otherwise.
+- Both flags require `-gateway` and are rejected if `-gateway` is not provided.
+
+### Packet Path and Flow Table
+1. **Receive Path:**
+   - A cloud gateway load balancer delivers GENEVE datagrams to `-geneve-listen`.
+   - The ingress parser validates GENEVE version 0 and accepts only inner protocol `0x0800` (IPv4).
+   - The inner IPv4 packet source must fall within one of the `-gateway` CIDRs; otherwise it is dropped.
+   - The flow table records a mapping from the inner 5-tuple (`protocol`, `src`, `dst`, `sport`, `dport`; ports 0 for non-TCP/UDP) to the sender UDP address and the preserved GENEVE header (VNI and variable-length options, copied).
+   - The inner packet is written to the `osase-gnv` TUN device, where the Linux kernel forwards it into the OpenSASE WireGuard tunnel via existing iptables forwarding rules.
+2. **Return Path:**
+   - Ingress routes (`ip route replace <cidr> dev osase-gnv`) route return traffic for the gateway subnets to `osase-gnv` (and are removed upon gateway teardown).
+   - Return packets read from `osase-gnv` are parsed for their 5-tuple.
+   - The flow table looks up the reversed 5-tuple. If found, the return packet is encapsulated with the saved GENEVE header (same VNI and options) and transmitted back to the saved sender UDP address.
+   - Unknown or expired return flows are dropped and counted.
+
+### Flow Lifecycle and Limits
+- **Expiry:** Flow entries expire after 5 minutes of idle time for TCP connections, or 60 seconds for other protocols.
+- **Capacity:** At most 65,536 active flow entries are retained; the oldest entries are evicted when capacity is reached.
+- **Monitoring:** Flow and drop counters (accepted, dropped by reason, unknown return) are logged once per minute at `Info` level without logging packet contents or IP addresses.
+- **Current Limits:**
+  - IPv4 only: IPv6 forwarding remains disabled.
+  - NAT still applies on the tunnel interface: the Edge sees the gateway device's tunnel address.
+  - Per-workload identity is deferred to slice B.

@@ -211,8 +211,10 @@ class FlowRecord {
     this.where = '',
     this.deviceId = '',
     this.saasApp = '',
+    List<String>? categories,
   }) : flow = flow ?? Flow(),
-       decision = decision ?? Decision();
+       decision = decision ?? Decision(),
+       categories = categories ?? [];
 
   DateTime? start;
   DateTime? end;
@@ -228,6 +230,9 @@ class FlowRecord {
   /// Catalog app of the flow's hostname, set by the Control Plane (ADR-0017).
   String saasApp;
 
+  /// Web categories of the flow's hostname, set by the Control Plane (issue #27).
+  List<String> categories;
+
   factory FlowRecord.fromJson(Json j) => FlowRecord(
     start: time(j, 'start'),
     end: time(j, 'end'),
@@ -238,6 +243,7 @@ class FlowRecord {
     where: str(j, 'where'),
     deviceId: str(j, 'deviceId'),
     saasApp: str(j, 'saasApp'),
+    categories: strList(j, 'categories'),
   );
 
   Json toJson() {
@@ -253,6 +259,7 @@ class FlowRecord {
     };
     putOmit(j, 'deviceId', deviceId);
     putOmit(j, 'saasApp', saasApp);
+    putOmit(j, 'categories', categories);
     return j;
   }
 }

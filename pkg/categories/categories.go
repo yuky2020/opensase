@@ -369,6 +369,28 @@ func applyUsage(db *DB, usage []byte) {
 	}
 }
 
+// Match returns the "black" categories (at most limit) that host or one of its parent
+// domains belongs to, sorted by name: what a flow to host is about, for discovery.
+func (db *DB) Match(host string, limit int) []string {
+	if db == nil || limit <= 0 {
+		return nil
+	}
+	var out []string
+	for _, n := range db.Names() {
+		c := db.cats[n]
+		if c.Type == "white" {
+			continue
+		}
+		if _, ok := db.Lookup(host, []string{n}); ok {
+			out = append(out, n)
+			if len(out) == limit {
+				break
+			}
+		}
+	}
+	return out
+}
+
 // --- wire format (Control Plane -> Edge) ---
 //
 // "OSCAT2" then, per category: name length (1 byte), name, then the domain hashes and the

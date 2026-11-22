@@ -86,6 +86,10 @@ That size rules out the existing paths:
   path with its query matches an entry. Matching ignores case. It is recorded as
   `cat:<name>:url`. Without inspection only whole domains are enforced. This was added after
   the first slice, in the same ADR.
+- **Discovery** (issue #27): the Control Plane tags every flow record with the `black`
+  categories of its hostname, at most three, like `saasApp`. Values sent by devices or Edges
+  are ignored. The portal's Web categories page shows the categories seen in recent flows, so
+  an admin can see what users visit before choosing what to block.
 - **Freshness.** A new UT1 release reaches the Edges within a day plus an hour.
 - After an Edge restart without the Control Plane, categories wait for it (the list is not in
   the signed state cache). This is consistent with fail open.

@@ -134,7 +134,7 @@ void main() {
     '''{"records":[{"start":"2026-11-20T10:00:00Z","end":"2026-11-20T10:00:05.5Z",
       "flow":{"app":"com.android.chrome","uid":10123,"network":"wifi","protocol":"tcp","dstIp":"93.184.216.34","dstPort":443,"domain":"example.com"},
       "decision":{"action":"block","ruleId":"dns:ads","layer":"dns","log":true},
-      "bytesOut":100,"bytesIn":2000,"where":"edge","deviceId":"d1","saasApp":"github"}]}''',
+      "bytesOut":100,"bytesIn":2000,"where":"edge","deviceId":"d1","saasApp":"github","categories":["code-hosting"]}]}''',
     FlowBatch.fromJson,
     (v) => v.toJson(),
   );

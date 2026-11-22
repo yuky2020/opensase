@@ -328,11 +328,23 @@ void main() {
           {'name': 'liste_blanche', 'type': 'white', 'domains': 10},
         ],
       });
+    cp.json('GET /v1/admin/tenants/acme/flows', {
+      'records': [
+        {
+          'start': '2026-11-22T01:00:00Z',
+          'flow': {'protocol': 'tcp', 'dstIp': '1.2.3.4', 'dstPort': 443, 'domain': 'www.casino.example'},
+          'decision': {'action': 'allow', 'layer': 'default'},
+          'where': 'edge',
+          'categories': ['gambling'],
+        },
+      ],
+    });
     cp.routes['PUT /v1/admin/tenants/acme/policy'] = (r) {
       put = jsonDecode(r.body);
       return http204();
     };
     await _pump(t, cp, const CategoriesScreen());
+    expect(find.byKey(const Key('cat_seen_gambling')), findsOneWidget);
     expect(find.byKey(const Key('cat_liste_blanche')), findsNothing);
     expect(find.byKey(const Key('cat_chip_adult')), findsOneWidget);
     await t.tap(find.byKey(const Key('cat_gambling')));

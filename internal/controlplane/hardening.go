@@ -364,5 +364,16 @@ func sanitizeFlow(rec api.FlowRecord, now time.Time) api.FlowRecord {
 	if a, ok := saas.Lookup(f.Domain); ok {
 		rec.SaaSApp = a.ID
 	}
+	rec.Categories = nil
 	return rec
+}
+
+// maxFlowCategories bounds the categories stored on one flow record.
+const maxFlowCategories = 3
+
+// tagCategories sets the web categories of a record from the loaded list (issue #27).
+func (s *Server) tagCategories(rec *api.FlowRecord) {
+	if st := s.categoryState(); st != nil && rec.Flow.Domain != "" {
+		rec.Categories = st.db.Match(rec.Flow.Domain, maxFlowCategories)
+	}
 }

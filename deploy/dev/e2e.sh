@@ -399,6 +399,15 @@ else
     sleep 3
   done
   if [ "$i" -lt 10 ]; then ok "categories: blocks recorded (rule cat:gambling)"; else ko "categories: no cat:gambling flow record"; fi
+  # Discovery (issue #27): records are tagged with their category by the Control Plane.
+  # Edges upload in batches, so poll: the block above may have matched an older run's record.
+  i=0
+  until ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | jq -e '[.records[] | select(.categories != null and (.categories | index("gambling")))] | length > 0' >/dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -ge 10 ] && break
+    sleep 3
+  done
+  if [ "$i" -lt 10 ]; then ok "categories: flow records tagged with their category (gambling)"; else ko "categories: no flow record tagged gambling"; fi
   # SafeSearch (ADR-0025): Google resolves to its safe hostname, works there, and cannot be
   # reached over another address.
   if cexec dig +time=3 +tries=1 @100.64.0.1 www.google.com A 2>/dev/null | grep -qi 'CNAME.*forcesafesearch.google.com'; then ok "safesearch: www.google.com -> forcesafesearch.google.com"; else ko "safesearch: no CNAME for www.google.com"; fi

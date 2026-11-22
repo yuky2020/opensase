@@ -10,12 +10,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/categories"
+	"github.com/yuky2020/opensase/pkg/policy"
 )
 
 func testCategoryArchive(t *testing.T) []byte {
@@ -122,5 +124,43 @@ func TestCategoriesDownload(t *testing.T) {
 	}
 	if gets != 3 {
 		t.Fatalf("gets %d", gets)
+	}
+}
+
+// TestFlowCategories covers issue #27: flow records are tagged with their web categories by
+// the Control Plane, and categories sent by the reporter are ignored.
+func TestFlowCategories(t *testing.T) {
+	e := newEnv(t)
+	key := e.setupTenant(1)
+	file := filepath.Join(t.TempDir(), "categories.tar.gz")
+	if err := os.WriteFile(file, testCategoryArchive(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.loadCategoryFile(file); err != nil {
+		t.Fatal(err)
+	}
+	_, cert := e.enroll(key)
+	dev := e.client(&cert)
+	now := time.Now()
+	recs := api.FlowBatch{Records: []api.FlowRecord{
+		{Start: now, Flow: policy.Flow{Protocol: "tcp", DstIP: "203.0.113.9", DstPort: 443, Domain: "www.casino.example"}, Categories: []string{"spoofed"}},
+		{Start: now, Flow: policy.Flow{Protocol: "tcp", DstIP: "203.0.113.9", DstPort: 443, Domain: "school.example"}},
+		{Start: now, Flow: policy.Flow{Protocol: "tcp", DstIP: "203.0.113.9", DstPort: 443, Domain: "other.example"}, Categories: []string{"gambling"}},
+	}}
+	if resp, b := e.do(dev, "POST", "/v1/flows", recs, nil); resp.StatusCode != 202 {
+		t.Fatalf("flows %d %s", resp.StatusCode, b)
+	}
+	got := map[string][]string{}
+	for _, r := range e.flows() {
+		got[r.Flow.Domain] = r.Categories
+	}
+	if !slices.Equal(got["www.casino.example"], []string{"gambling"}) {
+		t.Errorf("casino: %v", got["www.casino.example"])
+	}
+	if len(got["school.example"]) != 0 { // allow lists are not categories of a visit
+		t.Errorf("school: %v", got["school.example"])
+	}
+	if len(got["other.example"]) != 0 {
+		t.Errorf("spoofed categories kept: %v", got["other.example"])
 	}
 }

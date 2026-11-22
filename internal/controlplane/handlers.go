@@ -312,6 +312,7 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 	if p.id.Kind == pki.PeerDevice {
 		for _, rec := range b.Records {
 			rec = sanitizeFlow(rec, now)
+			s.tagCategories(&rec)
 			rec.DeviceID, rec.Where = p.device.ID, "device"
 			byTenant[p.device.TenantID] = append(byTenant[p.device.TenantID], rec)
 		}
@@ -337,6 +338,7 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			rec = sanitizeFlow(rec, now)
+			s.tagCategories(&rec)
 			rec.Where = "edge"
 			byTenant[t] = append(byTenant[t], rec)
 			byDevice[rec.DeviceID]++

@@ -107,6 +107,13 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
     final scheme = Theme.of(context).colorScheme;
     final cat = widget.catalog;
     final num = NumberFormat.decimalPattern();
+    // Discovery (issue #27): how many recent flows went to each category.
+    final seen = <String, int>{};
+    for (final r in ref.watch(flowsProvider(widget.tenant)).value ?? const <FlowRecord>[]) {
+      for (final c in r.categories) {
+        seen[c] = (seen[c] ?? 0) + 1;
+      }
+    }
     final shown = [
       for (final c in cat.categories)
         if (c.type != 'white' &&
@@ -182,6 +189,24 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
                 ],
               ),
             ),
+          if (seen.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(l.saasDiscovered, style: Theme.of(context).textTheme.titleSmall),
+                  for (final e in (seen.entries.toList()..sort((a, b) => b.value.compareTo(a.value))))
+                    ActionChip(
+                      key: Key('cat_seen_${e.key}'),
+                      label: Text('${e.key} · ${e.value}'),
+                      onPressed: () => setState(() => _filter = e.key),
+                    ),
+                ],
+              ),
+            ),
           TextField(
             key: const Key('cat_filter'),
             decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.categoriesFilter),
@@ -198,6 +223,7 @@ class _CategoriesEditorState extends ConsumerState<_CategoriesEditor> {
                     subtitle: Text(
                       [
                         if (c.description.isNotEmpty) c.description,
+                        if (seen[c.name] != null) l.saasSeen(seen[c.name]!),
                         l.categoriesDomains(num.format(c.domains)),
                         if (c.urls > 0) l.categoriesUrls(num.format(c.urls)),
                       ].join(' — '),

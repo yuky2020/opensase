@@ -182,6 +182,9 @@ type FlowRecord struct {
 	// SaaSApp is the catalog app (pkg/saas) that Flow.Domain belongs to. The Control Plane sets
 	// it when it stores the record; values sent by devices and Edges are ignored (ADR-0017).
 	SaaSApp string `json:"saasApp,omitempty"`
+	// Categories are the web categories (ADR-0022) of Flow.Domain, set by the Control Plane
+	// like SaaSApp (issue #27).
+	Categories []string `json:"categories,omitempty"`
 }
 
 // FlowBatch is the body of POST /v1/flows and the reply to the admin flows query.

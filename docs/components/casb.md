@@ -10,8 +10,9 @@ decryption.
 - **Catalog:** `pkg/saas` lists well-known SaaS apps with their domains and categories.
 - **Policy:** `TenantPolicy.saas` blocks apps or whole categories, with exemptions. It is
   enforced on DNS by devices and Edges, and on the TLS SNI or HTTP Host of every Edge flow.
-- **Discovery:** the Control Plane tags each flow record with its SaaS app. The portal's "SaaS
-  apps" page shows the apps seen and has the block switches.
+- **Discovery:** the Control Plane tags each flow record with its SaaS app, and with its web
+  categories (ADR-0022). The portal's "SaaS apps" and "Web categories" pages show what was seen
+  and have the block switches.
 
 With TLS inspection (ADR-0018) a tenant can also:
 - restrict SaaS logins to its own account, with request headers the Edge sets on every request

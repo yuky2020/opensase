@@ -137,21 +137,23 @@ type Edge struct {
 	wgPub [32]byte
 	ipv6  bool
 
-	reg      *registry
-	trust    atomic.Pointer[trust]
-	ct       *conntrack
-	dec      *decider
-	snoop    *snoop
-	flows    *flowLog
-	guard    *guard
-	synth    *synthMap              // synthetic PrivateApp addresses (ADR-0013)
-	hub      *connectorHub          // live Connector broker connections
-	insp     *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
-	av       scanner                // malware scanner (ADR-0020)
-	cats     atomic.Pointer[catSet] // web categories (ADR-0022)
-	safe     *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
-	redir    *inspectRedirect       // per-device inspection redirect (issue #22); nil without inspection
-	datasets *datasetCache          // DLP datasets (ADR-0029)
+	reg           *registry
+	trust         atomic.Pointer[trust]
+	ct            *conntrack
+	dec           *decider
+	snoop         *snoop
+	flows         *flowLog
+	guard         *guard
+	synth         *synthMap              // synthetic PrivateApp addresses (ADR-0013)
+	hub           *connectorHub          // live Connector broker connections
+	insp          *inspector             // TLS inspection (ADR-0018); nil when InspectListen is off
+	av            scanner                // malware scanner (ADR-0020)
+	cats          atomic.Pointer[catSet] // web categories (ADR-0022)
+	safe          *safeIPs               // addresses of the SafeSearch hostnames (ADR-0025)
+	redir         *inspectRedirect       // per-device inspection redirect (issue #22); nil without inspection
+	datasets      *datasetCache          // DLP datasets (ADR-0029)
+	kroutes       *kernelRoutes          // kernel routes for routed workload subnets
+	routesChanged bool                   // routes updated in the last peer sync (guarded by syncMu)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
 
@@ -190,6 +192,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		synth:    newSynthMap(SyntheticPrefix, maxSynthEnts, synthIdle),
 		hub:      newConnectorHub(cfg.Logger),
 		origDst:  originalDst,
+		kroutes:  newKernelRoutes("", cfg.Logger),
 	}
 	if cfg.InspectListen != listenOff {
 		e.insp = newInspector(cp, cfg.InspectRoots)
@@ -389,7 +392,14 @@ func (e *Edge) configureInterface(ctx context.Context, name string) error {
 	if err := e.redirectZTNA(ctx, name); err != nil {
 		return err
 	}
-	return e.redirectInspect(ctx, name)
+	if err := e.redirectInspect(ctx, name); err != nil {
+		return err
+	}
+	if e.kroutes != nil {
+		e.kroutes.tunName = name
+		e.syncKernelRoutes(ctx)
+	}
+	return nil
 }
 
 // redirectZTNA installs the REDIRECT of tunnel TCP to SyntheticPrefix to the broker
@@ -519,6 +529,10 @@ func (e *Edge) syncPeers(ctx context.Context) error {
 		e.log.Warn("state cache not written", "err", err)
 	}
 	e.reconcileInspect(ctx)
+	if e.routesChanged {
+		e.syncKernelRoutes(ctx)
+		e.routesChanged = false
+	}
 	return nil
 }
 
@@ -537,12 +551,48 @@ func (e *Edge) applyState(b api.PKIBundle, peers api.EdgePeers) error {
 			e.removePeer(d)
 		}
 	}
+	for _, d := range res.routesUpdated {
+		if d.hasPeer && e.wg != nil {
+			var buf bytes.Buffer
+			writePeerAllowedIPs(&buf, d.wgPub, d)
+			if err := e.wg.IpcSetOperation(bytes.NewReader(buf.Bytes())); err != nil {
+				e.log.Error("update wireguard allowed ips", "device", d.id, "err", err)
+			}
+		}
+	}
 	e.expireSupersededLocked(time.Now())
 	e.reg.mu.Unlock()
-	if res.updated > 0 || len(res.removed) > 0 || res.invalid > 0 {
-		e.log.Info("peers synced", "devices", len(peers.Devices), "updated", res.updated, "removed", len(res.removed), "invalid", res.invalid)
+	routesChanged := len(res.routesUpdated) > 0
+	for _, d := range res.removed {
+		if len(d.routes) > 0 {
+			routesChanged = true
+			break
+		}
+	}
+	e.routesChanged = routesChanged
+	if res.updated > 0 || len(res.removed) > 0 || res.invalid > 0 || len(res.routesUpdated) > 0 {
+		e.log.Info("peers synced", "devices", len(peers.Devices), "updated", res.updated, "removed", len(res.removed), "invalid", res.invalid, "routesUpdated", len(res.routesUpdated))
 	}
 	return nil
+}
+
+// allDeviceRoutes returns the routes of every enrolled device.
+func (e *Edge) allDeviceRoutes() []netip.Prefix {
+	e.reg.mu.Lock()
+	defer e.reg.mu.Unlock()
+	var routes []netip.Prefix
+	for _, d := range e.reg.devices {
+		routes = append(routes, d.routes...)
+	}
+	return routes
+}
+
+// syncKernelRoutes reconciles kernel routes on the TUN interface.
+func (e *Edge) syncKernelRoutes(ctx context.Context) {
+	if e.kroutes == nil || e.kroutes.tunName == "" || e.cfg.TUNName == "" {
+		return
+	}
+	e.kroutes.sync(ctx, e.allDeviceRoutes())
 }
 
 func (e *Edge) peerLoop(ctx context.Context) {

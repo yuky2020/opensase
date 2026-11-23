@@ -48,6 +48,8 @@
 //	GET  /v1/admin/tenants/{t}/policy  -> TenantPolicy
 //	GET  /v1/admin/tenants/{t}/devices -> []AdminDevice (internal/controlplane)
 //	POST /v1/admin/tenants/{t}/devices/{d}/revoke -> 204
+//	GET  /v1/admin/tenants/{t}/devices/{d}/routes -> DeviceRoutes (tenant role admin only)
+//	PUT  /v1/admin/tenants/{t}/devices/{d}/routes DeviceRoutes -> DeviceRoutes (tenant role admin only)
 //	POST /v1/admin/edges                AdminEdge -> 201 | 409 | 404 (unknown tenant); TenantID set = Private Edge (ADR-0014)
 //	GET  /v1/admin/edges                -> []AdminEdge
 //	POST /v1/admin/edges/{e}/revoke     -> 204 | 404
@@ -244,7 +246,13 @@ type EdgeDevice struct {
 	Snapshot policy.Envelope `json:"snapshot"`
 	// CertSerial is the device's current certificate serial (decimal). Edges set up sessions
 	// only with that certificate, so a superseded or never-delivered one is refused (ST-01).
-	CertSerial string `json:"certSerial"`
+	CertSerial string   `json:"certSerial"`
+	Routes     []string `json:"routes,omitempty"`
+}
+
+// DeviceRoutes is the body of GET/PUT /v1/admin/tenants/{tenant}/devices/{device}/routes (issue #21, slice B).
+type DeviceRoutes struct {
+	CIDRs []string `json:"cidrs"`
 }
 
 // AdminTenant is a tenant in the admin API.

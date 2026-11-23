@@ -41,6 +41,8 @@ type device struct {
 	ip4    netip.Addr
 	ip6    netip.Addr
 
+	routes []netip.Prefix
+
 	wgPub     [32]byte
 	hasPeer   bool
 	sessionID string
@@ -55,14 +57,33 @@ type device struct {
 	staleSince    time.Time
 }
 
+// ownsAddress reports whether ip is the device's tunnel address or falls within one of its routes.
+func (d *device) ownsAddress(ip netip.Addr) bool {
+	if (d.ip4.IsValid() && ip == d.ip4) || (d.ip6.IsValid() && ip == d.ip6) {
+		return true
+	}
+	for _, r := range d.routes {
+		if r.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+type routeEntry struct {
+	prefix netip.Prefix
+	device *device
+}
+
 // registry holds devices known from the Control Plane peer feed and their tunnel state.
-// Lookups by tunnel IP on the packet path are lock-free (copy-on-write index).
+// Lookups by tunnel IP or routed prefix on the packet path are lock-free (copy-on-write index).
 type registry struct {
 	mu      sync.Mutex
 	devices map[string]*device
 	used    map[uint32]bool
 	next    uint32
 	byIP    atomic.Pointer[map[netip.Addr]*device]
+	routes  atomic.Pointer[[]routeEntry]
 	serials atomic.Pointer[map[string]string] // device ID -> current cert serial (ST-01)
 }
 
@@ -70,14 +91,27 @@ func newRegistry() *registry {
 	r := &registry{devices: map[string]*device{}, used: map[uint32]bool{}, next: 2}
 	empty := map[netip.Addr]*device{}
 	r.byIP.Store(&empty)
+	emptyRoutes := []routeEntry{}
+	r.routes.Store(&emptyRoutes)
 	noSerials := map[string]string{}
 	r.serials.Store(&noSerials)
 	return r
 }
 
-// byTunnelIP returns the device owning a tunnel address, or nil.
+// byTunnelIP returns the device owning a tunnel address or routed subnet, or nil.
 func (r *registry) byTunnelIP(ip netip.Addr) *device {
-	return (*r.byIP.Load())[ip.Unmap()]
+	u := ip.Unmap()
+	if d := (*r.byIP.Load())[u]; d != nil {
+		return d
+	}
+	if reList := r.routes.Load(); reList != nil {
+		for _, re := range *reList {
+			if re.prefix.Contains(u) {
+				return re.device
+			}
+		}
+	}
+	return nil
 }
 
 // serial returns the current certificate serial of a device from the last feed ("" if none).
@@ -90,15 +124,20 @@ func (r *registry) get(id string) *device {
 	return r.devices[id]
 }
 
-// reindexLocked rebuilds the IP index. Caller holds mu.
+// reindexLocked rebuilds the IP index and route table. Caller holds mu.
 func (r *registry) reindexLocked() {
 	m := make(map[netip.Addr]*device, 2*len(r.devices))
+	var routes []routeEntry
 	for _, d := range r.devices {
 		if d.offset != 0 {
 			m[d.ip4], m[d.ip6] = d, d
 		}
+		for _, rt := range d.routes {
+			routes = append(routes, routeEntry{prefix: rt, device: d})
+		}
 	}
 	r.byIP.Store(&m)
+	r.routes.Store(&routes)
 }
 
 // allocateLocked assigns a tunnel address to d if it has none. Caller holds mu.
@@ -140,9 +179,10 @@ func addrAt(off uint32) (netip.Addr, netip.Addr) {
 
 // syncResult describes what changed in a peer feed sync.
 type syncResult struct {
-	removed []*device // devices gone from the feed (revoked or deleted); their state is reset
-	updated int
-	invalid int
+	removed       []*device // devices gone from the feed (revoked or deleted); their state is reset
+	updated       int
+	invalid       int
+	routesUpdated []*device // devices whose routes changed
 }
 
 // sync applies the Control Plane peer feed: verifies and compiles new snapshots, adds new
@@ -187,6 +227,7 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	routesChanged := false
 	for id, fc := range fresh {
 		d, ok := r.devices[id]
 		if !ok {
@@ -205,6 +246,19 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		d.compiled.Store(fc.c)
 		res.updated++
 	}
+	for i := range peers.Devices {
+		p := &peers.Devices[i]
+		d := r.devices[p.DeviceID]
+		if d == nil {
+			continue
+		}
+		newRoutes := parseRoutes(p.Routes)
+		if !routesEqual(d.routes, newRoutes) {
+			d.routes = newRoutes
+			res.routesUpdated = append(res.routesUpdated, d)
+			routesChanged = true
+		}
+	}
 	for id, d := range r.devices {
 		if _, ok := fresh[id]; ok {
 			continue
@@ -220,10 +274,32 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		res.removed = append(res.removed, cloneDevice(d))
 		d.offset, d.hasPeer = 0, false
 	}
-	if len(res.removed) > 0 {
+	if len(res.removed) > 0 || routesChanged {
 		r.reindexLocked()
 	}
 	return res
+}
+
+func parseRoutes(ss []string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range ss {
+		if p, err := netip.ParsePrefix(s); err == nil && p.IsValid() {
+			out = append(out, p.Masked())
+		}
+	}
+	return out
+}
+
+func routesEqual(a, b []netip.Prefix) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *registry) inFeed(peers api.EdgePeers, id string) bool {
@@ -237,7 +313,16 @@ func (r *registry) inFeed(peers api.EdgePeers, id string) bool {
 
 // cloneDevice copies the fields needed to tear down a removed device.
 func cloneDevice(d *device) *device {
-	c := &device{id: d.id, tenantID: d.tenantID, offset: d.offset, ip4: d.ip4, ip6: d.ip6, wgPub: d.wgPub, hasPeer: d.hasPeer}
+	c := &device{
+		id:       d.id,
+		tenantID: d.tenantID,
+		offset:   d.offset,
+		ip4:      d.ip4,
+		ip6:      d.ip6,
+		wgPub:    d.wgPub,
+		hasPeer:  d.hasPeer,
+		routes:   append([]netip.Prefix(nil), d.routes...),
+	}
 	return c
 }
 

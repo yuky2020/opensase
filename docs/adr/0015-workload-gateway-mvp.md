@@ -91,3 +91,42 @@ To support placement behind a cloud gateway load balancer that delivers workload
   - IPv4 only: IPv6 forwarding remains disabled.
   - NAT still applies on the tunnel interface: the Edge sees the gateway device's tunnel address.
   - Per-workload identity is deferred to slice B.
+
+## Addendum: Routed mode (issue #21, slice B)
+
+In standard gateway mode, the gateway MASQUERADEs workload subnets to its own tunnel address, obscuring individual workload source addresses in Edge firewall decisions and flow records.
+
+Routed mode enables per-workload identity: workloads retain their real source addresses through the WireGuard tunnel and Edge processing.
+
+### Control Plane Authorization
+
+- **Authorized CIDRs:** Administrators authorize CIDR ranges per gateway device via the Control Plane Admin API:
+  - `GET /v1/admin/tenants/{tenant}/devices/{device}/routes`
+  - `PUT /v1/admin/tenants/{tenant}/devices/{device}/routes` with body `{"cidrs": ["10.30.0.0/24"]}`
+  - Managed via CLI: `opensasectl device-routes get -tenant T -device D` and `opensasectl device-routes set -tenant T -device D -cidr C [-cidr ...]` (an empty set clears).
+- **Validation:** Only IPv4 RFC 1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) with prefix lengths 16 to 32 are allowed. The CGNAT carrier range `100.64.0.0/10` (used for Edge tunnel addressing) is rejected.
+- **Global No-Overlap Rule:** Across all tenants and devices, no two devices may have overlapping CIDR ranges. All Edges share a single address space for return routing. Conflicting allocations return HTTP 409 Conflict.
+- **Auditing and Roles:** Only tenant administrators (`admin` role) can update device routes. All changes are recorded in the audit log.
+
+### Edge Enforcement and Flow Records
+
+- **Peer Feed:** The Control Plane distributes authorized routes to Edges in the peer feed (`Routes []string`).
+- **WireGuard AllowedIPs:** The Edge appends the peer's authorized CIDRs to its WireGuard allowed IPs alongside its tunnel IP (`100.64.0.x/32`, `fd7a:5a5e::x/128`). Cryptokey routing guarantees that traffic for authorized subnets is routed to and from the assigned gateway device only. Routes removed from the peer feed are removed from WireGuard allowed IPs at the next peer sync.
+- **Anti-Spoofing:** The Edge accepts packets from a peer only if the source IP matches the peer's tunnel address or falls within one of its authorized routes. Any other source address is dropped.
+- **Return Routing & Outbound NAT:** Inbound replies destined for workload addresses within an authorized route are forwarded through the tunnel to the owning gateway peer. When outbound traffic leaves the Edge toward the internet via the WAN interface, workload addresses are masqueraded identically to tunnel addresses.
+- **Workload Flow Identity:** Packet sources retain real workload IP addresses in connection tracking and flow logs. Flow records reflect individual workload addresses instead of the gateway tunnel IP.
+
+### Client Gateway Configuration
+
+- **Flag `-gateway-routed`:** Used in conjunction with `-gateway`:
+  ```
+  opensase-client -gateway 10.30.0.0/24 -gateway-routed ...
+  ```
+- **Masquerade Omission:** In routed mode, `cmd/opensase-client` omits the `MASQUERADE` iptables rule in its gateway chain, forwarding packets with their original workload source IP intact. Forwarding and kill-switch filter rules remain enforced.
+- **Startup Warning:** If `-gateway-routed` is enabled, the client logs a warning reminding administrators that the subnets must be authorized on the Control Plane (`opensasectl device-routes`), otherwise the Edge will drop the traffic.
+
+### Limits
+
+- **IPv4 only:** Workload routing supports IPv4 subnets only; IPv6 forwarding remains disabled.
+- **Single gateway per CIDR:** Each CIDR may be assigned to exactly one gateway device at a time.
+- **No high availability pair:** Redundant gateway active/passive pairs are not yet supported for the same CIDR.

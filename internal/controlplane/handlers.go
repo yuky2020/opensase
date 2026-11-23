@@ -391,6 +391,11 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "list connectors", err)
 		return
 	}
+	routes, err := s.cfg.Store.AllDeviceRoutes(r.Context())
+	if err != nil {
+		s.internalErr(w, r, "all device routes", err)
+		return
+	}
 	out := api.EdgePeers{Devices: make([]api.EdgeDevice, 0, len(act)), Connectors: make([]api.EdgeConnector, 0, len(cs))}
 	for _, c := range cs {
 		if !scoped(c.TenantID) {
@@ -407,7 +412,20 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 			s.internalErr(w, r, "decode envelope", err)
 			return
 		}
-		out.Devices = append(out.Devices, api.EdgeDevice{DeviceID: a.Device.ID, TenantID: a.Device.TenantID, Snapshot: env, CertSerial: a.Device.CertSerial})
+		var routeStrs []string
+		if prs := routes[a.Device.ID]; len(prs) > 0 {
+			routeStrs = make([]string, 0, len(prs))
+			for _, p := range prs {
+				routeStrs = append(routeStrs, p.String())
+			}
+		}
+		out.Devices = append(out.Devices, api.EdgeDevice{
+			DeviceID:   a.Device.ID,
+			TenantID:   a.Device.TenantID,
+			Snapshot:   env,
+			CertSerial: a.Device.CertSerial,
+			Routes:     routeStrs,
+		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -12,6 +12,8 @@
 //	flows            list recent flow records of a tenant
 //	devices          list devices of a tenant
 //	revoke           revoke a device
+//	device-routes get print authorized CIDRs for a device
+//	device-routes set authorize CIDRs for a device (empty set clears)
 //	edge add         register a Edge ID (its certificate is refused until then)
 //	edge list        list registered edges
 //	edge revoke      revoke an edge (permanent)
@@ -125,6 +127,8 @@ commands:
   flows -tenant ID [-limit N] [-json]
   devices -tenant ID
   revoke -tenant ID -device ID
+  device-routes get -tenant ID -device ID
+  device-routes set -tenant ID -device ID [-cidr C ...]   (empty set clears)
   edge add -id ID [-tenant T] | edge list | edge revoke -id ID
   connector add -tenant ID -name N [-group G] [-key-out FILE]
   connector list -tenant ID
@@ -155,7 +159,7 @@ global flags:
 
 func dispatch(ctx context.Context, g *globals, args []string) error {
 	cmd, rest := args[0], args[1:]
-	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app" || cmd == "admin-token") && len(rest) > 0 {
+	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app" || cmd == "admin-token" || cmd == "device-routes") && len(rest) > 0 {
 		cmd, rest = cmd+" "+rest[0], rest[1:]
 	}
 	switch cmd {
@@ -175,6 +179,10 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return devices(ctx, g, rest)
 	case "revoke":
 		return revoke(ctx, g, rest)
+	case "device-routes get":
+		return deviceRoutesGet(ctx, g, rest)
+	case "device-routes set":
+		return deviceRoutesSet(ctx, g, rest)
 	case "edge add":
 		return edgeAdd(ctx, g, rest)
 	case "edge list":
@@ -561,6 +569,56 @@ func revoke(ctx context.Context, g *globals, args []string) error {
 		return errors.New("-device is required")
 	}
 	return g.do(ctx, http.MethodPost, "/v1/admin/tenants/"+url.PathEscape(*tenant)+"/devices/"+url.PathEscape(*dev)+"/revoke", nil, nil)
+}
+
+type cidrList []string
+
+func (c *cidrList) String() string     { return strings.Join(*c, ",") }
+func (c *cidrList) Set(v string) error { *c = append(*c, v); return nil }
+
+func deviceRoutesGet(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("device-routes get", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	dev := fs.String("device", "", "device ID")
+	asJSON := fs.Bool("json", false, "print JSON")
+	_ = fs.Parse(args)
+	if *dev == "" {
+		return errors.New("-device is required")
+	}
+	var dr api.DeviceRoutes
+	if err := g.do(ctx, http.MethodGet, "/v1/admin/tenants/"+url.PathEscape(*tenant)+"/devices/"+url.PathEscape(*dev)+"/routes", nil, &dr); err != nil {
+		return err
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(dr)
+	}
+	for _, c := range dr.CIDRs {
+		fmt.Println(c)
+	}
+	return nil
+}
+
+func deviceRoutesSet(ctx context.Context, g *globals, args []string) error {
+	fs := flag.NewFlagSet("device-routes set", flag.ExitOnError)
+	tenant := tenantFlag(fs)
+	dev := fs.String("device", "", "device ID")
+	var cidrs cidrList
+	fs.Var(&cidrs, "cidr", "authorized CIDR prefix (repeatable; empty set clears)")
+	_ = fs.Parse(args)
+	if *dev == "" {
+		return errors.New("-device is required")
+	}
+	payload := api.DeviceRoutes{CIDRs: []string(cidrs)}
+	if payload.CIDRs == nil {
+		payload.CIDRs = []string{}
+	}
+	if err := g.do(ctx, http.MethodPut, "/v1/admin/tenants/"+url.PathEscape(*tenant)+"/devices/"+url.PathEscape(*dev)+"/routes", payload, nil); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "updated routes for device %s (%d CIDRs)\n", *dev, len(payload.CIDRs))
+	return nil
 }
 
 // pqCheck performs a handshake with the hardened config and reports the key exchange.

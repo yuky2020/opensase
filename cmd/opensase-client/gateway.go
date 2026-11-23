@@ -51,7 +51,9 @@ func parseGatewayCIDRs(s string) ([]netip.Prefix, error) {
 
 // gatewayRules returns the iptables rules (table, chain, rule args) for the gateway CIDRs.
 // dns is the Edge resolver the workloads' port-53 traffic is sent to.
-func gatewayRules(tun string, cidrs []netip.Prefix, dns netip.Addr) [][]string {
+// If routed is true, MASQUERADE is omitted so packets retain workload source addresses.
+func gatewayRules(tun string, cidrs []netip.Prefix, dns netip.Addr, routed ...bool) [][]string {
+	isRouted := len(routed) > 0 && routed[0]
 	r := [][]string{
 		// Return traffic of forwarded connections.
 		{"filter", "OSASE_GW_FWD", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
@@ -64,7 +66,13 @@ func gatewayRules(tun string, cidrs []netip.Prefix, dns netip.Addr) [][]string {
 			[]string{"filter", "OSASE_GW_FWD", "-s", s, "-o", tun, "-j", "ACCEPT"},
 			// Fail closed: workload traffic never leaves another way.
 			[]string{"filter", "OSASE_GW_FWD", "-s", s, "-j", "DROP"},
-			[]string{"nat", "OSASE_GW_NAT", "-s", s, "-o", tun, "-j", "MASQUERADE"},
+		)
+		if !isRouted {
+			r = append(r,
+				[]string{"nat", "OSASE_GW_NAT", "-s", s, "-o", tun, "-j", "MASQUERADE"},
+			)
+		}
+		r = append(r,
 			[]string{"nat", "OSASE_GW_DNS", "-s", s, "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", dns.String() + ":53"},
 			[]string{"nat", "OSASE_GW_DNS", "-s", s, "-p", "tcp", "--dport", "53", "-j", "DNAT", "--to-destination", dns.String() + ":53"},
 		)
@@ -101,7 +109,7 @@ func runRoute(ctx context.Context, args ...string) error {
 // setupGateway enables IPv4 forwarding and installs the gateway rules. It returns a cleanup
 // function that removes them. If geneveDev is supplied and non-empty, routes for the gateway
 // CIDRs are installed via that device so return traffic reaches the GENEVE ingress.
-func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns netip.Addr, log *slog.Logger, geneveDev ...string) (func(), error) {
+func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns netip.Addr, log *slog.Logger, routed bool, geneveDev ...string) (func(), error) {
 	var gnv string
 	if len(geneveDev) > 0 {
 		gnv = geneveDev[0]
@@ -120,7 +128,7 @@ func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns net
 			}
 		}
 	}
-	for _, r := range gatewayRules(tun, cidrs, dns) {
+	for _, r := range gatewayRules(tun, cidrs, dns, routed) {
 		if err := iptables(ctx, append([]string{"-t", r[0], "-A", r[1]}, r[2:]...)...); err != nil {
 			cleanup()
 			return nil, err

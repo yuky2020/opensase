@@ -33,6 +33,15 @@ hook() { ipt="$1"; shift; "$ipt" -C "$@" 2>/dev/null || "$ipt" -A "$@"; }
 # --- IPv4 ---
 iptables -t nat -C POSTROUTING -s "$POOL" -o "$WAN" -j MASQUERADE 2>/dev/null ||
   iptables -t nat -A POSTROUTING -s "$POOL" -o "$WAN" -j MASQUERADE
+# Routed Workload Gateway subnets (issue #21, slice B) are private IPv4 ranges only (the
+# Control Plane refuses others); their traffic leaves masqueraded like the tunnel pool.
+# WireGuard accepts from each peer only the sources in its allowed IPs, so a peer cannot use
+# another peer's subnet.
+ROUTED="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+for net in $ROUTED; do
+  iptables -t nat -C POSTROUTING -s "$net" -o "$WAN" -j MASQUERADE 2>/dev/null ||
+    iptables -t nat -A POSTROUTING -s "$net" -o "$WAN" -j MASQUERADE
+done
 iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null ||
   iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
@@ -71,6 +80,9 @@ for p in udp tcp; do
   iptables -A OSASE_FWD -i "$TUN" -p "$p" --dport 853 -j DROP
 done
 iptables -A OSASE_FWD -i "$TUN" -o "$WAN" -s "$POOL" -j ACCEPT
+for net in $ROUTED; do
+  iptables -A OSASE_FWD -i "$TUN" -o "$WAN" -s "$net" -j ACCEPT
+done
 
 # INPUT from the tunnel: only DNS and ping to the Edge tunnel address.
 chain iptables OSASE_IN

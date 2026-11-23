@@ -232,6 +232,26 @@ func writePeerConfig(b *bytes.Buffer, pub [32]byte, psk [32]byte, d *device) {
 	b.WriteString("/32\nallowed_ip=")
 	b.WriteString(d.ip6.String())
 	b.WriteString("/128\n")
+	for _, r := range d.routes {
+		b.WriteString("allowed_ip=")
+		b.WriteString(r.String())
+		b.WriteString("\n")
+	}
+}
+
+func writePeerAllowedIPs(b *bytes.Buffer, pub [32]byte, d *device) {
+	b.WriteString("public_key=")
+	writeHex(b, pub[:])
+	b.WriteString("\nreplace_allowed_ips=true\nallowed_ip=")
+	b.WriteString(d.ip4.String())
+	b.WriteString("/32\nallowed_ip=")
+	b.WriteString(d.ip6.String())
+	b.WriteString("/128\n")
+	for _, r := range d.routes {
+		b.WriteString("allowed_ip=")
+		b.WriteString(r.String())
+		b.WriteString("\n")
+	}
 }
 
 func writeHex(b *bytes.Buffer, p []byte) {

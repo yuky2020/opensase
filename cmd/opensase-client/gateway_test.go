@@ -61,7 +61,7 @@ func TestSetupGatewayRulesAndKillSwitch(t *testing.T) {
 	calls := fakeIPT(t, "")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cidrs := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}
-	cleanup, err := setupGateway(context.Background(), "osase0", cidrs, netip.MustParseAddr("100.64.0.1"), log)
+	cleanup, err := setupGateway(context.Background(), "osase0", cidrs, netip.MustParseAddr("100.64.0.1"), log, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +102,72 @@ func TestSetupGatewayRulesAndKillSwitch(t *testing.T) {
 
 func TestSetupGatewayFailureKeepsForwardingOff(t *testing.T) {
 	calls := fakeIPT(t, "MASQUERADE")
-	_, err := setupGateway(context.Background(), "osase0", []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}, netip.MustParseAddr("100.64.0.1"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	_, err := setupGateway(context.Background(), "osase0", []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}, netip.MustParseAddr("100.64.0.1"), slog.New(slog.NewTextHandler(io.Discard, nil)), false)
 	if err == nil {
 		t.Fatal("want error")
 	}
 	if slices.Contains(*calls, "FORWARDING ON") {
 		t.Fatal("forwarding enabled after a failed setup")
+	}
+}
+
+func TestGatewayRules(t *testing.T) {
+	tun := "osase0"
+	cidrs := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24"), netip.MustParsePrefix("192.168.1.0/24")}
+	dns := netip.MustParseAddr("100.64.0.1")
+
+	tests := []struct {
+		name          string
+		routed        bool
+		wantMasqCount int
+	}{
+		{"standard nat mode has masquerade", false, 2},
+		{"routed mode omits masquerade", true, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := gatewayRules(tun, cidrs, dns, tc.routed)
+			masqCount := 0
+			hasForwardAccept := false
+			hasForwardDrop := false
+			hasDNAT := false
+			hasMSS := false
+
+			for _, r := range rules {
+				line := strings.Join(r, " ")
+				if strings.Contains(line, "MASQUERADE") {
+					masqCount++
+				}
+				if strings.Contains(line, "OSASE_GW_FWD") && strings.Contains(line, "ACCEPT") {
+					hasForwardAccept = true
+				}
+				if strings.Contains(line, "OSASE_GW_FWD") && strings.Contains(line, "DROP") {
+					hasForwardDrop = true
+				}
+				if strings.Contains(line, "OSASE_GW_DNS") && strings.Contains(line, "DNAT") {
+					hasDNAT = true
+				}
+				if strings.Contains(line, "OSASE_GW_MSS") && strings.Contains(line, "TCPMSS") {
+					hasMSS = true
+				}
+			}
+
+			if masqCount != tc.wantMasqCount {
+				t.Errorf("MASQUERADE count = %d, want %d", masqCount, tc.wantMasqCount)
+			}
+			if !hasForwardAccept {
+				t.Error("missing forward accept rules")
+			}
+			if !hasForwardDrop {
+				t.Error("missing forward drop rules")
+			}
+			if !hasDNAT {
+				t.Error("missing dns dnat rules")
+			}
+			if !hasMSS {
+				t.Error("missing mss clamping rules")
+			}
+		})
 	}
 }

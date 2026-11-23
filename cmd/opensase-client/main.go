@@ -42,6 +42,7 @@ type options struct {
 	gateway                                                  string
 	geneveListen, healthListen                               string
 	enroll, routes, verbose, renewNow                        bool
+	gatewayRouted                                            bool
 	statusEvery                                              time.Duration
 }
 
@@ -59,6 +60,7 @@ func main() {
 	flag.StringVar(&o.tunName, "tun", "osase0", "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
 	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
+	flag.BoolVar(&o.gatewayRouted, "gateway-routed", false, "routed mode (per-workload identity): do not masquerade gateway subnets; requires -gateway")
 	flag.StringVar(&o.geneveListen, "geneve-listen", "", "GENEVE ingress listen address, e.g. :6081 (requires -gateway)")
 	flag.StringVar(&o.healthListen, "health-listen", "", "HTTP health check listen address, e.g. :8080 (requires -gateway)")
 	flag.BoolVar(&o.verbose, "v", false, "debug logging")
@@ -115,6 +117,9 @@ func (p stubPlatform) OnEvent(kind, payload string) {
 }
 
 func run(o options, log *slog.Logger) error {
+	if o.gatewayRouted && o.gateway == "" {
+		return errors.New("-gateway-routed requires -gateway")
+	}
 	if o.geneveListen != "" && o.gateway == "" {
 		return errors.New("-geneve-listen requires -gateway")
 	}
@@ -128,6 +133,9 @@ func run(o options, log *slog.Logger) error {
 			return err
 		}
 		o.routes = true
+		if o.gatewayRouted {
+			log.Warn("routed mode active: Control Plane must authorise the CIDRs (opensasectl device-routes) or the Edge drops the traffic")
+		}
 	}
 	if err := os.MkdirAll(o.state, 0o700); err != nil {
 		return err
@@ -242,7 +250,7 @@ func run(o options, log *slog.Logger) error {
 			defer func() { _ = gnvIngress.Close() }()
 			log.Info("geneve ingress active", "listen", o.geneveListen, "tun", geneveTUNName)
 		}
-		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log, gnvDev)
+		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log, o.gatewayRouted, gnvDev)
 		if err != nil {
 			eng.Stop()
 			return fmt.Errorf("workload gateway: %w", err)

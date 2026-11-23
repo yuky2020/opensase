@@ -252,6 +252,8 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/flows", s.handleListFlows)
 			r.Get("/devices", s.handleListDevices)
 			r.Post("/devices/{d}/revoke", s.handleRevokeDevice)
+			r.Get("/devices/{d}/routes", s.handleGetDeviceRoutes)
+			r.Put("/devices/{d}/routes", s.handlePutDeviceRoutes)
 			r.Post("/admin-tokens", s.handleCreateAdminToken)
 			r.Get("/admin-tokens", s.handleListAdminTokens)
 			r.Post("/admin-tokens/{id}/revoke", s.handleRevokeAdminToken)

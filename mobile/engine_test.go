@@ -526,10 +526,7 @@ func TestEnroll(t *testing.T) {
 				t.Fatal("not enrolled")
 			}
 			for _, f := range []string{fileDeviceKey, fileDeviceCert, fileEnrollment} {
-				st, err := os.Stat(e.statePath(f))
-				if err != nil || st.Mode().Perm() != 0o600 {
-					t.Fatalf("%s: %v mode %v", f, err, st.Mode())
-				}
+				assertPrivate(t, e.statePath(f))
 			}
 			// A new Engine on the same dir is enrolled.
 			e2, err := NewEngine(dir, &recPlatform{})

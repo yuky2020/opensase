@@ -60,6 +60,9 @@ func writeFileAtomic(dir, name string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	if err := restrictPath(tmp.Name(), false); err != nil {
+		return err
+	}
 	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }
 

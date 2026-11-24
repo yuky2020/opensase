@@ -109,6 +109,9 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 	if err := os.MkdirAll(stateDir, stateDirMode); err != nil {
 		return nil, err
 	}
+	if err := restrictPath(stateDir, true); err != nil {
+		return nil, err
+	}
 	e := &Engine{
 		stateDir:      stateDir,
 		platform:      platform,

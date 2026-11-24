@@ -225,9 +225,7 @@ func TestCertificateRenewal(t *testing.T) {
 		t.Fatal("Edge session client still uses the old certificate")
 	}
 	// Persisted atomically as one 0600 file; a restart loads the renewed identity.
-	if st, err := os.Stat(e.statePath(fileDeviceBundle)); err != nil || st.Mode().Perm() != 0o600 {
-		t.Fatalf("bundle: %v", err)
-	}
+	assertPrivate(t, e.statePath(fileDeviceBundle))
 	e2, err := NewEngine(e.stateDir, &recPlatform{})
 	if err != nil {
 		t.Fatal(err)

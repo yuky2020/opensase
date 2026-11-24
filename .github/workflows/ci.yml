@@ -26,6 +26,33 @@ jobs:
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
 
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run go vet
+        shell: bash
+        run: go vet ./cmd/opensase-client ./mobile/... ./pkg/...
+
+      - name: Build client
+        shell: bash
+        run: go build ./cmd/opensase-client
+
+      - name: Run tests
+        shell: bash
+        run: go test ./cmd/opensase-client ./pkg/policy/... ./pkg/packet/... ./pkg/pqsession/... ./mobile/...
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

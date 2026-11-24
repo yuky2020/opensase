@@ -17,10 +17,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/netip"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -57,7 +55,7 @@ func main() {
 	flag.StringVar(&o.name, "name", hostname(), "device name sent at enrollment")
 	flag.StringVar(&o.ca, "ca", "", "PEM file trusted for the enrollment request (copied to <state>/bootstrap-ca.pem)")
 	flag.StringVar(&o.network, "network", "ethernet", "network type: wifi, cellular, roaming, ethernet, unknown")
-	flag.StringVar(&o.tunName, "tun", "osase0", "TUN interface name")
+	flag.StringVar(&o.tunName, "tun", defaultTUNName, "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
 	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
 	flag.BoolVar(&o.gatewayRouted, "gateway-routed", false, "routed mode (per-workload identity): do not masquerade gateway subnets; requires -gateway")
@@ -73,6 +71,7 @@ func main() {
 		level = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	slog.SetDefault(log)
 	if err := run(o, log); err != nil {
 		log.Error("opensase-client failed", "err", err)
 		os.Exit(1)
@@ -82,7 +81,7 @@ func main() {
 func hostname() string {
 	h, err := os.Hostname()
 	if err != nil {
-		return "linux-client"
+		return defaultHostname
 	}
 	return h
 }
@@ -118,6 +117,9 @@ func (p stubPlatform) OnEvent(kind, payload string) {
 }
 
 func parseGatewayFlags(o options) (gwCIDRs []netip.Prefix, gnvCIDRs []netip.Prefix, err error) {
+	if !gatewaySupported() && (o.gateway != "" || o.geneveListen != "" || o.gatewayRouted || o.geneveCIDRs != "" || o.healthListen != "") {
+		return nil, nil, errors.New("gateway mode (-gateway, -geneve-listen, -gateway-routed) is only supported on Linux")
+	}
 	if o.gatewayRouted && o.gateway == "" {
 		return nil, nil, errors.New("-gateway-routed requires -gateway")
 	}
@@ -216,9 +218,12 @@ func run(o options, log *slog.Logger) error {
 	if err := json.Unmarshal([]byte(cfgJSON), &tc); err != nil {
 		return err
 	}
+	if err := checkTUNPrerequisites(); err != nil {
+		return err
+	}
 	dev, err := tun.CreateTUN(o.tunName, tc.MTU)
 	if err != nil {
-		return fmt.Errorf("create TUN %s (needs NET_ADMIN and /dev/net/tun): %w", o.tunName, err)
+		return fmt.Errorf("create TUN %s: %w", o.tunName, err)
 	}
 	name, err := dev.Name()
 	if err != nil {
@@ -226,26 +231,26 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 
-	cmds, err := routeCommands(context.Background(), name, tc.IPv4, tc.IPv6, tc.MTU, eng.BypassHosts())
-	if err != nil {
-		dev.Close()
-		return err
+	netCfg := netConfig{
+		Dev:    name,
+		IPv4:   tc.IPv4,
+		IPv6:   tc.IPv6,
+		MTU:    tc.MTU,
+		Bypass: eng.BypassHosts(),
+		DNS:    tc.DNS,
 	}
+
 	if o.routes {
-		for _, c := range cmds {
-			if err := runIP(context.Background(), c, log); err != nil && !c.optional {
-				dev.Close()
-				return err
-			}
+		undo, err := configureNetwork(context.Background(), dev, netCfg)
+		if err != nil {
+			dev.Close()
+			return err
+		}
+		if undo != nil {
+			defer undo()
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "# Routes are not configured (no -routes). Run:")
-		for _, c := range cmds {
-			fmt.Fprintln(os.Stderr, "ip "+strings.Join(c.args, " "))
-		}
-	}
-	if len(tc.DNS) > 0 {
-		fmt.Fprintf(os.Stderr, "# DNS: point /etc/resolv.conf at %s to use the tunnel resolver (DNS policy applies to all UDP/53 anyway)\n", strings.Join(tc.DNS, ", "))
+		printRouteInstructions(netCfg)
 	}
 
 	if err := eng.StartDevice(dev, o.network); err != nil {
@@ -255,25 +260,14 @@ func run(o options, log *slog.Logger) error {
 	defer stop()
 
 	if gwCIDRs != nil {
-		dns := netip.MustParseAddr("100.64.0.1")
-		for _, d := range tc.DNS {
-			if a, err := netip.ParseAddr(d); err == nil && a.Is4() {
-				dns = a
-				break
-			}
-		}
-		gnvDev := ""
-		if o.geneveListen != "" {
-			gnvDev = geneveTUNName
-			gnvIngress, err := startGeneveIngress(ctx, o.geneveListen, gnvCIDRs, log)
-			if err != nil {
-				eng.Stop()
-				return fmt.Errorf("geneve ingress: %w", err)
-			}
-			defer func() { _ = gnvIngress.Close() }()
-			log.Info("geneve ingress active", "listen", o.geneveListen, "tun", geneveTUNName)
-		}
-		cleanup, err := setupGateway(context.Background(), name, gwCIDRs, dns, log, o.gatewayRouted, gnvDev, gnvCIDRs)
+		cleanup, err := setupGatewayPlatform(ctx, gatewayConfig{
+			name:          name,
+			gwCIDRs:       gwCIDRs,
+			gnvCIDRs:      gnvCIDRs,
+			dns:           tc.DNS,
+			geneveListen:  o.geneveListen,
+			gatewayRouted: o.gatewayRouted,
+		}, log)
 		if err != nil {
 			eng.Stop()
 			return fmt.Errorf("workload gateway: %w", err)
@@ -353,93 +347,4 @@ func provisioningKey(o options, getenv func(string) string, readFile func(string
 		return o.key, "-key", nil
 	}
 	return "", "", nil
-}
-
-type ipCmd struct {
-	args     []string
-	optional bool // IPv6 steps: tolerated when IPv6 is disabled in the container
-}
-
-// routeCommands builds the ip(8) commands: interface address, host routes for the bypass
-// hosts via the current IPv4 default gateway, then 0.0.0.0/1 + 128.0.0.0/1 (and ::/1 +
-// 8000::/1) into the TUN, which override the default route without deleting it.
-func routeCommands(ctx context.Context, dev, ipv4, ipv6 string, mtu int, bypass []string) ([]ipCmd, error) {
-	var cmds []ipCmd
-	add := func(optional bool, args ...string) { cmds = append(cmds, ipCmd{args: args, optional: optional}) }
-	if ipv4 == "" {
-		return nil, errors.New("session returned no tunnel IPv4 address")
-	}
-	add(false, "address", "replace", ipv4, "dev", dev)
-	if ipv6 != "" {
-		add(true, "-6", "address", "replace", ipv6, "dev", dev)
-	}
-	add(false, "link", "set", "dev", dev, "mtu", fmt.Sprint(mtu), "up")
-
-	gw, gwDev, err := defaultGateway(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, h := range bypass {
-		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", h)
-		if err != nil {
-			// Not fatal: the Edge must work while the Control Plane is unreachable (ADR-0014).
-			// The session is already up, so the Edge host resolved; an unresolvable Control
-			// Plane host just gets no bypass route, and reaches it through the tunnel later.
-			slog.WarnContext(ctx, "bypass host does not resolve; no bypass route", "host", h, "err", err)
-			continue
-		}
-		for _, ip := range ips {
-			if ip4 := ip.To4(); ip4 != nil {
-				if gw != "" {
-					add(false, "route", "replace", ip4.String()+"/32", "via", gw, "dev", gwDev)
-				} else {
-					add(false, "route", "replace", ip4.String()+"/32", "dev", gwDev)
-				}
-			}
-		}
-	}
-	add(false, "route", "replace", "0.0.0.0/1", "dev", dev)
-	add(false, "route", "replace", "128.0.0.0/1", "dev", dev)
-	if ipv6 != "" {
-		add(true, "-6", "route", "replace", "::/1", "dev", dev)
-		add(true, "-6", "route", "replace", "8000::/1", "dev", dev)
-	}
-	return cmds, nil
-}
-
-// defaultGateway parses `ip -4 route show default`.
-func defaultGateway(ctx context.Context) (gw, dev string, err error) {
-	out, err := exec.CommandContext(ctx, "ip", "-4", "route", "show", "default").Output()
-	if err != nil {
-		return "", "", fmt.Errorf("ip route show default: %w", err)
-	}
-	f := strings.Fields(string(out))
-	for i := 0; i+1 < len(f); i++ {
-		switch f[i] {
-		case "via":
-			gw = f[i+1]
-		case "dev":
-			if dev == "" {
-				dev = f[i+1]
-			}
-		}
-	}
-	if dev == "" {
-		return "", "", errors.New("no IPv4 default route to reach the Control Plane and Edge")
-	}
-	return gw, dev, nil
-}
-
-func runIP(ctx context.Context, c ipCmd, log *slog.Logger) error {
-	out, err := exec.CommandContext(ctx, "ip", c.args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args built by routeCommands from the session config
-	if err != nil {
-		lvl := slog.LevelError
-		if c.optional {
-			lvl = slog.LevelWarn
-		}
-		log.Log(ctx, lvl, "ip command failed", "cmd", "ip "+strings.Join(c.args, " "), "err", err, "out", strings.TrimSpace(string(out)))
-		return fmt.Errorf("ip %s: %w", strings.Join(c.args, " "), err)
-	}
-	log.Info("configured", "cmd", "ip "+strings.Join(c.args, " "))
-	return nil
 }

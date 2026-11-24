@@ -35,3 +35,4 @@ Status values: Proposed, Accepted, Superseded. Each ADR gets its own file `NNNN-
 | 0029 | DLP exact data match and fingerprints | **Accepted** (2026-11-22) | Tenant datasets of values or documents stored as keyed 64-bit HMACs (content discarded); Edges match 1-4 token sequences and 8-token shingles; keys never reach devices |
 | 0030 | ECH and HTTP/3 | **Accepted** (2026-11-22) | Strip ECH configs from DNS HTTPS/SVCB answers at the Edge resolver so clients send the real server name in the clear; HTTP/3 refused for inspecting tenants (UDP 443 fallback to TCP) |
 | 0031 | Portal OIDC sign-in | **Accepted** (2026-11-22) | Relying party integration for tenant admin portal sign-in: PKCE S256, group role mapping, 1-hour sessions, token in fragment |
+| 0032 | Windows client platform layer | **Accepted** (2026-11-24) | Wintun + winipcfg for TUN/routes/DNS, split default routes, bypass host routes, gateway mode Linux-only |

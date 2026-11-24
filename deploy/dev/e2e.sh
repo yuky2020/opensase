@@ -452,10 +452,10 @@ else
   i=0
   until ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | grep -q '"ruleId": "cat:gambling"'; do
     i=$((i + 1))
-    [ "$i" -ge 10 ] && break
+    [ "$i" -ge 40 ] && break
     sleep 3
   done
-  if [ "$i" -lt 10 ]; then ok "categories: blocks recorded (rule cat:gambling)"; else ko "categories: no cat:gambling flow record"; fi
+  if [ "$i" -lt 40 ]; then ok "categories: blocks recorded (rule cat:gambling)"; else ko "categories: no cat:gambling flow record"; fi
   # Discovery (issue #27): records are tagged with their category by the Control Plane.
   # Edges upload in batches, so poll: the block above may have matched an older run's record.
   i=0

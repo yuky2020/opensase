@@ -28,11 +28,15 @@ if [ ! -d "$FLUTTER_BUNDLE_DIR" ]; then
     exit 1
 fi
 
-SERVICE_FILE="deploy/desktop/linux/opensased.service"
-if [ ! -f "$SERVICE_FILE" ]; then
-    SERVICE_FILE="$(dirname "$0")/../deploy/desktop/linux/opensased.service"
+LINUX_DIR="deploy/desktop/linux"
+if [ ! -d "$LINUX_DIR" ]; then
+    LINUX_DIR="$(dirname "$0")/../deploy/desktop/linux"
 fi
-if [ ! -f "$SERVICE_FILE" ]; then
+if [ ! -d "$LINUX_DIR" ]; then
+    echo "Error: deploy/desktop/linux directory not found" >&2
+    exit 1
+fi
+if [ ! -f "$LINUX_DIR/opensased.service" ]; then
     echo "Error: opensased.service unit file not found" >&2
     exit 1
 fi
@@ -43,6 +47,7 @@ trap 'rm -rf "$STAGE_DIR"' EXIT
 # Create filesystem layout
 mkdir -p "$STAGE_DIR/usr/bin"
 mkdir -p "$STAGE_DIR/usr/lib/systemd/system"
+mkdir -p "$STAGE_DIR/usr/lib/sysusers.d"
 mkdir -p "$STAGE_DIR/opt/opensase"
 mkdir -p "$STAGE_DIR/usr/share/applications"
 mkdir -p "$STAGE_DIR/DEBIAN"
@@ -57,36 +62,23 @@ cp "$OPENSASE_CLI_BIN" "$STAGE_DIR/usr/bin/opensase"
 chmod 0755 "$STAGE_DIR/usr/bin/opensase"
 
 # Install systemd service unit
-cp "$SERVICE_FILE" "$STAGE_DIR/usr/lib/systemd/system/opensased.service"
+cp "$LINUX_DIR/opensased.service" "$STAGE_DIR/usr/lib/systemd/system/opensased.service"
 chmod 0644 "$STAGE_DIR/usr/lib/systemd/system/opensased.service"
+
+# Install sysusers configuration
+cp "$LINUX_DIR/opensase.sysusers" "$STAGE_DIR/usr/lib/sysusers.d/opensase.conf"
+chmod 0644 "$STAGE_DIR/usr/lib/sysusers.d/opensase.conf"
 
 # Install Flutter application bundle
 cp -R "$FLUTTER_BUNDLE_DIR"/* "$STAGE_DIR/opt/opensase/"
 chmod 0755 "$STAGE_DIR/opt/opensase/opensase"
 
-# Create symlink for opensase client app
-# App launcher. Flutter's GL renderer draws only a quarter of the window on the NVIDIA EGL
-# driver (issue #32): prefer the Mesa EGL vendor when installed. OPENSASE_GL=native skips it.
-cat << 'EOF' > "$STAGE_DIR/usr/bin/opensase-app"
-#!/bin/sh
-MESA_EGL=/usr/share/glvnd/egl_vendor.d/50_mesa.json
-if [ "${OPENSASE_GL:-}" != "native" ] && [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ] && [ -f "$MESA_EGL" ]; then
-    export __EGL_VENDOR_LIBRARY_FILENAMES="$MESA_EGL"
-    export __GLX_VENDOR_LIBRARY_NAME=mesa
-fi
-exec /opt/opensase/opensase "$@"
-EOF
+# Install app launcher
+cp "$LINUX_DIR/opensase-app" "$STAGE_DIR/usr/bin/opensase-app"
 chmod 0755 "$STAGE_DIR/usr/bin/opensase-app"
 
-# Create desktop entry
-cat << 'EOF' > "$STAGE_DIR/usr/share/applications/eu.opensase.opensase.desktop"
-[Desktop Entry]
-Name=OpenSASE
-Exec=/usr/bin/opensase-app
-Type=Application
-Categories=Network;Security;
-Terminal=false
-EOF
+# Install desktop entry
+cp "$LINUX_DIR/eu.opensase.opensase.desktop" "$STAGE_DIR/usr/share/applications/eu.opensase.opensase.desktop"
 chmod 0644 "$STAGE_DIR/usr/share/applications/eu.opensase.opensase.desktop"
 
 # Create package control file

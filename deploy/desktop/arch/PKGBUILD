@@ -1,0 +1,26 @@
+# Maintainer: OpenSASE project <noreply@opensase.invalid>
+pkgname=opensase
+_ver="${OPENSASE_VERSION:-0.0.0}"
+pkgver="${_ver//-/_}"
+pkgrel=1
+pkgdesc="OpenSASE client and daemon"
+arch=('x86_64')
+url="https://github.com/yuky2020/opensase"
+license=('Apache-2.0')
+depends=('gtk3' 'systemd')
+install=opensase.install
+options=('!strip' '!debug')
+backup=()
+
+package() {
+    install -Dm755 "$OPENSASE_DAEMON" "$pkgdir/usr/bin/opensased"
+    install -Dm755 "$OPENSASE_CLI" "$pkgdir/usr/bin/opensase"
+    install -Dm755 "$OPENSASE_LINUX_DIR/opensase-app" "$pkgdir/usr/bin/opensase-app"
+    install -Dm644 "$OPENSASE_LINUX_DIR/opensased.service" "$pkgdir/usr/lib/systemd/system/opensased.service"
+    install -Dm644 "$OPENSASE_LINUX_DIR/opensase.sysusers" "$pkgdir/usr/lib/sysusers.d/opensase.conf"
+    install -Dm644 "$OPENSASE_LINUX_DIR/eu.opensase.opensase.desktop" "$pkgdir/usr/share/applications/eu.opensase.opensase.desktop"
+
+    mkdir -p "$pkgdir/opt/opensase"
+    cp -a "$OPENSASE_BUNDLE"/. "$pkgdir/opt/opensase/"
+    chmod 0755 "$pkgdir/opt/opensase/opensase"
+}

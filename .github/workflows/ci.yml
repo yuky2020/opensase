@@ -112,7 +112,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -143,6 +143,38 @@ jobs:
         with:
           name: opensase-deb
           path: dist/*.deb
+
+      - name: Build .rpm
+        run: |
+          VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
+          sh scripts/package-rpm.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist dist/opensase-cli
+          rpm -qpil dist/*.rpm
+
+      - name: Upload Linux .rpm package
+        uses: actions/upload-artifact@v7
+        with:
+          name: opensase-rpm
+          path: dist/*.rpm
+
+      - name: Build Arch package
+        run: |
+          VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
+          docker run --rm -v "$PWD:/src" -w /src -e VERSION="$VERSION" archlinux:latest sh -c '
+            set -eu
+            pacman -Sy --noconfirm base-devel
+            useradd -m builder
+            cp -a /src /tmp/src
+            chown -R builder:builder /tmp/src
+            su builder -c "sh /tmp/src/scripts/package-arch.sh \"$VERSION\" /tmp/src/dist/opensased /tmp/src/clients/mobile/build/linux/x64/release/bundle /tmp/src/dist /tmp/src/dist/opensase-cli"
+            cp /tmp/src/dist/*.pkg.tar.zst /src/dist/
+            pacman -Qip /src/dist/*.pkg.tar.zst
+          '
+
+      - name: Upload Arch Linux package
+        uses: actions/upload-artifact@v7
+        with:
+          name: opensase-arch
+          path: dist/*.pkg.tar.zst
 
   lint:
     name: Lint

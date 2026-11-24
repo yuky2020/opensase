@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=OpenSASE
+Exec=/usr/bin/opensase-app
+Type=Application
+Categories=Network;Security;
+Terminal=false

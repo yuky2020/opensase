@@ -69,6 +69,7 @@ nav:
   - Download:
       - Releases: download.md
       - Run the container images: containers.md
+  - Release quality bar: release-quality-bar.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

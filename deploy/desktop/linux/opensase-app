@@ -1,0 +1,9 @@
+#!/bin/sh
+# OpenSASE app launcher. Flutter's GL renderer draws only part of the window on the NVIDIA EGL
+# driver (issue #32): prefer the Mesa EGL vendor when installed. OPENSASE_GL=native skips it.
+MESA_EGL=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+if [ "${OPENSASE_GL:-}" != "native" ] && [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ] && [ -f "$MESA_EGL" ]; then
+    export __EGL_VENDOR_LIBRARY_FILENAMES="$MESA_EGL"
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+fi
+exec /opt/opensase/opensase "$@"

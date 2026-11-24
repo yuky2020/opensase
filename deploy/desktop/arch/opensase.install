@@ -1,0 +1,25 @@
+post_install() {
+    systemd-sysusers opensase.conf >/dev/null 2>&1 || :
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable --now opensased.service || :
+    fi
+    echo "OpenSASE daemon installed and started."
+    echo "To control OpenSASE as a non-root user, add your user to the opensase group:"
+    echo "  usermod -aG opensase <user>"
+    echo "and log in again."
+}
+
+post_upgrade() {
+    systemd-sysusers opensase.conf >/dev/null 2>&1 || :
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl try-restart opensased.service || :
+    fi
+}
+
+pre_remove() {
+    if [ -d /run/systemd/system ]; then
+        systemctl disable --now opensased.service || :
+    fi
+}

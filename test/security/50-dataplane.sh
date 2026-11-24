@@ -138,14 +138,16 @@ if ! command -v jq >/dev/null 2>&1 || [ -z "$orig" ] || ! admin_get /categories 
 else
   admin_code PUT "/tenants/$T/policy" "$(printf '%s' "$orig" | jq -c '.categories = ["gambling"] | .safeSearch = true')" >/dev/null
   i=0
-  until cexec dig +time=3 +tries=1 @100.64.0.1 0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
+  # Only the Edge answers NXDOMAIN without an authority section; public DNS (the name has left
+  # it) adds an SOA. Wait for the Edge's answer so the policy is really active.
+  until cexec dig +time=3 +tries=1 @100.64.0.1 0-casino.info A 2>/dev/null | tr '\n' ' ' | grep -q 'status: NXDOMAIN.*AUTHORITY: 0,'; do
     i=$((i + 1))
     [ "$i" -ge 30 ] && break
     sleep 2
   done
   bad=""
   for n in 0-casino.info WWW.0-Casino.INFO. a.b.0-casino.info; do
-    cexec dig +time=3 +tries=1 @100.64.0.1 "$n" A 2>/dev/null | grep -q 'status: NXDOMAIN' || bad="$bad dns:$n"
+    cexec dig +time=3 +tries=1 @100.64.0.1 "$n" A 2>/dev/null | tr '\n' ' ' | grep -q 'status: NXDOMAIN.*AUTHORITY: 0,' || bad="$bad dns:$n"
   done
   for n in 0-casino.info WWW.0-CASINO.INFO; do
     [ "$(https_via "$n")" = 000 ] || bad="$bad sni:$n"

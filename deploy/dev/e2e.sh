@@ -439,7 +439,10 @@ else
   jq '.categories = ["gambling"] | .safeSearch = true' policy.example.json >.e2e-policy-cat.json
   ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-cat.json
   i=0
-  until cexec dig +time=3 +tries=1 @100.64.0.1 www.0-casino.info A 2>/dev/null | grep -q 'status: NXDOMAIN'; do
+  # The Edge's block answer is NXDOMAIN without an authority section. The name has since left
+  # public DNS, whose NXDOMAIN carries an SOA: require AUTHORITY: 0 so the loop really waits for
+  # the Edge to apply the policy before the SNI and flow checks below.
+  until cexec dig +time=3 +tries=1 @100.64.0.1 www.0-casino.info A 2>/dev/null | tr '\n' ' ' | grep -q 'status: NXDOMAIN.*AUTHORITY: 0,'; do
     i=$((i + 1))
     [ "$i" -ge 30 ] && break
     sleep 2

@@ -448,6 +448,7 @@ else
   code="$(sni_code 0-casino.info)"
   if [ "$code" = 000 ]; then ok "categories: TLS to 0-casino.info over example.com's address reset (SNI)"; else ko "categories: SNI not blocked: HTTP $code"; fi
   if cexec dig +time=3 +tries=1 @100.64.0.1 example.com A 2>/dev/null | grep -q 'status: NOERROR'; then ok "categories: control example.com resolves"; else ko "categories: control example.com does not resolve"; fi
+  # Up to 2 min: after the offline test restarts the Control Plane, the Edge flow upload backs off.
   i=0
   until ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | grep -q '"ruleId": "cat:gambling"'; do
     i=$((i + 1))

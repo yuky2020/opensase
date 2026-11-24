@@ -1,0 +1,8 @@
+# Same as the repository .dockerignore, but keeps the admin portal build (copied to /portal).
+clients/
+**/build/
+!clients/admin/build/web
+.git/
+deploy/dev/data/
+deploy/dev/pki/
+*.aar

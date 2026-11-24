@@ -39,7 +39,7 @@ func run() error {
 	flowRate := flag.Int("flow-rate", controlplane.DefaultFlowRate, "flow records accepted per device per minute")
 	catFile := flag.String("categories-file", "", "web category archive (UT1 blacklists.tar.gz) to load and cache downloads in (ADR-0022)")
 	catURL := flag.String("categories-url", "", "download the category archive from this URL and refresh it daily (e.g. "+categories.DefaultURL+")")
-	portalDir := flag.String("portal-dir", "", "serve the admin portal (Flutter web build with index.html) from this directory at /admin/")
+	portalDir := flag.String("portal-dir", os.Getenv("OPENSASE_PORTAL_DIR"), "serve the admin portal (Flutter web build with index.html) from this directory at /admin/ (or env OPENSASE_PORTAL_DIR)")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	if *catURL != "" && *catFile == "" {

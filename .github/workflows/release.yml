@@ -1,0 +1,349 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: Container images (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [edge, connector, controlplane, ocr]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version and image prefix
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX=ghcr.io/${OWNER_LOWER}" >> "$GITHUB_ENV"
+
+      - name: Set up Flutter
+        if: matrix.name == 'controlplane'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build admin portal
+        if: matrix.name == 'controlplane'
+        run: make portal
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/release/Dockerfile.${{ matrix.name }}
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ env.VERSION }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}:${{ env.VERSION }}
+            ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}:latest
+
+  binaries:
+    name: Standalone binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Cross-compile and pack binaries
+        run: |
+          mkdir -p dist
+
+          # linux/amd64
+          mkdir -p dist/stage/linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-amd64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          cp LICENSE README.md dist/stage/linux-amd64/
+          (cd dist/stage/linux-amd64 && tar -czf "../../opensase-${VERSION}-linux-amd64.tar.gz" *)
+
+          # linux/arm64
+          mkdir -p dist/stage/linux-arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-arm64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          cp LICENSE README.md dist/stage/linux-arm64/
+          (cd dist/stage/linux-arm64 && tar -czf "../../opensase-${VERSION}-linux-arm64.tar.gz" *)
+
+          # windows/amd64
+          mkdir -p dist/stage/windows-amd64
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/windows-amd64/ ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          cp LICENSE README.md dist/stage/windows-amd64/
+          (cd dist/stage/windows-amd64 && zip -q -r "../../opensase-${VERSION}-windows-amd64.zip" *)
+
+          rm -rf dist/stage
+
+      - name: Upload binaries artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binaries
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+  msi:
+    name: Windows MSI
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build Windows desktop app
+        run: cd clients/mobile && flutter build windows --release
+
+      - name: Fetch Wintun
+        run: |
+          curl -fsSLo wintun.zip https://www.wintun.net/builds/wintun-0.14.1.zip
+          sha256sum wintun.zip
+          echo "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51  wintun.zip" | sha256sum -c -
+          unzip -q wintun.zip
+
+      - name: Build MSI
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+          go build -trimpath -ldflags "-s -w" -o dist/daemon/opensased.exe ./cmd/opensased
+          ROOT=$(cygpath -w "$PWD")
+          wix build deploy/desktop/windows/opensase.wxs -wx -ext WixToolset.Util.wixext -arch x64 -d Version=$VERSION -d DaemonDir="$ROOT\dist\daemon" -d WintunDir="$ROOT\wintun\bin\amd64" -d AppDir="$ROOT\clients\mobile\build\windows\x64\runner\Release" -o dist/opensase-$VERSION-x64.msi
+
+      - name: Upload OpenSASE MSI
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi
+          path: dist/*.msi
+
+  deb:
+    name: Linux DEB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build Linux desktop app
+        run: cd clients/mobile && flutter build linux --release
+
+      - name: Build .deb
+        run: |
+          go build -trimpath -ldflags "-s -w" -o dist/opensased ./cmd/opensased
+          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+
+      - name: Upload Linux .deb package
+        uses: actions/upload-artifact@v7
+        with:
+          name: deb
+          path: dist/*.deb
+
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android NDK
+        run: echo "y" | sdkmanager --install "ndk;28.2.13676358"
+
+      - name: Install gomobile and gobind
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+
+      - name: Initialize gomobile
+        run: gomobile init
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build APK
+        run: make apk
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+
+      - name: Rename and prepare APK
+        run: |
+          mkdir -p dist
+          cp clients/mobile/build/app/outputs/flutter-apk/app-debug.apk dist/opensase-${VERSION}-android-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: dist/*.apk
+
+  publish:
+    name: Publish release
+    needs: [images, binaries, msi, deb, apk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version and image prefix
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX=ghcr.io/${OWNER_LOWER}" >> "$GITHUB_ENV"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate release checksums, notes, and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist && sha256sum * > SHA256SUMS
+          grep -v ' SHA256SUMS$' SHA256SUMS > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS
+          cd ..
+
+          PRERELEASE_FLAG=""
+          if [[ "${VERSION}" =~ ^0\. ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          cat << EOF > release-notes.md
+          ### Container Images
+
+          \`\`\`shell
+          docker pull ${IMAGE_PREFIX}/opensase-controlplane:${VERSION}
+          docker pull ${IMAGE_PREFIX}/opensase-edge:${VERSION}
+          docker pull ${IMAGE_PREFIX}/opensase-connector:${VERSION}
+          docker pull ${IMAGE_PREFIX}/opensase-ocr:${VERSION}
+          \`\`\`
+
+          ### Downloads
+
+          | Package | Platform / Architecture | Description |
+          |---|---|---|
+          | \`opensase-${VERSION}-x64.msi\` | Windows (x64) | Windows installer (service and desktop app) |
+          | \`opensase_${VERSION}_amd64.deb\` | Linux (amd64) | Debian package (systemd service and desktop app) |
+          | \`opensase-${VERSION}-android-debug.apk\` | Android | Android client application (debug-signed build) |
+          | \`opensase-${VERSION}-<os>-<arch>.*\` | Linux (amd64, arm64), Windows (amd64) | Standalone command-line binaries and tools |
+
+          ### Known Limitations
+
+          - The Windows MSI installer is not code-signed.
+          - The Android APK is a debug-signed build.
+          - Container images are available for linux/amd64 only.
+          EOF
+
+          gh release create "v$VERSION" dist/* --title "OpenSASE v$VERSION" --notes-file release-notes.md --verify-tag ${PRERELEASE_FLAG} --generate-notes

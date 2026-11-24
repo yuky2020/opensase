@@ -147,6 +147,8 @@ flowchart LR
 
 ## Quick start (dev stack)
 
+To run pre-built container images, see [deploy/release/README.md](deploy/release/README.md).
+
 Requirements: Docker with Compose, Go (see `go.mod`), and OpenSSL ≥ 3.5 for the security suite.
 To build the mobile client and the portal you also need Flutter, the Android SDK and NDK, and
 `gomobile`.

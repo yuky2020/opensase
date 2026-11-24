@@ -1,0 +1,75 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="OpenSASE"
+           Manufacturer="OpenSASE project"
+           Version="$(var.Version)"
+           UpgradeCode="24A4BDBB-B7FE-4AC5-A3E9-23DAAEB4E041"
+           Scope="perMachine"
+           Language="1033">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="OpenSASE" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="OpenSasedExe" Guid="A14DFB75-B1C6-4C54-8BEE-B2A6337F15DF">
+        <File Id="opensased.exe" Source="$(var.DaemonDir)\opensased.exe" KeyPath="yes" />
+        <ServiceInstall Id="OpenSASEServiceInstall"
+                        Name="OpenSASE"
+                        DisplayName="OpenSASE client"
+                        Description="OpenSASE desktop daemon managing VPN tunnel and local API"
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Arguments="run"
+                        Account="LocalSystem">
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="5"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="OpenSASEServiceControl"
+                        Name="OpenSASE"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+        <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\OpenSASE" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="expandable" Name="EventMessageFile" Value="%SystemRoot%\System32\EventCreate.exe" />
+          <RegistryValue Type="integer" Name="TypesSupported" Value="7" />
+        </RegistryKey>
+        <RemoveFolder Id="CleanUpInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      </Component>
+
+      <Component Id="WintunDll" Guid="C6B99518-8A33-4FE8-99D3-FF23DF899532">
+        <File Id="wintun.dll" Source="$(var.WintunDir)\wintun.dll" KeyPath="yes" />
+      </Component>
+
+      <Files Include="$(var.AppDir)\**" />
+    </ComponentGroup>
+
+    <ComponentGroup Id="ShortcutComponents">
+      <Component Id="ApplicationShortcut" Guid="9D2A9250-9E17-4F60-B147-75EB1C5CE44D" Directory="ProgramMenuFolder">
+        <Shortcut Id="AppStartMenuShortcut"
+                  Name="OpenSASE"
+                  Description="OpenSASE desktop client"
+                  Target="[INSTALLFOLDER]opensase.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Advertise="no" />
+        <RegistryKey Root="HKLM" Key="Software\OpenSASE" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="integer" Name="Installed" Value="1" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="MainFeature" Title="OpenSASE">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="ShortcutComponents" />
+    </Feature>
+  </Package>
+</Wix>

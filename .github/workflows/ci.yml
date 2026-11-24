@@ -71,12 +71,40 @@ jobs:
           name: desktop-windows
           path: clients/mobile/build/windows/x64/runner/Release/
 
+      - name: Fetch Wintun
+        shell: bash
+        run: |
+          curl -fsSLo wintun.zip https://www.wintun.net/builds/wintun-0.14.1.zip
+          sha256sum wintun.zip
+          echo "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51  wintun.zip" | sha256sum -c -
+          unzip -q wintun.zip
+
+      - name: Build MSI
+        shell: bash
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+          go build -trimpath -ldflags "-s -w" -o dist/daemon/opensased.exe ./cmd/opensased
+          VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
+          wix build deploy/desktop/windows/opensase.wxs -ext WixToolset.Util.wixext -arch x64 -d Version=$VERSION -d DaemonDir=dist/daemon -d WintunDir=wintun/bin/amd64 -d AppDir=clients/mobile/build/windows/x64/runner/Release -o dist/opensase-$VERSION-x64.msi
+
+      - name: Upload OpenSASE MSI
+        uses: actions/upload-artifact@v7
+        with:
+          name: opensase-msi
+          path: dist/*.msi
+
   desktop-linux:
     name: Desktop (Linux)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
 
       - name: Install Linux build dependencies
         run: |
@@ -97,6 +125,20 @@ jobs:
         with:
           name: desktop-linux
           path: clients/mobile/build/linux/x64/release/bundle/
+
+      - name: Build .deb
+        run: |
+          go build -trimpath -ldflags "-s -w" -o dist/opensased ./cmd/opensased
+          VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
+          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+
+      - name: Upload Linux .deb package
+        uses: actions/upload-artifact@v7
+        with:
+          name: opensase-deb
+          path: dist/*.deb
 
   lint:
     name: Lint

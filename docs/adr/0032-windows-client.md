@@ -104,3 +104,26 @@ Slice B2 implements Windows service integration and named pipe local API deliver
 - **Administrator Privileges Required (Slice A):** Because slice A runs interactively as a console application, configuring network interfaces, IP addresses, and routing tables on Windows requires running the process with Administrator privileges. Slice B will eliminate this requirement for end users by introducing a background service.
 - **Fail-Closed Forwarding on Process Termination:** In slice A, if the client process is forcibly terminated (e.g. killed via task manager), the routes on the physical interface may remain until reset or adapter restart, and there is no kernel-level firewall filter to prevent unencrypted traffic leaks. A future slice will add Windows Filtering Platform (WFP) filters to enforce fail-closed leak prevention.
 - **IPv6 Leak Limitation:** When the tunnel configuration allocates an IPv6 address, IPv6 split routes (`::/1` and `8000::/1`) are installed into the tunnel. However, if the session does not provide an IPv6 address, physical IPv6 default routes remain in place and IPv6 traffic will continue to route over the physical interface. This is a known limitation until WFP-based IPv6 filtering is introduced.
+
+## Addendum (2026-11-24): packaging
+
+Slice D delivers automated desktop packaging for Windows and Linux built in CI:
+
+1. **Windows MSI Package (WiX v5):**
+   - Packaged with WiX v5 using declarative schema (`http://wixtoolset.org/schemas/v4/wxs`) and `Scope="perMachine"`.
+   - Uses native `ServiceInstall` and `ServiceControl` with the `util:ServiceConfig` extension to configure the `OpenSASE` service and recovery restart actions without custom actions.
+   - Registers the Windows event log source `OpenSASE` mirroring `eventlog.InstallAsEventCreate`.
+   - Bundles the Flutter desktop client (`opensase.exe`) harvested with `<Files Include="$(var.AppDir)\**" />` and provides an HKLM-keyed per-machine Start menu shortcut.
+   - Wintun (`wintun.dll`) is fetched in CI and verified against a pinned SHA-256 hash (`07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51`).
+
+2. **Linux .deb Package:**
+   - Packaged via `scripts/package-deb.sh` using `dpkg-deb --build --root-owner-group`.
+   - Bundles the daemon binary `/usr/bin/opensased`, systemd service `/usr/lib/systemd/system/opensased.service`, Flutter client bundle `/opt/opensase/` with symlink `/usr/bin/opensase`, and desktop entry `/usr/share/applications/eu.opensase.opensase.desktop`.
+   - Maintains service lifecycle and access control in maintainer scripts: creates the `opensase` system group in `postinst`, reloads systemd, and starts the service; stops the service in `prerm`; removes the group and `/var/lib/opensase` on purge in `postrm`.
+
+3. **State Directory Kept on Uninstall:**
+   - Both installers leave the daemon state directory intact on uninstall (`%ProgramData%\OpenSASE` on Windows, `/var/lib/opensase` on Linux unless purged), preserving device enrollment, private keys, and cached policy across reinstalls and upgrades.
+
+4. **Known Limitations:**
+   - The Windows MSI is currently unsigned; Windows SmartScreen will display an untrusted application warning until code signing is configured in a later release.
+   - RPM packaging and code signing are left for later.

@@ -33,5 +33,9 @@ func TestIsPrivatePath(t *testing.T) {
 	if err := os.WriteFile(f, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// On Windows the mode is ignored: the file is private only after restrictPath.
+	if err := restrictPath(f, false); err != nil {
+		t.Fatal(err)
+	}
 	assertPrivate(t, f)
 }

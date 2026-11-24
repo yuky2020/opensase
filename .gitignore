@@ -24,3 +24,6 @@ local.properties
 /docs/security/security-tester-agent.md
 /site/
 /deploy/dev/.e2e-*
+
+# Stray build output of `go build ./cmd/controlplane` (a binary was committed by mistake in 3ac5fea, removed in 078ffb0).
+/controlplane

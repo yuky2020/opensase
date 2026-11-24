@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import '../data/core_state.dart';
 import '../data/enrollment_code.dart';
 import '../engine/engine.dart';
+import '../platform_info.dart';
 import 'common.dart';
 
 /// Default for the Android emulator: the host's Control Plane.
@@ -106,11 +107,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final l = context.l10n;
     final t = Theme.of(context);
     final pinned = _url.text.contains('#sha256=');
+    final s = ref.watch(coreProvider);
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
+            if (isDesktop && !s.daemonConnected) ...[const DaemonUnreachableBanner(), const SizedBox(height: 16)],
             const SizedBox(height: 16),
             Icon(Icons.shield, size: 56, color: t.colorScheme.primary),
             const SizedBox(height: 16),

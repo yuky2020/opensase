@@ -78,6 +78,9 @@ class EngineEvent {
   /// An `opensase://enroll` deep link (payload: the URI). Emitted by the native side.
   static const enrollLink = 'enrollLink';
 
+  /// Emitted on desktop to report daemon reachability: payload is {"connected": bool}.
+  static const daemon = 'daemon';
+
   @override
   String toString() => 'EngineEvent($kind)';
 }

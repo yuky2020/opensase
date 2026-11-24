@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../data/core_state.dart';
+import '../platform_info.dart';
 import 'common.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -62,45 +63,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        SectionHeader(l.settingsAlwaysOn),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l.settingsAlwaysOnDesc),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: engine.openVpnSettings,
-                        icon: const Icon(Icons.vpn_key),
-                        label: Text(l.settingsOpenVpnSettings),
-                      ),
-                      if (s.vpn.alwaysOn) const Chip(avatar: Icon(Icons.check, size: 16), label: Text('Always-on')),
-                      if (s.vpn.lockdown) const Chip(avatar: Icon(Icons.lock, size: 16), label: Text('Lockdown')),
-                    ],
-                  ),
-                ],
+        if (!isDesktop) ...[
+          SectionHeader(l.settingsAlwaysOn),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l.settingsAlwaysOnDesc),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: engine.openVpnSettings,
+                          icon: const Icon(Icons.vpn_key),
+                          label: Text(l.settingsOpenVpnSettings),
+                        ),
+                        if (s.vpn.alwaysOn) const Chip(avatar: Icon(Icons.check, size: 16), label: Text('Always-on')),
+                        if (s.vpn.lockdown) const Chip(avatar: Icon(Icons.lock, size: 16), label: Text('Lockdown')),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        SwitchListTile(
-          title: Text(l.settingsConnectOnBoot),
-          subtitle: Text(l.settingsConnectOnBootDesc),
-          value: _connectOnBoot,
-          onChanged: (v) {
-            setState(() => _connectOnBoot = v);
-            engine.setConnectOnBoot(v);
-          },
-        ),
+          SwitchListTile(
+            title: Text(l.settingsConnectOnBoot),
+            subtitle: Text(l.settingsConnectOnBootDesc),
+            value: _connectOnBoot,
+            onChanged: (v) {
+              setState(() => _connectOnBoot = v);
+              engine.setConnectOnBoot(v);
+            },
+          ),
+        ],
         SectionHeader(l.settingsPolicy),
         ListTile(
           title: Text(l.settingsDefaultAction),

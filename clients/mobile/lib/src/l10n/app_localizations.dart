@@ -1297,6 +1297,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Code applied: check the details below and tap Enroll'**
   String get onboardingCodeApplied;
+
+  /// No description provided for @daemonNotRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'The OpenSASE service is not running'**
+  String get daemonNotRunning;
+
+  /// No description provided for @daemonHintLinux.
+  ///
+  /// In en, this message translates to:
+  /// **'sudo systemctl start opensased'**
+  String get daemonHintLinux;
+
+  /// No description provided for @daemonHintWindows.
+  ///
+  /// In en, this message translates to:
+  /// **'start the OpenSASE service'**
+  String get daemonHintWindows;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

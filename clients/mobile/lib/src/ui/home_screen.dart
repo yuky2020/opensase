@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../contracts/engine_types.dart';
 import '../data/core_state.dart';
 import '../engine/engine.dart';
+import '../platform_info.dart';
 import 'common.dart';
 import 'theme.dart';
 
@@ -26,6 +27,7 @@ class HomeScreen extends ConsumerWidget {
           _ConnectToggle(state: s),
           const SizedBox(height: 16),
           _StatusCard(state: s),
+          if (isDesktop && !s.daemonConnected) ...[const SizedBox(height: 12), const DaemonUnreachableBanner()],
           if (s.status.stale) ...[const SizedBox(height: 12), InfoBanner(l.homeStale, warning: true)],
           if (s.vpn.phase == VpnPhase.failed && s.vpn.message.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -36,32 +38,34 @@ class HomeScreen extends ConsumerWidget {
           ],
           const SizedBox(height: 16),
           _CountersCard(state: s),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(l.homeTopBlocked, style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                  if (topBlocked.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(l.homeNoBlocked)),
-                  for (final a in topBlocked)
-                    ListTile(
-                      leading: AppIcon(a.app, size: 36),
-                      title: Text(appLabel(ref, context, a.app), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: Text(
-                        l.homeBlockedCount(a.blocked),
-                        style: TextStyle(color: context.verdicts.block, fontWeight: FontWeight.w600),
-                      ),
-                      onTap: a.app.isEmpty ? null : () => onOpenApp(a.app),
+          if (!isDesktop) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(l.homeTopBlocked, style: Theme.of(context).textTheme.titleMedium),
                     ),
-                ],
+                    if (topBlocked.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(l.homeNoBlocked)),
+                    for (final a in topBlocked)
+                      ListTile(
+                        leading: AppIcon(a.app, size: 36),
+                        title: Text(appLabel(ref, context, a.app), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: Text(
+                          l.homeBlockedCount(a.blocked),
+                          style: TextStyle(color: context.verdicts.block, fontWeight: FontWeight.w600),
+                        ),
+                        onTap: a.app.isEmpty ? null : () => onOpenApp(a.app),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -5,6 +5,7 @@ import '../contracts/policy.dart';
 import '../data/core_state.dart';
 import '../data/policy_logic.dart';
 import '../data/rule_draft.dart';
+import '../platform_info.dart';
 import 'common.dart';
 
 class RulesScreen extends ConsumerWidget {
@@ -331,20 +332,22 @@ class _RuleEditorState extends ConsumerState<RuleEditor> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(l.rulesFieldApps, style: t.textTheme.labelLarge),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _d.apps.isEmpty ? l.rulesFieldAppsAny : _d.apps.map((a) => appLabel(ref, context, a)).join(', '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+            if (!isDesktop) ...[
+              const SizedBox(height: 16),
+              Text(l.rulesFieldApps, style: t.textTheme.labelLarge),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _d.apps.isEmpty ? l.rulesFieldAppsAny : _d.apps.map((a) => appLabel(ref, context, a)).join(', '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                OutlinedButton(onPressed: _pickApps, child: Text(l.rulesFieldAppsChoose)),
-              ],
-            ),
+                  OutlinedButton(onPressed: _pickApps, child: Text(l.rulesFieldAppsChoose)),
+                ],
+              ),
+            ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(l.rulesFieldLog),

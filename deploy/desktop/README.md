@@ -266,3 +266,42 @@ All error responses return a JSON object with an `error` message string:
   "error": "cannot enroll while connected"
 }
 ```
+
+---
+
+## Desktop App
+
+The Flutter client app (`clients/mobile`) runs on desktop platforms (Linux and Windows) and drives the local `opensased` daemon rather than an embedded mobile engine.
+
+### Build Commands
+
+From the repository root:
+
+- **Linux:**
+  ```bash
+  cd clients/mobile && flutter build linux --release
+  ```
+  The compiled bundle is located at `clients/mobile/build/linux/x64/release/bundle/`.
+
+- **Windows:**
+  ```bash
+  cd clients/mobile && flutter build windows --release
+  ```
+  The compiled executable and dependencies are located at `clients/mobile/build/windows/x64/runner/Release/`.
+
+### Connection Endpoints
+
+The desktop client communicates with the daemon over local IPC:
+
+- **Linux:** Connects via HTTP/1.1 over the Unix domain socket at `/run/opensase/opensased.sock`. For development or custom socket paths, an override can be specified at build or run time via `--dart-define=DAEMON_SOCKET=/path/to/socket`.
+- **Windows:** Connects via HTTP/1.1 over the named pipe at `\\.\pipe\opensase`.
+
+### User Permissions and Access Group
+
+On Linux, unprivileged desktop users must be members of the `opensase` system group to access the Unix domain socket:
+
+```bash
+sudo usermod -aG opensase $USER
+```
+
+Group membership takes effect upon logging in again or running `newgrp opensase`. If the daemon is not running or the socket cannot be accessed, the client UI presents a status banner with instructions on starting the service.

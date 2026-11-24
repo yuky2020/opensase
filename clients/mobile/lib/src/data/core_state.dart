@@ -6,6 +6,7 @@ import '../contracts/api.dart';
 import '../contracts/engine_types.dart';
 import '../contracts/policy.dart';
 import '../engine/engine.dart';
+import '../platform_info.dart';
 import 'parsers.dart';
 import 'policy_logic.dart';
 import 'user_layer_store.dart';
@@ -79,6 +80,7 @@ class CoreState {
     this.flows = const [],
     this.stats = const [],
     this.lastError = '',
+    this.daemonConnected = true,
   });
 
   /// null while still checking.
@@ -94,6 +96,9 @@ class CoreState {
   /// Last background error from the core (`error` event), for diagnostics.
   final String lastError;
 
+  /// Whether the desktop daemon is currently connected and reachable.
+  final bool daemonConnected;
+
   TrafficCounters get counters => Parsers.counters(stats);
 
   /// The quantum-safe badge is shown only when the core reports pq=true on a live tunnel.
@@ -107,6 +112,7 @@ class CoreState {
     List<FlowRecord>? flows,
     List<AppStat>? stats,
     String? lastError,
+    bool? daemonConnected,
   }) => CoreState(
     enrolled: enrolled ?? this.enrolled,
     status: status ?? this.status,
@@ -115,6 +121,7 @@ class CoreState {
     flows: flows ?? this.flows,
     stats: stats ?? this.stats,
     lastError: lastError ?? this.lastError,
+    daemonConnected: daemonConnected ?? this.daemonConnected,
   );
 }
 
@@ -187,7 +194,8 @@ class CoreNotifier extends Notifier<CoreState> {
 
   Future<void> refreshStatus() async {
     final st = Parsers.status(await _guard(_engine.status, ''));
-    if (ref.mounted) state = state.copyWith(status: st);
+    final vpn = isDesktop ? await _guard(_engine.vpnStatus, state.vpn) : state.vpn;
+    if (ref.mounted) state = state.copyWith(status: st, vpn: vpn);
   }
 
   Future<void> refreshStats() async {
@@ -271,12 +279,24 @@ class CoreNotifier extends Notifier<CoreState> {
     try {
       return await f();
     } catch (_) {
+      if (isDesktop) {
+        state = state.copyWith(daemonConnected: false);
+      }
       return fallback;
     }
   }
 
   void _onEvent(EngineEvent ev) {
     switch (ev.kind) {
+      case EngineEvent.daemon:
+        try {
+          final m = Parsers.decodeMap(ev.payload);
+          final connected = m['connected'] as bool? ?? true;
+          state = state.copyWith(daemonConnected: connected);
+          if (connected) {
+            refreshAll();
+          }
+        } catch (_) {}
       case EngineEvent.flow:
         final r = Parsers.flow(ev.payload);
         if (r != null) {

@@ -200,5 +200,8 @@
   "vpnConsentDenied": "Autorizzazione VPN negata",
   "settingsCertificate": "Certificato del dispositivo",
   "settingsCertificateExpires": "Scade il {date}",
-  "onboardingCodeApplied": "Codice applicato: controlla i dati qui sotto e tocca Registra"
+  "onboardingCodeApplied": "Codice applicato: controlla i dati qui sotto e tocca Registra",
+  "daemonNotRunning": "Il servizio OpenSASE non è in esecuzione",
+  "daemonHintLinux": "sudo systemctl start opensased",
+  "daemonHintWindows": "avvia il servizio OpenSASE"
 }

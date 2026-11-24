@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'data/core_state.dart';
 import 'l10n/app_localizations.dart';
+import 'platform_info.dart';
 import 'ui/activity_screen.dart';
 import 'ui/app_detail_screen.dart';
 import 'ui/apps_screen.dart';
@@ -66,14 +67,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/apps',
-                builder: (context, _) => AppsScreen(onOpen: (p) => context.push('/app/$p')),
-              ),
-            ],
-          ),
+          if (!isDesktop)
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/apps',
+                  builder: (context, _) => AppsScreen(onOpen: (p) => context.push('/app/$p')),
+                ),
+              ],
+            ),
           StatefulShellBranch(
             routes: [GoRoute(path: '/rules', builder: (_, _) => const RulesScreen())],
           ),
@@ -90,6 +92,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      if (isDesktop)
+        GoRoute(
+          path: '/apps',
+          builder: (context, _) => AppsScreen(onOpen: (p) => context.push('/app/$p')),
+        ),
       GoRoute(
         path: '/app/:pkg',
         builder: (_, state) => AppDetailScreen(pkg: state.pathParameters['pkg']!),
@@ -139,7 +146,7 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    final titles = ['OpenSASE', l.navApps, l.navRules, l.navDns, l.navActivity];
+    final titles = ['OpenSASE', if (!isDesktop) l.navApps, l.navRules, l.navDns, l.navActivity];
     return Scaffold(
       appBar: AppBar(
         title: Text(titles[shell.currentIndex]),
@@ -162,11 +169,12 @@ class AppShell extends StatelessWidget {
             selectedIcon: const Icon(Icons.home),
             label: l.navHome,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.apps_outlined),
-            selectedIcon: const Icon(Icons.apps),
-            label: l.navApps,
-          ),
+          if (!isDesktop)
+            NavigationDestination(
+              icon: const Icon(Icons.apps_outlined),
+              selectedIcon: const Icon(Icons.apps),
+              label: l.navApps,
+            ),
           NavigationDestination(
             icon: const Icon(Icons.rule_outlined),
             selectedIcon: const Icon(Icons.rule),

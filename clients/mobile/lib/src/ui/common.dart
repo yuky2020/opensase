@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
@@ -279,4 +281,16 @@ class Fmt {
 
   /// "1.2.3.4:443", or "[2001:db8::1]:443" for IPv6.
   static String endpoint(String ip, int port) => ip.contains(':') ? '[$ip]:$port' : '$ip:$port';
+}
+
+/// Friendly banner displayed on desktop platforms when the daemon is unreachable.
+class DaemonUnreachableBanner extends StatelessWidget {
+  const DaemonUnreachableBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l10n;
+    final hint = Platform.isWindows ? l.daemonHintWindows : l.daemonHintLinux;
+    return InfoBanner('${l.daemonNotRunning}\n$hint', warning: true, key: const Key('daemon_banner'));
+  }
 }

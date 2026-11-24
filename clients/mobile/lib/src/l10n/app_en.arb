@@ -337,5 +337,8 @@
       }
     }
   },
-  "onboardingCodeApplied": "Code applied: check the details below and tap Enroll"
+  "onboardingCodeApplied": "Code applied: check the details below and tap Enroll",
+  "daemonNotRunning": "The OpenSASE service is not running",
+  "daemonHintLinux": "sudo systemctl start opensased",
+  "daemonHintWindows": "start the OpenSASE service"
 }

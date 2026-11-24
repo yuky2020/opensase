@@ -650,4 +650,13 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get onboardingCodeApplied => 'Codice applicato: controlla i dati qui sotto e tocca Registra';
+
+  @override
+  String get daemonNotRunning => 'Il servizio OpenSASE non è in esecuzione';
+
+  @override
+  String get daemonHintLinux => 'sudo systemctl start opensased';
+
+  @override
+  String get daemonHintWindows => 'avvia il servizio OpenSASE';
 }

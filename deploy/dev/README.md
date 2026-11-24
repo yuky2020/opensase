@@ -18,6 +18,7 @@ Checks performed by `e2e.sh`:
 - Built-in Edge rules: verifies metadata 169.254.169.254 unreachable, `dig @8.8.8.8` fails, and DoT to 1.1.1.1:853 blocked.
 - Certificate renewal: verifies the certificate renewal (device certificates with 24h lifetime are renewed with POST /v1/renew; the e2e client uses `-renew-now`).
 - Deployment hardening: verifies the Edge runs as non-root and sees only its PKI files, and the Control Plane does not mount pki/edge.
+- Workload Gateway (ADR-0015): verifies gateway forwarding for internal subnets without client software, private app access via ZTNA, fail-closed isolation, HTTP health check (/healthz returning 200), GENEVE ingress decapsulation/re-encapsulation (geneve-probe), and routed mode preserving workload source addresses.
 
 ### Offline and CI runs
 

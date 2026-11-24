@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -147,7 +148,7 @@ func buildIPv4TCP(src, dst netip.Addr, sport, dport uint16, payload []byte) []by
 func TestGeneveIngressReceiveAndReturn(t *testing.T) {
 	conn := newFakePacketConn()
 	dev := newFakePacketDev()
-	cidrs := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}
+	cidrs := []netip.Prefix{netip.MustParsePrefix("10.31.0.0/24")}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ingress := newGeneveIngress(conn, dev, cidrs, log, maxFlowEntries)
 
@@ -155,7 +156,7 @@ func TestGeneveIngressReceiveAndReturn(t *testing.T) {
 	senderAddr, _ := net.ResolveUDPAddr("udp", "192.0.2.10:6081")
 
 	// 1. Accepted packet reaches fake TUN.
-	innerTCP := buildIPv4TCP(netip.MustParseAddr("10.30.0.5"), netip.MustParseAddr("8.8.8.8"), 12345, 80, []byte("request data"))
+	innerTCP := buildIPv4TCP(netip.MustParseAddr("10.31.0.5"), netip.MustParseAddr("8.8.8.8"), 12345, 80, []byte("request data"))
 	hdr := geneve.Header{
 		VNI:      1001,
 		Protocol: geneve.ProtoIPv4,
@@ -184,7 +185,7 @@ func TestGeneveIngressReceiveAndReturn(t *testing.T) {
 	}
 
 	// 2. Return packet encapsulated with the same VNI and options to the original sender.
-	returnTCP := buildIPv4TCP(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.30.0.5"), 80, 12345, []byte("response data"))
+	returnTCP := buildIPv4TCP(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.31.0.5"), 80, 12345, []byte("response data"))
 	ingress.handleReturn(returnTCP, encapBuf)
 
 	select {
@@ -216,8 +217,8 @@ func TestGeneveIngressReceiveAndReturn(t *testing.T) {
 		t.Errorf("ingress.returnAccepted = %d, want 1", ingress.returnAccepted)
 	}
 
-	// 3. Source outside the CIDRs dropped.
-	outsideTCP := buildIPv4TCP(netip.MustParseAddr("192.168.1.5"), netip.MustParseAddr("8.8.8.8"), 12345, 80, []byte("outside"))
+	// 3. Source outside the CIDRs dropped (e.g. 10.30.0.5 is in -gateway but not in -geneve-cidrs).
+	outsideTCP := buildIPv4TCP(netip.MustParseAddr("10.30.0.5"), netip.MustParseAddr("8.8.8.8"), 12345, 80, []byte("outside"))
 	outsideDatagram, err := hdr.AppendTo(nil, outsideTCP)
 	if err != nil {
 		t.Fatal(err)
@@ -257,13 +258,127 @@ func TestGeneveIngressReceiveAndReturn(t *testing.T) {
 	}
 
 	// 6. Unknown return dropped.
-	unknownReturn := buildIPv4TCP(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.30.0.99"), 80, 54321, []byte("unknown"))
+	unknownReturn := buildIPv4TCP(netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("10.31.0.99"), 80, 54321, []byte("unknown"))
 	ingress.handleReturn(unknownReturn, encapBuf)
 	if len(conn.out) != 0 {
 		t.Error("unknown return packet was sent over UDP")
 	}
 	if ingress.droppedUnknownReturn != 1 {
 		t.Errorf("droppedUnknownReturn = %d, want 1", ingress.droppedUnknownReturn)
+	}
+}
+
+func TestValidateGeneveFlags(t *testing.T) {
+	tests := []struct {
+		name        string
+		opts        options
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "missing -geneve-cidrs with -geneve-listen is an error",
+			opts: options{
+				gateway:      "10.30.0.0/24",
+				geneveListen: ":6081",
+				geneveCIDRs:  "",
+			},
+			wantErr:     true,
+			errContains: "-geneve-cidrs",
+		},
+		{
+			name: "a GENEVE CIDR outside -gateway is an error",
+			opts: options{
+				gateway:      "10.30.0.0/24",
+				geneveListen: ":6081",
+				geneveCIDRs:  "192.168.1.0/24",
+			},
+			wantErr:     true,
+			errContains: "-gateway",
+		},
+		{
+			name: "a GENEVE CIDR partially outside or supernet of -gateway is an error",
+			opts: options{
+				gateway:      "10.30.0.0/24",
+				geneveListen: ":6081",
+				geneveCIDRs:  "10.0.0.0/8",
+			},
+			wantErr:     true,
+			errContains: "-gateway",
+		},
+		{
+			name: "-geneve-cidrs without -geneve-listen is an error",
+			opts: options{
+				gateway:     "10.30.0.0/24",
+				geneveCIDRs: "10.30.0.0/24",
+			},
+			wantErr:     true,
+			errContains: "-geneve-listen",
+		},
+		{
+			name: "-geneve-listen without -gateway is an error",
+			opts: options{
+				geneveListen: ":6081",
+				geneveCIDRs:  "10.30.0.0/24",
+			},
+			wantErr:     true,
+			errContains: "-gateway",
+		},
+		{
+			name: "valid geneve cidrs matching gateway subset",
+			opts: options{
+				gateway:      "10.30.0.0/24,10.31.0.0/24",
+				geneveListen: ":6081",
+				geneveCIDRs:  "10.31.0.0/24",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid geneve cidrs contained within larger gateway cidr",
+			opts: options{
+				gateway:      "10.0.0.0/8",
+				geneveListen: ":6081",
+				geneveCIDRs:  "10.31.0.0/24",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := parseGatewayFlags(tc.opts)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("parseGatewayFlags() err = %v, wantErr = %v", err, tc.wantErr)
+			}
+			if tc.wantErr && tc.errContains != "" && !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("expected error containing %q, got %v", tc.errContains, err)
+			}
+		})
+	}
+}
+
+func TestGeneveIngressDropsGatewayCIDRNotInGeneveCIDRs(t *testing.T) {
+	conn := newFakePacketConn()
+	dev := newFakePacketDev()
+	// Gateway has 10.30.0.0/24 and 10.31.0.0/24, but geneve-cidrs only has 10.31.0.0/24
+	geneveCIDRs := []netip.Prefix{netip.MustParsePrefix("10.31.0.0/24")}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ingress := newGeneveIngress(conn, dev, geneveCIDRs, log, maxFlowEntries)
+
+	senderAddr, _ := net.ResolveUDPAddr("udp", "192.0.2.10:6081")
+	hdr := geneve.Header{VNI: 1001, Protocol: geneve.ProtoIPv4}
+
+	// Source 10.30.0.10 is in -gateway but NOT in -geneve-cidrs -> dropped
+	pkt := buildIPv4TCP(netip.MustParseAddr("10.30.0.10"), netip.MustParseAddr("8.8.8.8"), 12345, 80, []byte("payload"))
+	dg, err := hdr.AppendTo(nil, pkt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress.handleReceive(dg, senderAddr)
+	if len(dev.in) != 0 {
+		t.Fatal("packet with source in gateway CIDR but outside geneve-cidrs was forwarded to TUN")
+	}
+	if ingress.droppedOutsideCIDR != 1 {
+		t.Fatalf("droppedOutsideCIDR = %d, want 1", ingress.droppedOutsideCIDR)
 	}
 }
 

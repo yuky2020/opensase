@@ -88,7 +88,7 @@ func (e *Edge) brokerConn(ctx context.Context, c net.Conn, src, dst netip.AddrPo
 	start := time.Now()
 	rec := api.FlowRecord{
 		Start: start, Where: "edge",
-		Flow:     policy.Flow{Protocol: "tcp", DstIP: dst.Addr().String(), DstPort: dst.Port()},
+		Flow:     policy.Flow{Protocol: "tcp", SrcIP: src.Addr().String(), DstIP: dst.Addr().String(), DstPort: dst.Port()},
 		Decision: policy.Decision{Action: policy.ActionBlock, Layer: LayerZTNA, Log: true},
 	}
 	deny := func(rule, msg string, args ...any) {

@@ -727,6 +727,9 @@ func TestFilter(t *testing.T) {
 	for _, r := range recs {
 		if r.Flow.DstIP == "93.184.215.14" && r.Where == "edge" && r.DeviceID == "d1" && r.BytesOut > 0 && r.BytesIn > 0 {
 			found = true
+			if r.Flow.SrcIP != me {
+				t.Fatalf("allowed record SrcIP: got %q, want %q", r.Flow.SrcIP, me)
+			}
 		}
 	}
 	if !found {
@@ -736,6 +739,9 @@ func TestFilter(t *testing.T) {
 	var blocked []string
 	for _, r := range fx.e.flows.recs {
 		blocked = append(blocked, r.Decision.RuleID)
+		if r.Flow.SrcIP != me {
+			t.Fatalf("blocked record SrcIP: got %q, want %q", r.Flow.SrcIP, me)
+		}
 	}
 	if got := strings.Join(blocked, ","); !strings.Contains(got, "no-smtp") || !strings.Contains(got, "no-tracker") || !strings.Contains(got, "decide:x") {
 		t.Fatalf("blocked records: %s", got)

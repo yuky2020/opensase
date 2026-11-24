@@ -65,7 +65,7 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	q := req.Question[0]
 	name := normalize(q.Name)
 	if blocked, list := c.EvaluateDNS(name); blocked {
-		rs.block(w, req, c, d, name, "dns:"+list, q)
+		rs.block(w, req, c, d, client, name, "dns:"+list, q)
 		return
 	}
 	// SafeSearch (ADR-0025): covered names resolve to the provider's safe hostname.
@@ -79,7 +79,7 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 	// Web categories (ADR-0022), unless the tenant allowed the name explicitly.
 	if cat, ok := rs.e.category(c, name); ok {
-		rs.block(w, req, c, d, name, "cat:"+cat, q)
+		rs.block(w, req, c, d, client, name, "cat:"+cat, q)
 		return
 	}
 	// Private app names (ADR-0013) are answered here and never forwarded upstream.
@@ -107,11 +107,11 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if cn, ok := rr.(*dns.CNAME); ok {
 			target := normalize(cn.Target)
 			if blocked, list := c.EvaluateDNS(target); blocked {
-				rs.block(w, req, c, d, name, "dns:"+list, q)
+				rs.block(w, req, c, d, client, name, "dns:"+list, q)
 				return
 			}
 			if cat, ok := rs.e.category(c, target); ok {
-				rs.block(w, req, c, d, name, "cat:"+cat, q)
+				rs.block(w, req, c, d, client, name, "cat:"+cat, q)
 				return
 			}
 		}
@@ -163,7 +163,7 @@ func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, client netip.
 	_ = w.WriteMsg(m)
 }
 
-func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, name, rule string, q dns.Question) {
+func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, client netip.Addr, name, rule string, q dns.Question) {
 	m := new(dns.Msg)
 	if c.BlockResponse() == "zero" {
 		m.SetReply(req)
@@ -183,7 +183,7 @@ func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled
 	now := time.Now()
 	rs.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: d.id,
-		Flow:     policy.Flow{Protocol: "udp", DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
+		Flow:     policy.Flow{Protocol: "udp", SrcIP: client.String(), DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
 		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: "dns", Log: true},
 	})
 }

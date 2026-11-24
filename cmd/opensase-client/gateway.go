@@ -95,8 +95,8 @@ var iptables = func(ctx context.Context, args ...string) error {
 	return nil
 }
 
-// runRoute runs ip route with args.
-func runRoute(ctx context.Context, args ...string) error {
+// runRoute runs ip route with args; it is a variable so tests can record the calls.
+var runRoute = func(ctx context.Context, args ...string) error {
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "ip", append([]string{"route"}, args...)...) //nolint:gosec // G204: fixed binary; args built from parsed prefixes
 	cmd.Stderr = &stderr
@@ -107,14 +107,10 @@ func runRoute(ctx context.Context, args ...string) error {
 }
 
 // setupGateway enables IPv4 forwarding and installs the gateway rules. It returns a cleanup
-// function that removes them. If geneveDev is supplied and non-empty, routes for the gateway
-// CIDRs are installed via that device so return traffic reaches the GENEVE ingress.
-func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns netip.Addr, log *slog.Logger, routed bool, geneveDev ...string) (func(), error) {
-	var gnv string
-	if len(geneveDev) > 0 {
-		gnv = geneveDev[0]
-	}
-	cleanup := func() { teardownGateway(context.WithoutCancel(ctx), cidrs, gnv, log) }
+// function that removes them. If geneveDev is supplied and non-empty, routes for the geneveCIDRs
+// are installed via that device so return traffic reaches the GENEVE ingress.
+func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns netip.Addr, log *slog.Logger, routed bool, geneveDev string, geneveCIDRs []netip.Prefix) (func(), error) {
+	cleanup := func() { teardownGateway(context.WithoutCancel(ctx), cidrs, geneveCIDRs, geneveDev, log) }
 	for _, c := range gatewayChains {
 		// Create (or reuse after an unclean exit) and empty the chain.
 		_ = iptables(ctx, "-t", c.table, "-N", c.chain)
@@ -139,9 +135,9 @@ func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns net
 		cleanup()
 		return nil, err
 	}
-	if gnv != "" {
-		for _, c := range cidrs {
-			if err := runRoute(ctx, "replace", c.String(), "dev", gnv); err != nil {
+	if geneveDev != "" {
+		for _, c := range geneveCIDRs {
+			if err := runRoute(ctx, "replace", c.String(), "dev", geneveDev); err != nil {
 				cleanup()
 				return nil, err
 			}
@@ -154,9 +150,9 @@ func setupGateway(ctx context.Context, tun string, cidrs []netip.Prefix, dns net
 // teardownGateway removes the NAT, DNS and MSS rules but leaves a kill switch: the filter
 // chain keeps dropping forwarded traffic from the gateway subnets, so workloads never reach
 // the network outside the tunnel while the gateway is down. The next start replaces it.
-func teardownGateway(ctx context.Context, cidrs []netip.Prefix, gnv string, log *slog.Logger) {
+func teardownGateway(ctx context.Context, cidrs []netip.Prefix, geneveCIDRs []netip.Prefix, gnv string, log *slog.Logger) {
 	if gnv != "" {
-		for _, c := range cidrs {
+		for _, c := range geneveCIDRs {
 			if err := runRoute(ctx, "del", c.String(), "dev", gnv); err != nil {
 				log.Debug("gateway route not removed", "subnet", c.String(), "dev", gnv, "err", err)
 			}

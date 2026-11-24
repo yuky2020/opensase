@@ -230,9 +230,11 @@ type Flow struct {
 	UID      int         `json:"uid,omitempty"`
 	Network  NetworkType `json:"network,omitempty"`
 	Protocol string      `json:"protocol"`
-	DstIP    string      `json:"dstIp"`
-	DstPort  uint16      `json:"dstPort"`
-	Domain   string      `json:"domain,omitempty"` // from DNS snooping, lowercase, no trailing dot
+	// Source address as seen by the Edge: the device's tunnel address, or a workload address in a Workload Gateway's routed subnet (ADR-0015). Empty on device-side records.
+	SrcIP   string `json:"srcIp,omitempty"`
+	DstIP   string `json:"dstIp"`
+	DstPort uint16 `json:"dstPort"`
+	Domain  string `json:"domain,omitempty"` // from DNS snooping, lowercase, no trailing dot
 }
 
 // Decision is the result of evaluation.

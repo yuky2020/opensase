@@ -67,18 +67,19 @@ To support placement behind a cloud gateway load balancer that delivers workload
 
 ### Flags
 - `-geneve-listen ADDR` (e.g. `:6081`): starts a UDP listener for GENEVE-encapsulated traffic and creates a dedicated TUN interface named `osase-gnv` (MTU 1400).
+- `-geneve-cidrs PREFIXES`: comma-separated IPv4 prefixes (e.g. `10.31.0.0/24`) routed via the GENEVE ingress. Required when `-geneve-listen` is set; every prefix must also be in `-gateway` (or contained in one). Directly attached subnets must not be routed into the GENEVE TUN: routing them into `osase-gnv` would cause their return traffic (HTTPS replies, `/healthz`, GENEVE replies) to enter the GENEVE TUN and be dropped as unknown flows. Only `-geneve-cidrs` prefixes receive routes via `osase-gnv`; other `-gateway` subnets keep normal routing.
 - `-health-listen ADDR` (e.g. `:8080`): serves an HTTP health check endpoint (`GET /healthz`) answering 200 `ok` while the tunnel is up (`connected`) and 503 otherwise.
-- Both flags require `-gateway` and are rejected if `-gateway` is not provided.
+- `-geneve-listen` and `-health-listen` require `-gateway` and are rejected if `-gateway` is not provided.
 
 ### Packet Path and Flow Table
 1. **Receive Path:**
    - A cloud gateway load balancer delivers GENEVE datagrams to `-geneve-listen`.
    - The ingress parser validates GENEVE version 0 and accepts only inner protocol `0x0800` (IPv4).
-   - The inner IPv4 packet source must fall within one of the `-gateway` CIDRs; otherwise it is dropped.
+   - The inner IPv4 packet source must fall within one of the `-geneve-cidrs` subnets; otherwise it is dropped.
    - The flow table records a mapping from the inner 5-tuple (`protocol`, `src`, `dst`, `sport`, `dport`; ports 0 for non-TCP/UDP) to the sender UDP address and the preserved GENEVE header (VNI and variable-length options, copied).
    - The inner packet is written to the `osase-gnv` TUN device, where the Linux kernel forwards it into the OpenSASE WireGuard tunnel via existing iptables forwarding rules.
 2. **Return Path:**
-   - Ingress routes (`ip route replace <cidr> dev osase-gnv`) route return traffic for the gateway subnets to `osase-gnv` (and are removed upon gateway teardown).
+   - Ingress routes (`ip route replace <cidr> dev osase-gnv`) route return traffic for the `-geneve-cidrs` subnets to `osase-gnv` (and are removed upon gateway teardown). Gateway CIDRs not listed in `-geneve-cidrs` keep normal routing.
    - Return packets read from `osase-gnv` are parsed for their 5-tuple.
    - The flow table looks up the reversed 5-tuple. If found, the return packet is encapsulated with the saved GENEVE header (same VNI and options) and transmitted back to the saved sender UDP address.
    - Unknown or expired return flows are dropped and counted.
@@ -130,3 +131,7 @@ Routed mode enables per-workload identity: workloads retain their real source ad
 - **IPv4 only:** Workload routing supports IPv4 subnets only; IPv6 forwarding remains disabled.
 - **Single gateway per CIDR:** Each CIDR may be assigned to exactly one gateway device at a time.
 - **No high availability pair:** Redundant gateway active/passive pairs are not yet supported for the same CIDR.
+
+## Addendum: End-to-end check (issue #21, slice C)
+
+The dev stack e2e test verifies GENEVE ingress and routed mode using `test/tools/geneve-probe`. The gateway runs with `-gateway 10.30.0.0/24,10.31.0.0/24 -geneve-cidrs 10.31.0.0/24`, keeping normal routing for the directly attached workload subnet (`10.30.0.0/24`) while routing GENEVE traffic via `osase-gnv` (`10.31.0.0/24`). The probe sends a GENEVE-encapsulated DNS A query for `example.com` (VNI 4242, option class 0x0103, type 0x01, data 0xdeadbeef) from inner source 10.31.0.99 to destination 100.64.0.1 via UDP port 6081 on the gateway. It validates that the reply datagram parses as GENEVE with the same VNI and option, carries an inner IPv4 UDP response from 100.64.0.1:53 to 10.31.0.99, and contains a valid DNS response with at least one answer. The e2e suite also checks gateway health via HTTP `/healthz` (200 OK while the tunnel is connected), configures authorized device routes on the Control Plane (`opensasectl device-routes set`) for both subnets, and confirms that flow records in routed mode preserve workload source addresses without NAT.

@@ -244,7 +244,7 @@ services:
     depends_on:
       edge:
         condition: service_started
-    command: ["-state", "/var/lib/opensase-client", "-control", "https://controlplane:9443", "-ca", "/etc/opensase/root.crt", "-key-file", "/run/secrets/provisioning_key", "-enroll", "-gateway", "10.30.0.0/24", "-name", "e2e-gateway", "-status-every", "30s"]
+    command: ["-state", "/var/lib/opensase-client", "-control", "https://controlplane:9443", "-ca", "/etc/opensase/root.crt", "-key-file", "/run/secrets/provisioning_key", "-enroll", "-gateway", "10.30.0.0/24,10.31.0.0/24", "-geneve-cidrs", "10.31.0.0/24", "-name", "e2e-gateway", "-status-every", "30s", "-geneve-listen", ":6081", "-health-listen", ":8080", "-gateway-routed"]
 
   # A workload with no Client: its default route is the gateway (set by e2e.sh).
   workload:

@@ -15,7 +15,8 @@
 #      Destructive: the connector stays revoked (re-run bootstrap.sh to add a new one).
 #  10. Workload Gateway (ADR-0015): a workload on an internal subnet, with no Client, reaches the
 #      internet and the private app only through the gateway; policy and DNS policy apply;
-#      forwarded traffic cannot bypass the tunnel.
+#      forwarded traffic cannot bypass the tunnel; healthz answers 200; GENEVE encapsulated DNS
+#      query answered with same VNI and option; routed mode flow records show workload source.
 #  11. Web and SaaS control (ADR-0017): a blocked SaaS app fails DNS, and connecting to it by
 #      address (curl --connect-to, no DNS) is reset by the Edge on its TLS SNI, while the
 #      same request naming the address's own host completes.
@@ -139,10 +140,24 @@ until docker compose --profile e2e logs gateway 2>/dev/null | grep -q 'workload 
   sleep 1
 done
 if [ "$i" -lt 60 ]; then ok "gateway tunnel up and forwarding 10.30.0.0/24"; else ko "gateway not active"; docker compose --profile e2e logs --tail 30 gateway >&2; fi
+gw_dev="$(docker compose --profile e2e logs gateway 2>/dev/null | grep -o '"deviceId":"[^"]*"' | tail -1 | cut -d'"' -f4)"
+if [ -z "$gw_dev" ]; then
+  gw_dev="$(ctl devices -tenant "$TENANT" 2>/dev/null | awk '$3 == "e2e-gateway" && $5 == "false" {id=$1} END {print id}')"
+fi
+if [ -z "$gw_dev" ]; then
+  ko "failed to get current gateway device ID"
+elif ! ctl device-routes set -tenant "$TENANT" -device "$gw_dev" -cidr 10.30.0.0/24 -cidr 10.31.0.0/24; then
+  ko "failed to authorise gateway routes for $gw_dev"
+fi
 wexec sh -c 'ip route replace default via 10.30.0.2 && echo "nameserver 1.1.1.1" >/etc/resolv.conf'
 code=""
-for _ in 1 2 3 4 5; do
-  code="$(wexec curl -sS -m 15 -o /dev/null -w '%{http_code}' https://example.com 2>/dev/null)" && break
+i=0
+while [ "$i" -lt 30 ]; do
+  code="$(wexec curl -sS -m 15 -o /dev/null -w '%{http_code}' https://example.com 2>/dev/null || true)"
+  case "$code" in
+    2??|3??) break ;;
+  esac
+  i=$((i + 1))
   sleep 2
 done
 case "$code" in
@@ -163,6 +178,35 @@ if echo "${body:-}" | grep -q 'hello from intranet'; then ok "workload: private 
 # route), but forwarded workload traffic may only leave through the tunnel.
 cpip="$(docker compose --profile e2e exec -T gateway getent hosts controlplane | awk '{print $1; exit}')"
 if [ -n "$cpip" ] && wexec nc -z -w 4 "$cpip" 9443 >/dev/null 2>&1; then ko "workload reached $cpip outside the tunnel"; else ok "workload cannot bypass the tunnel (direct $cpip:9443 dropped)"; fi
+
+hcode="$(wexec curl -s -o /dev/null -w '%{http_code}' http://10.30.0.2:8080/healthz 2>/dev/null || true)"
+if [ "$hcode" = 200 ]; then
+  ok "gateway health: /healthz answers 200 while the tunnel is up"
+else
+  ko "gateway health: /healthz answers HTTP $hcode"
+fi
+
+if out="$(wexec geneve-probe -src 10.31.0.99 2>&1)"; then
+  ok "geneve: encapsulated DNS query answered and re-encapsulated with the same VNI and option"
+else
+  ko "geneve: probe failed: $out"
+  docker compose --profile e2e logs --tail 200 gateway 2>&1 | grep -iE 'geneve|health|drop|error' | tail -30 >&2
+  docker compose logs --tail 100 edge 2>&1 | grep -iE 'route|peers synced|error' | tail -20 >&2
+fi
+
+i=0
+until ctl flows -tenant "$TENANT" -limit 500 -json 2>/dev/null | jq -e '[.records[] | select(.flow.srcIp == "10.30.0.10")] | length > 0' >/dev/null 2>&1; do
+  i=$((i + 1))
+  [ "$i" -ge 15 ] && break
+  sleep 2
+done
+if [ "$i" -lt 15 ]; then
+  ok "routed mode: flow records show the workload source 10.30.0.10 (no NAT)"
+else
+  ko "routed mode: flow records show the workload source 10.30.0.10 (no NAT)"
+fi
+
+ctl device-routes set -tenant "$TENANT" -device "$gw_dev"
 docker compose --profile e2e rm -sf gateway workload >/dev/null 2>&1 || true
 
 # 8. ZTNA private access through the Connector (ADR-0013).

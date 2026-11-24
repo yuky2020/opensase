@@ -35,27 +35,44 @@ type packetDev interface {
 	Close() error
 }
 
-// realPacketDev wraps a wireguard tun.Device.
+// tunOffset is the headroom wireguard-go's Linux TUN needs in front of each packet (it
+// writes a virtio-net header there); Write and Read fail with a smaller offset.
+const tunOffset = 16
+
+// realPacketDev wraps a wireguard tun.Device. Packets are copied into buffers with
+// tunOffset bytes of headroom.
 type realPacketDev struct {
-	dev tun.Device
+	dev  tun.Device
+	rbuf []byte // read buffer, reused (the read loop is single-threaded)
+	mu   sync.Mutex
+	wbuf []byte // write buffer, guarded by mu
 }
 
 func (d *realPacketDev) ReadPacket(buf []byte) (int, error) {
-	bufs := [][]byte{buf}
+	if len(d.rbuf) < tunOffset+len(buf) {
+		d.rbuf = make([]byte, tunOffset+len(buf))
+	}
+	bufs := [][]byte{d.rbuf}
 	sizes := []int{0}
-	n, err := d.dev.Read(bufs, sizes, 0)
+	n, err := d.dev.Read(bufs, sizes, tunOffset)
 	if err != nil {
 		return 0, err
 	}
 	if n == 0 {
 		return 0, nil
 	}
-	return sizes[0], nil
+	return copy(buf, d.rbuf[tunOffset:tunOffset+sizes[0]]), nil
 }
 
 func (d *realPacketDev) WritePacket(buf []byte) error {
-	bufs := [][]byte{buf}
-	_, err := d.dev.Write(bufs, 0)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if cap(d.wbuf) < tunOffset+len(buf) {
+		d.wbuf = make([]byte, tunOffset+len(buf), tunOffset+65535)
+	}
+	d.wbuf = d.wbuf[:tunOffset+len(buf)]
+	copy(d.wbuf[tunOffset:], buf)
+	_, err := d.dev.Write([][]byte{d.wbuf}, tunOffset)
 	return err
 }
 
@@ -239,15 +256,17 @@ type geneveIngress struct {
 	droppedReturnParse     uint64
 	droppedEncapErr        uint64
 	droppedUDPSend         uint64
+	droppedReasons         map[string]bool
 }
 
 func newGeneveIngress(conn packetConn, dev packetDev, cidrs []netip.Prefix, log *slog.Logger, maxFlows int) *geneveIngress {
 	return &geneveIngress{
-		conn:  conn,
-		dev:   dev,
-		cidrs: cidrs,
-		log:   log,
-		flows: newFlowTable(maxFlows),
+		conn:           conn,
+		dev:            dev,
+		cidrs:          cidrs,
+		log:            log,
+		flows:          newFlowTable(maxFlows),
+		droppedReasons: make(map[string]bool),
 	}
 }
 
@@ -291,31 +310,78 @@ func (g *geneveIngress) rxLoop() {
 	}
 }
 
+func ipAddrs(b []byte) (src, dst netip.Addr) {
+	if len(b) >= 20 && b[0]>>4 == 4 {
+		src, _ = netip.AddrFromSlice(b[12:16])
+		dst, _ = netip.AddrFromSlice(b[16:20])
+	} else if len(b) >= 40 && b[0]>>4 == 6 {
+		src, _ = netip.AddrFromSlice(b[8:24])
+		dst, _ = netip.AddrFromSlice(b[24:40])
+	}
+	return
+}
+
+func (g *geneveIngress) recordDrop(reason string, src, dst netip.Addr) {
+	g.mu.Lock()
+	switch reason {
+	case "malformed_geneve":
+		g.droppedMalformedGeneve++
+	case "non_ipv4_proto":
+		g.droppedNonIPv4Proto++
+	case "malformed_ip":
+		g.droppedMalformedIP++
+	case "non_ipv4_version":
+		g.droppedNonIPv4Version++
+	case "outside_cidr":
+		g.droppedOutsideCIDR++
+	case "tun_write":
+		g.droppedTUNWrite++
+	case "unknown_return":
+		g.droppedUnknownReturn++
+	case "return_parse":
+		g.droppedReturnParse++
+	case "encap_err":
+		g.droppedEncapErr++
+	case "udp_send":
+		g.droppedUDPSend++
+	}
+	first := !g.droppedReasons[reason]
+	if first {
+		g.droppedReasons[reason] = true
+	}
+	g.mu.Unlock()
+
+	if first {
+		var srcStr, dstStr string
+		if src.IsValid() {
+			srcStr = src.String()
+		}
+		if dst.IsValid() {
+			dstStr = dst.String()
+		}
+		g.log.Info("geneve packet dropped", "reason", reason, "src", srcStr, "dst", dstStr)
+	}
+}
+
 func (g *geneveIngress) handleReceive(datagram []byte, sender net.Addr) {
 	hdr, inner, err := geneve.Parse(datagram)
 	if err != nil {
-		g.mu.Lock()
-		g.droppedMalformedGeneve++
-		g.mu.Unlock()
+		g.recordDrop("malformed_geneve", netip.Addr{}, netip.Addr{})
 		return
 	}
 	if hdr.Protocol != geneve.ProtoIPv4 {
-		g.mu.Lock()
-		g.droppedNonIPv4Proto++
-		g.mu.Unlock()
+		src, dst := ipAddrs(inner)
+		g.recordDrop("non_ipv4_proto", src, dst)
 		return
 	}
 	var pkt packet.Packet
 	if err := packet.Parse(inner, &pkt); err != nil {
-		g.mu.Lock()
-		g.droppedMalformedIP++
-		g.mu.Unlock()
+		src, dst := ipAddrs(inner)
+		g.recordDrop("malformed_ip", src, dst)
 		return
 	}
 	if pkt.Version != 4 {
-		g.mu.Lock()
-		g.droppedNonIPv4Version++
-		g.mu.Unlock()
+		g.recordDrop("non_ipv4_version", pkt.Src, pkt.Dst)
 		return
 	}
 	allowed := false
@@ -326,9 +392,7 @@ func (g *geneveIngress) handleReceive(datagram []byte, sender net.Addr) {
 		}
 	}
 	if !allowed {
-		g.mu.Lock()
-		g.droppedOutsideCIDR++
-		g.mu.Unlock()
+		g.recordDrop("outside_cidr", pkt.Src, pkt.Dst)
 		return
 	}
 
@@ -350,9 +414,7 @@ func (g *geneveIngress) handleReceive(datagram []byte, sender net.Addr) {
 	g.flows.mu.Unlock()
 
 	if err := g.dev.WritePacket(inner); err != nil {
-		g.mu.Lock()
-		g.droppedTUNWrite++
-		g.mu.Unlock()
+		g.recordDrop("tun_write", pkt.Src, pkt.Dst)
 		return
 	}
 
@@ -382,9 +444,8 @@ func (g *geneveIngress) txLoop() {
 func (g *geneveIngress) handleReturn(packetBytes []byte, encapBuf []byte) {
 	var pkt packet.Packet
 	if err := packet.Parse(packetBytes, &pkt); err != nil || pkt.Version != 4 {
-		g.mu.Lock()
-		g.droppedReturnParse++
-		g.mu.Unlock()
+		src, dst := ipAddrs(packetBytes)
+		g.recordDrop("return_parse", src, dst)
 		return
 	}
 
@@ -412,24 +473,18 @@ func (g *geneveIngress) handleReturn(packetBytes []byte, encapBuf []byte) {
 	g.flows.mu.Unlock()
 
 	if !ok {
-		g.mu.Lock()
-		g.droppedUnknownReturn++
-		g.mu.Unlock()
+		g.recordDrop("unknown_return", pkt.Src, pkt.Dst)
 		return
 	}
 
 	encap, err := hdr.AppendTo(encapBuf[:0], packetBytes)
 	if err != nil {
-		g.mu.Lock()
-		g.droppedEncapErr++
-		g.mu.Unlock()
+		g.recordDrop("encap_err", pkt.Src, pkt.Dst)
 		return
 	}
 
 	if _, err := g.conn.WriteTo(encap, sender); err != nil {
-		g.mu.Lock()
-		g.droppedUDPSend++
-		g.mu.Unlock()
+		g.recordDrop("udp_send", pkt.Src, pkt.Dst)
 		return
 	}
 
@@ -487,6 +542,28 @@ func (g *geneveIngress) logStats() {
 		"dropped_udp_send", dUDP,
 		"active_flows", activeFlows,
 	)
+}
+
+// prefixContains reports whether parent contains child.
+func prefixContains(parent, child netip.Prefix) bool {
+	return parent.Bits() <= child.Bits() && parent.Contains(child.Addr())
+}
+
+// validateGeneveCIDRs ensures every prefix in gnvCIDRs is contained in at least one gwCIDRs prefix.
+func validateGeneveCIDRs(gwCIDRs, gnvCIDRs []netip.Prefix) error {
+	for _, gnv := range gnvCIDRs {
+		contained := false
+		for _, gw := range gwCIDRs {
+			if prefixContains(gw, gnv) {
+				contained = true
+				break
+			}
+		}
+		if !contained {
+			return fmt.Errorf("-geneve-cidrs prefix %s is not within -gateway prefixes", gnv)
+		}
+	}
+	return nil
 }
 
 // startGeneveIngress creates the UDP listener and osase-gnv TUN device, then starts the ingress loops.

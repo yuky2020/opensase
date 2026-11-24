@@ -238,7 +238,7 @@ func (f *Filter) outbound(pkt []byte) bool {
 		}
 		return f.ct.add(key, &conn{deviceID: d.id, proto: p.Protocol, local: true, start: now}, now, len(pkt), &p)
 	}
-	flow := policy.Flow{Protocol: proto, DstIP: dst.String(), DstPort: p.DstPort, Domain: f.e.snoop.lookup(p.Src.Unmap(), dst)}
+	flow := policy.Flow{Protocol: proto, SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort, Domain: f.e.snoop.lookup(p.Src.Unmap(), dst)}
 	if proto == "icmp" {
 		flow.DstPort = 0
 	}
@@ -284,7 +284,7 @@ func (f *Filter) outbound(pkt []byte) bool {
 // where the REDIRECT rule sends it to the broker listener, which re-checks the name, port
 // and tenant and records the flow. Everything else is rejected here.
 func (f *Filter) ztnaOutbound(p *packet.Packet, pkt []byte, d *device, key packet.FlowKey, dst netip.Addr, now time.Time) bool {
-	flow := policy.Flow{Protocol: protoName(p.Protocol), DstIP: dst.String(), DstPort: p.DstPort}
+	flow := policy.Flow{Protocol: protoName(p.Protocol), SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort}
 	if flow.Protocol == "icmp" {
 		flow.DstPort = 0
 	}

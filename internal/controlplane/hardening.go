@@ -355,6 +355,7 @@ func sanitizeFlow(rec api.FlowRecord, now time.Time) api.FlowRecord {
 	f.Domain = truncate(f.Domain, maxDomainLen)
 	f.App = truncate(f.App, maxStringLen)
 	f.DstIP = truncate(f.DstIP, maxDstIPLen)
+	f.SrcIP = truncate(f.SrcIP, maxDstIPLen)
 	f.Protocol = truncate(f.Protocol, maxProtoLen)
 	f.Network = policy.NetworkType(truncate(string(f.Network), maxNetworkLen))
 	rec.Decision.RuleID = truncate(rec.Decision.RuleID, maxRuleIDLen)

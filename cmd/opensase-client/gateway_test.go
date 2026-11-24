@@ -61,7 +61,7 @@ func TestSetupGatewayRulesAndKillSwitch(t *testing.T) {
 	calls := fakeIPT(t, "")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cidrs := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}
-	cleanup, err := setupGateway(context.Background(), "osase0", cidrs, netip.MustParseAddr("100.64.0.1"), log, false)
+	cleanup, err := setupGateway(context.Background(), "osase0", cidrs, netip.MustParseAddr("100.64.0.1"), log, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +100,38 @@ func TestSetupGatewayRulesAndKillSwitch(t *testing.T) {
 	}
 }
 
+func TestSetupGatewayGeneveRoutes(t *testing.T) {
+	_ = fakeIPT(t, "")
+	var routeCalls []string
+	oldRoute := runRoute
+	t.Cleanup(func() { runRoute = oldRoute })
+	runRoute = func(_ context.Context, args ...string) error {
+		routeCalls = append(routeCalls, strings.Join(args, " "))
+		return nil
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	gwCIDRs := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24"), netip.MustParsePrefix("10.31.0.0/24")}
+	gnvCIDRs := []netip.Prefix{netip.MustParsePrefix("10.31.0.0/24")}
+	cleanup, err := setupGateway(context.Background(), "osase0", gwCIDRs, netip.MustParseAddr("100.64.0.1"), log, false, "osase-gnv", gnvCIDRs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Equal(routeCalls, []string{"replace 10.31.0.0/24 dev osase-gnv"}) {
+		t.Errorf("expected only GENEVE CIDR routes on setup, got: %v", routeCalls)
+	}
+
+	routeCalls = nil
+	cleanup()
+
+	if !slices.Equal(routeCalls, []string{"del 10.31.0.0/24 dev osase-gnv"}) {
+		t.Errorf("expected only GENEVE CIDR routes on teardown, got: %v", routeCalls)
+	}
+}
+
 func TestSetupGatewayFailureKeepsForwardingOff(t *testing.T) {
 	calls := fakeIPT(t, "MASQUERADE")
-	_, err := setupGateway(context.Background(), "osase0", []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}, netip.MustParseAddr("100.64.0.1"), slog.New(slog.NewTextHandler(io.Discard, nil)), false)
+	_, err := setupGateway(context.Background(), "osase0", []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}, netip.MustParseAddr("100.64.0.1"), slog.New(slog.NewTextHandler(io.Discard, nil)), false, "", nil)
 	if err == nil {
 		t.Fatal("want error")
 	}

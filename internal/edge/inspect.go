@@ -304,7 +304,7 @@ func (e *Edge) webConn(ctx context.Context, c net.Conn, src, dst netip.AddrPort)
 		resetClose(c)
 		return
 	}
-	w := &webFlow{e: e, d: d, c: cp, tenant: v.tenant, dst: dst, host: host}
+	w := &webFlow{e: e, d: d, c: cp, tenant: v.tenant, src: src, dst: dst, host: host}
 	switch {
 	case proto == "tls" && host != "" && cp.Inspects(host):
 		w.intercept(ctx, &prefixConn{Conn: c, head: head})
@@ -422,6 +422,7 @@ type webFlow struct {
 	d      *device
 	c      *policy.Compiled
 	tenant string
+	src    netip.AddrPort
 	dst    netip.AddrPort
 	host   string // SNI (or first Host header for plain HTTP), lowercase
 	scheme string
@@ -851,7 +852,7 @@ func (w *webFlow) record(act policy.Action, rule string) {
 	now := time.Now()
 	w.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: w.d.id,
-		Flow:     policy.Flow{Protocol: "tcp", DstIP: w.dst.Addr().String(), DstPort: w.dst.Port(), Domain: w.host},
+		Flow:     policy.Flow{Protocol: "tcp", SrcIP: w.src.Addr().String(), DstIP: w.dst.Addr().String(), DstPort: w.dst.Port(), Domain: w.host},
 		Decision: policy.Decision{Action: act, RuleID: rule, Layer: LayerWeb, Log: true},
 	})
 }

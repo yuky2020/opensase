@@ -28,13 +28,14 @@ See [Client](components/client.md) for enrolment and how the desktop daemon work
 Images for `linux/amd64`, tagged with the version and `latest`:
 
 ```bash
+docker pull ghcr.io/yuky2020/opensase-quickstart:0.1.0     # all in one: Control Plane + Edge, trials only
 docker pull ghcr.io/yuky2020/opensase-controlplane:0.1.0   # Control Plane + admin portal
 docker pull ghcr.io/yuky2020/opensase-edge:0.1.0           # Edge
 docker pull ghcr.io/yuky2020/opensase-connector:0.1.0      # Connector (ZTNA)
 docker pull ghcr.io/yuky2020/opensase-ocr:0.1.0            # optional OCR service for DLP
 ```
 
-[Run the container images](containers.md) explains the first setup (PKI and first tenant) and a
+See [Quick start (all in one)](containers.md#quick-start-all-in-one) to run the Control Plane and Edge in a single container for trials. [Run the container images](containers.md) explains the first setup (PKI and first tenant) and a
 `docker run` example for each component.
 
 ### Standalone binaries

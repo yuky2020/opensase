@@ -1,0 +1,26 @@
+ARG REGISTRY=ghcr.io/yuky2020
+ARG VERSION=latest
+FROM ${REGISTRY}/opensase-controlplane:${VERSION} AS cp
+FROM ${REGISTRY}/opensase-edge:${VERSION}
+ARG VERSION=latest
+
+LABEL org.opencontainers.image.source="https://github.com/yuky2020/opensase" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.title="OpenSASE quick start" \
+      org.opencontainers.image.description="OpenSASE quick start: all-in-one Control Plane and Edge (trials and demos only)"
+
+COPY --from=cp /controlplane /usr/local/bin/controlplane
+COPY --from=cp /opensasectl /usr/local/bin/opensasectl
+COPY --from=cp /portal /usr/share/opensase/portal
+
+RUN apk add --no-cache bash openssl
+
+COPY deploy/release/quickstart/quickstart.sh /usr/local/bin/quickstart.sh
+RUN chmod 0755 /usr/local/bin/quickstart.sh
+
+COPY deploy/dev/policy.example.json /usr/share/opensase/policy.example.json
+
+VOLUME /data
+EXPOSE 9443/tcp 8443/tcp 8444/tcp 51820/udp
+ENTRYPOINT ["/usr/local/bin/quickstart.sh"]

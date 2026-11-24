@@ -6,10 +6,93 @@ This directory describes how to run released OpenSASE container images published
 
 Container images are published under `ghcr.io/yuky2020/opensase-<component>:<version>`:
 
+- `ghcr.io/yuky2020/opensase-quickstart:<version>`: All-in-one Control Plane and Edge for trials and demos.
 - `ghcr.io/yuky2020/opensase-controlplane:<version>`: Multi-tenant Control Plane, PKI management, policy snapshots, and admin portal.
 - `ghcr.io/yuky2020/opensase-edge:<version>`: Edge gateway terminating WireGuard tunnels, enforcing policy, DNS filtering, and brokering ZTNA.
 - `ghcr.io/yuky2020/opensase-connector:<version>`: Outbound-only connector dialing private applications.
 - `ghcr.io/yuky2020/opensase-ocr:<version>`: Optional OCR service for DLP on images.
+
+---
+
+## Quick start (all in one)
+
+> [!WARNING]
+> **Trials and demos only**: The quick start image runs both the Control Plane and an Edge inside a single container, holding the root CA private key, Control Plane signing keys, and Edge keys together in `/data`. For production deployments, use the separate component images described below.
+
+The `opensase-quickstart` image packages the Control Plane (with the admin portal) and an Edge in one container. On first start, it automatically generates a working PKI, an admin token, a tenant, an initial user, and a device provisioning key.
+
+### Run the container
+
+The container requires Linux capabilities `NET_ADMIN` (for WireGuard tunnel configuration), `NET_BIND_SERVICE` (for DNS filtering on port 53), `SETUID`, and `SETGID` (for privilege dropping to unprivileged users inside the container), as well as access to `/dev/net/tun` and IP forwarding:
+
+```bash
+docker run -d --name opensase --restart unless-stopped \
+  --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
+  --device /dev/net/tun \
+  --sysctl net.ipv4.ip_forward=1 \
+  -p 9443:9443 -p 8443:8443 -p 8444:8444 -p 51820:51820/udp \
+  -e OPENSASE_PUBLIC_HOST=<host-or-ip> \
+  -v opensase-data:/data \
+  ghcr.io/yuky2020/opensase-quickstart:<version>
+```
+
+Replace `<host-or-ip>` with the DNS name or IP address that clients and Connectors use to reach this host.
+
+### Read secrets and configuration
+
+Once the container has started, retrieve the generated secrets and connection parameters:
+
+```bash
+# Connection parameters, tenant, and device enrollment details
+docker exec opensase cat /data/quickstart.env
+
+# Super-admin Bearer token for API and portal access
+docker exec opensase cat /data/admin-token
+```
+
+`/data/quickstart.env` contains:
+- `CONTROL_URL`: Pinned Control Plane URL (`https://<host>:9443#sha256=<ca-hash>`).
+- `ENROLL_URI`: Single-string enrollment URI (`opensase://enroll?...`) for scanning or pasting.
+- `PROVISIONING_KEY`: One-time provisioning key for device enrollment.
+- `TENANT`: The initial tenant name (default: `demo`).
+- `ADMIN_TOKEN_FILE`: Path to the admin token file inside the container (`/data/admin-token`).
+
+### Open the admin portal
+
+Open `https://<host-or-ip>:9443/admin/` in your browser. Sign in using the admin token obtained from `/data/admin-token`.
+
+### Enrol a device
+
+To enrol a device using the `opensase` command-line client:
+
+1. Extract the provisioning key to a private file:
+   ```bash
+   (umask 077; docker exec opensase sed -n 's/^PROVISIONING_KEY=//p' /data/quickstart.env > provisioning.key)
+   ```
+2. Enrol (enrolment needs root; the desktop daemon `opensased` must be running):
+   ```bash
+   sudo opensase enroll -control "$(docker exec opensase sed -n 's/^CONTROL_URL=//p' /data/quickstart.env)" -key-file provisioning.key
+   ```
+
+On Android, open the Android app and scan the QR code of the `ENROLL_URI` or paste it directly into the app.
+
+### Add a Connector
+
+To add a Connector for ZTNA private applications (use your tenant if you set `OPENSASE_TENANT`; the output contains the Connector's provisioning key):
+
+```bash
+docker exec opensase opensasectl -url https://localhost:9443 -ca /data/pki/root.crt \
+  -token-file /data/admin-token connector add -tenant demo -name dc1
+```
+
+### Reset
+
+To delete all PKI material, databases, and logs to start fresh:
+
+```bash
+docker rm -f opensase
+docker volume rm opensase-data
+```
 
 ---
 

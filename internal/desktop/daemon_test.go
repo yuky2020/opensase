@@ -267,7 +267,7 @@ func TestEnrollRefusedWhileConnected(t *testing.T) {
 	}
 
 	body := `{"controlUrl":"https://cp:8443","provisioningKey":"secret-key","deviceName":"test-dev"}`
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body)).WithContext(withAdminOpAllowed(context.Background(), true))
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, req)
 
@@ -285,7 +285,7 @@ func TestEnrollPassesValuesAndKeyNeverAppearsInResponses(t *testing.T) {
 	d := setupTestDaemon(t, eng, nil)
 
 	body := fmt.Sprintf(`{"controlUrl":"https://cp:8443","provisioningKey":%q,"deviceName":"my-laptop"}`, secretKey)
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body)).WithContext(withAdminOpAllowed(context.Background(), true))
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, req)
 
@@ -312,7 +312,7 @@ func TestUnknownFields400(t *testing.T) {
 	d := setupTestDaemon(t, eng, nil)
 
 	body := `{"controlUrl":"https://cp:8443","provisioningKey":"pk","deviceName":"dev","extraField":"not-allowed"}`
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body)).WithContext(withAdminOpAllowed(context.Background(), true))
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, req)
 
@@ -330,7 +330,7 @@ func TestBodyOver64KiB413(t *testing.T) {
 
 	largeData := strings.Repeat("A", 65*1024)
 	body := fmt.Sprintf(`{"controlUrl":"https://cp:8443","provisioningKey":"%s","deviceName":"dev"}`, largeData)
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body)).WithContext(withAdminOpAllowed(context.Background(), true))
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, req)
 

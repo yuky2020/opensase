@@ -99,19 +99,19 @@ jobs:
 
           # linux/amd64
           mkdir -p dist/stage/linux-amd64
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-amd64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-amd64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased ./cmd/opensase
           cp LICENSE README.md dist/stage/linux-amd64/
           (cd dist/stage/linux-amd64 && tar -czf "../../opensase-${VERSION}-linux-amd64.tar.gz" *)
 
           # linux/arm64
           mkdir -p dist/stage/linux-arm64
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-arm64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/stage/linux-arm64/ ./cmd/controlplane ./cmd/edge ./cmd/connector ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased ./cmd/opensase
           cp LICENSE README.md dist/stage/linux-arm64/
           (cd dist/stage/linux-arm64 && tar -czf "../../opensase-${VERSION}-linux-arm64.tar.gz" *)
 
           # windows/amd64
           mkdir -p dist/stage/windows-amd64
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/windows-amd64/ ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/stage/windows-amd64/ ./cmd/opensasectl ./cmd/opensase-client ./cmd/opensased ./cmd/opensase
           cp LICENSE README.md dist/stage/windows-amd64/
           (cd dist/stage/windows-amd64 && zip -q -r "../../opensase-${VERSION}-windows-amd64.zip" *)
 
@@ -168,6 +168,7 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           wix extension add --global WixToolset.Util.wixext/5.0.2
           go build -trimpath -ldflags "-s -w" -o dist/daemon/opensased.exe ./cmd/opensased
+          go build -trimpath -ldflags "-s -w" -o dist/daemon/opensase-cli.exe ./cmd/opensase
           ROOT=$(cygpath -w "$PWD")
           wix build deploy/desktop/windows/opensase.wxs -wx -ext WixToolset.Util.wixext -arch x64 -d Version=$VERSION -d DaemonDir="$ROOT\dist\daemon" -d WintunDir="$ROOT\wintun\bin\amd64" -d AppDir="$ROOT\clients\mobile\build\windows\x64\runner\Release" -o dist/opensase-$VERSION-x64.msi
 
@@ -213,7 +214,8 @@ jobs:
       - name: Build .deb
         run: |
           go build -trimpath -ldflags "-s -w" -o dist/opensased ./cmd/opensased
-          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist
+          go build -trimpath -ldflags "-s -w" -o dist/opensase-cli ./cmd/opensase
+          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist dist/opensase-cli
           dpkg-deb --info dist/*.deb
           dpkg-deb --contents dist/*.deb
 

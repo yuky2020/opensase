@@ -29,6 +29,7 @@ msiexec /i opensase-<v>-x64.msi
 - **Application and daemon:** Installed to `C:\Program Files\OpenSASE`:
   - `opensased.exe`: Background daemon.
   - `opensase.exe`: Flutter desktop client application.
+  - `opensase-cli.exe`: Command-line interface client.
   - `wintun.dll`: Signed Wintun driver DLL.
   - Flutter application data, assets, and libraries.
 - **Service:** The `OpenSASE` Windows service (display name: "OpenSASE client") running `opensased.exe run` under `LocalSystem`, configured for automatic startup and automatic restart on failure.
@@ -56,13 +57,14 @@ sudo apt install ./opensase_<v>_amd64.deb
 
 #### What is Installed
 - **Daemon Binary:** `/usr/bin/opensased` (0755).
+- **Command-Line Client:** `/usr/bin/opensase` (0755).
 - **Service:** systemd unit `/usr/lib/systemd/system/opensased.service`, enabled and started immediately when systemd is active.
 - **Access Group:** System group `opensase` created during installation. Non-root users can be granted access to the daemon socket via:
   ```bash
   sudo usermod -aG opensase <user>
   ```
   Group membership takes effect on next login.
-- **Application Bundle:** Flutter desktop bundle installed to `/opt/opensase/` with symlink `/usr/bin/opensase -> /opt/opensase/opensase`.
+- **Application Bundle:** Flutter desktop bundle installed to `/opt/opensase/` started by the launcher `/usr/bin/opensase-app`. The launcher prefers the Mesa EGL driver when it is installed, because Flutter draws only part of the window on the NVIDIA EGL driver (issue #32); set `OPENSASE_GL=native` to use the default driver.
 - **Desktop Entry:** `/usr/share/applications/eu.opensase.opensase.desktop`.
 
 #### Uninstallation
@@ -77,6 +79,65 @@ To completely remove the package, its state directory, and the system group:
 sudo apt purge opensase
 ```
 Purging deletes `/var/lib/opensase` and removes the `opensase` system group.
+
+---
+
+## Command line
+
+The command-line client (`opensase` on Linux, `opensase-cli.exe` on Windows) controls the desktop daemon `opensased` through its local API. In the Linux package, the Flutter desktop app is started with `opensase-app` so that the command-line client owns the `opensase` command name.
+
+### Permissions and Access Group
+
+- **Linux:** Non-root users must belong to the `opensase` group to access the Unix domain socket. Privileged administrative operations (`enroll` and `unenroll`) require root (`sudo`).
+- **Windows:** Standard users can query status, flows, and events or toggle tunnel connectivity. Privileged operations (`enroll` and `unenroll`) require an elevated administrator.
+
+### Subcommands
+
+- `status`: Show current connection state, connected Edge, negotiated PQ key exchange, and active policy version (with `(stale)` indicator when expired).
+- `connect`: Connect the VPN tunnel interface and routing.
+- `disconnect`: Disconnect the tunnel.
+- `enroll -control URL [-name NAME]`: Enroll the device with the Control Plane. The provisioning key is read from `-key-file FILE`, the `OPENSASE_PROVISIONING_KEY` environment variable, prompted with password masking on an interactive terminal, or read from standard input. It is never accepted as a flag or argument.
+- `unenroll [-yes]`: Unenroll the device (prompts for confirmation on interactive terminals unless `-yes` is specified).
+- `flows [-n 50]`: Display recent flow records in a formatted table.
+- `events [-f]`: Stream daemon events. Without `-f`, buffered events are printed until the stream is idle for 1 second. With `-f`, follows events continuously until interrupted (Ctrl-C).
+- `version`: Print client build version.
+
+Global flags:
+- `-socket PATH` (Linux) / `-pipe PATH` (Windows): Path to the daemon local API socket or named pipe.
+- `-json`: Output raw JSON instead of formatted text.
+- `-timeout DUR`: Command timeout (default: 15s; not applied to `events -f`).
+
+### Examples
+
+Check daemon status:
+```bash
+opensase status
+```
+
+Enroll a device:
+```bash
+sudo opensase enroll -control https://cp.example:9443#sha256=<fingerprint> -key-file key.txt
+```
+
+Follow real-time daemon events:
+```bash
+opensase events -f
+```
+
+View recent flows:
+```bash
+opensase flows -n 20
+```
+
+Connect or disconnect:
+```bash
+opensase connect
+opensase disconnect
+```
+
+### Standalone Headless Client (`opensase-client`)
+
+Note that `cmd/opensase-client` is the standalone client for headless hosts and Workload Gateways and must not run together with `opensased` on the same machine.
 
 ---
 

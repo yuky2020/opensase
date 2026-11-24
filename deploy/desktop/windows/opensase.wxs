@@ -50,6 +50,10 @@
         <File Id="wintun.dll" Source="$(var.WintunDir)\wintun.dll" KeyPath="yes" />
       </Component>
 
+      <Component Id="OpenSaseCliExe" Guid="98F56763-8F43-4E8F-83FE-D0306F2D6AC1">
+        <File Id="opensase_cli.exe" Source="$(var.DaemonDir)\opensase-cli.exe" KeyPath="yes" />
+      </Component>
+
       <Files Include="$(var.AppDir)\**" />
     </ComponentGroup>
 

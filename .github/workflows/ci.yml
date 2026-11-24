@@ -85,6 +85,7 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           wix extension add --global WixToolset.Util.wixext/5.0.2
           go build -trimpath -ldflags "-s -w" -o dist/daemon/opensased.exe ./cmd/opensased
+          go build -trimpath -ldflags "-s -w" -o dist/daemon/opensase-cli.exe ./cmd/opensase
           VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
           # WiX resolves relative harvest paths against the .wxs file: pass absolute ones.
           ROOT=$(cygpath -w "$PWD")
@@ -131,8 +132,9 @@ jobs:
       - name: Build .deb
         run: |
           go build -trimpath -ldflags "-s -w" -o dist/opensased ./cmd/opensased
+          go build -trimpath -ldflags "-s -w" -o dist/opensase-cli ./cmd/opensase
           VERSION=$(grep '^version:' clients/mobile/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1 | tr -d '\r')
-          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist
+          sh scripts/package-deb.sh "$VERSION" dist/opensased clients/mobile/build/linux/x64/release/bundle dist dist/opensase-cli
           dpkg-deb --info dist/*.deb
           dpkg-deb --contents dist/*.deb
 

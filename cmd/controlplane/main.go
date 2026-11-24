@@ -90,7 +90,7 @@ func run() error {
 		}
 	}
 	if *portalDir != "" {
-		if st, err := os.Stat(filepath.Join(*portalDir, "index.html")); err != nil || !st.Mode().IsRegular() {
+		if st, err := os.Stat(filepath.Join(*portalDir, "index.html")); err != nil || !st.Mode().IsRegular() { //nolint:gosec // G703: the operator chooses the portal directory (flag or env), not a remote client
 			return fmt.Errorf("-portal-dir %s: index.html not found", *portalDir)
 		}
 	}

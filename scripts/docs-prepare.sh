@@ -11,6 +11,7 @@ strip_fm CONTEXT.md >docs/glossary.md
 strip_fm CONTRIBUTING.md >docs/contributing.md
 strip_fm CODE_OF_CONDUCT.md >docs/code-of-conduct.md
 strip_fm SECURITY.md >docs/security-policy.md
+strip_fm deploy/release/README.md >docs/containers.md
 strip_fm test/security/README.md >docs/security/test-suite.md
 {
   printf '# Security tester agent\n\n'

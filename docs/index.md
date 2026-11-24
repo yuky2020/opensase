@@ -12,6 +12,7 @@ that enforce one policy per tenant. Every tunnel and every API uses post-quantum
 exchange. There is no classic fallback.
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
+[Download](download.md){ .md-button }
 [Architecture](architecture.md){ .md-button }
 [GitHub](https://github.com/yuky2020/opensase){ .md-button }
 

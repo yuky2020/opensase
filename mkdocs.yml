@@ -66,6 +66,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Download:
+      - Releases: download.md
+      - Run the container images: containers.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

@@ -26,8 +26,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.zx2c4.com/wireguard/tun"
-
+	"github.com/yuky2020/opensase/internal/clientnet"
 	"github.com/yuky2020/opensase/mobile"
 )
 
@@ -55,7 +54,7 @@ func main() {
 	flag.StringVar(&o.name, "name", hostname(), "device name sent at enrollment")
 	flag.StringVar(&o.ca, "ca", "", "PEM file trusted for the enrollment request (copied to <state>/bootstrap-ca.pem)")
 	flag.StringVar(&o.network, "network", "ethernet", "network type: wifi, cellular, roaming, ethernet, unknown")
-	flag.StringVar(&o.tunName, "tun", defaultTUNName, "TUN interface name")
+	flag.StringVar(&o.tunName, "tun", clientnet.DefaultTUNName(), "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
 	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
 	flag.BoolVar(&o.gatewayRouted, "gateway-routed", false, "routed mode (per-workload identity): do not masquerade gateway subnets; requires -gateway")
@@ -218,10 +217,7 @@ func run(o options, log *slog.Logger) error {
 	if err := json.Unmarshal([]byte(cfgJSON), &tc); err != nil {
 		return err
 	}
-	if err := checkTUNPrerequisites(); err != nil {
-		return err
-	}
-	dev, err := tun.CreateTUN(o.tunName, tc.MTU)
+	dev, err := clientnet.CreateTUN(o.tunName, tc.MTU)
 	if err != nil {
 		return fmt.Errorf("create TUN %s: %w", o.tunName, err)
 	}
@@ -231,7 +227,7 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 
-	netCfg := netConfig{
+	netCfg := clientnet.Config{
 		Dev:    name,
 		IPv4:   tc.IPv4,
 		IPv6:   tc.IPv6,
@@ -241,7 +237,7 @@ func run(o options, log *slog.Logger) error {
 	}
 
 	if o.routes {
-		undo, err := configureNetwork(context.Background(), dev, netCfg)
+		undo, err := clientnet.Configure(context.Background(), dev, netCfg, log)
 		if err != nil {
 			dev.Close()
 			return err
@@ -250,7 +246,7 @@ func run(o options, log *slog.Logger) error {
 			defer undo()
 		}
 	} else {
-		printRouteInstructions(netCfg)
+		clientnet.PrintRouteInstructions(netCfg)
 	}
 
 	if err := eng.StartDevice(dev, o.network); err != nil {

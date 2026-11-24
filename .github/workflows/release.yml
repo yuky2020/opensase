@@ -61,6 +61,8 @@ jobs:
 
       - name: Build and push container image
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: deploy/release/Dockerfile.${{ matrix.name }}
@@ -305,6 +307,8 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: dist
+          # Only the packages: build-push-action also uploads .dockerbuild records.
+          pattern: "{binaries,msi,deb,apk}"
           merge-multiple: true
 
       - name: Generate release checksums, notes, and publish release

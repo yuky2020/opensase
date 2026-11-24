@@ -43,15 +43,17 @@ jobs:
 
       - name: Run go vet
         shell: bash
-        run: go vet ./cmd/opensase-client ./mobile/... ./pkg/...
+        run: go vet ./cmd/opensase-client ./cmd/opensased ./mobile/... ./pkg/... ./internal/...
 
-      - name: Build client
+      - name: Build client and daemon
         shell: bash
-        run: go build ./cmd/opensase-client
+        run: |
+          go build ./cmd/opensase-client
+          go build ./cmd/opensased
 
       - name: Run tests
         shell: bash
-        run: go test ./cmd/opensase-client ./pkg/policy/... ./pkg/packet/... ./pkg/pqsession/... ./mobile/...
+        run: go test ./cmd/opensase-client ./pkg/policy/... ./pkg/packet/... ./pkg/pqsession/... ./mobile/... ./internal/desktop/...
 
   lint:
     name: Lint

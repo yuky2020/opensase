@@ -84,3 +84,18 @@ func checkPeerAccess(ctx context.Context, group string) error {
 	}
 	return fmt.Errorf("access denied: uid %d is not a member of group %s", cred.uid, group)
 }
+
+func allowAdminOp(ctx context.Context) bool {
+	if v, ok := ctx.Value(adminOpOverrideKey{}).(bool); ok {
+		return v
+	}
+	cred, ok := ctx.Value(peerCredKey{}).(*peerCred)
+	if !ok || cred == nil {
+		// Non-Unix connections (e.g. in-memory test listeners without peer credentials)
+		return true
+	}
+	if cred.bad {
+		return false
+	}
+	return cred.uid == 0 || cred.uid == uint32(os.Getuid()) //nolint:gosec // G115: uids fit in uint32
+}

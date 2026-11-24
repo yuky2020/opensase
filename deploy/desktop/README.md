@@ -45,21 +45,85 @@ systemctl status opensased
 
 ---
 
+## Windows Installation and Setup
+
+### 1. Place Binaries and Drivers
+
+Copy `opensased.exe` and the signed `wintun.dll` (from the official Wintun distribution) to the application directory:
+
+```powershell
+mkdir "C:\Program Files\OpenSASE"
+copy opensased.exe "C:\Program Files\OpenSASE\"
+copy wintun.dll "C:\Program Files\OpenSASE\"
+```
+
+### 2. Install the Windows Service
+
+Open an elevated Command Prompt or PowerShell (Run as Administrator) and register the service:
+
+```cmd
+cd "C:\Program Files\OpenSASE"
+opensased.exe install
+```
+
+This registers the service `OpenSASE` (display name: "OpenSASE client") configured for automatic startup, with recovery actions that restart the service after 5 seconds up to 3 times on failure, and registers the Windows event log source `OpenSASE`.
+
+To uninstall at any time:
+```cmd
+opensased.exe uninstall
+```
+
+### 3. Start the Service
+
+Start the service via the Service Control Manager or command line:
+
+```cmd
+sc start OpenSASE
+```
+
+Or verify status:
+```cmd
+sc query OpenSASE
+```
+
+For console debugging from an elevated command prompt without running through the SCM:
+```cmd
+opensased.exe run
+```
+
+---
+
 ## Local API Specification
 
-The daemon serves a local JSON HTTP API over the Unix domain socket `/run/opensase/opensased.sock`.
+The daemon serves a local JSON HTTP API over:
+- Linux/Unix: Unix domain socket at `/run/opensase/opensased.sock`
+- Windows: Named pipe at `\\.\pipe\opensase`
 
 ### Access Control
 
+#### Linux/Unix
 1. **Filesystem and Group Permissions:**
    The socket directory `/run/opensase` is created with mode `0750` and the socket file with mode `0660`, owned by `root:opensase`. If the `opensase` group does not exist at startup, permissions fall back to root-only `0600` with a warning log.
 2. **Peer Credential Verification (`SO_PEERCRED`):**
-   Every incoming connection over the Unix socket is inspected for its peer UID using `SO_PEERCRED`. Only root (UID 0) or users belonging to the configured group (default `opensase`) are permitted; all other callers receive HTTP 403 Forbidden.
-3. **Host Header Defense:**
-   To defend against DNS rebinding if a local proxy or browser ever accesses the socket, requests whose `Host` header is neither `localhost` (with optional port) nor empty are rejected with HTTP 403 Forbidden.
-4. **Request Constraints:**
+   Every incoming connection over the Unix socket is inspected for its peer UID using `SO_PEERCRED`. Only root (UID 0) or users belonging to the configured group (default `opensase`) are permitted; all other callers receive HTTP 403 Forbidden. Enroll and unenroll operations are restricted to root or the daemon's user.
+
+#### Windows
+1. **Named Pipe Security Descriptor (SDDL):**
+   The pipe is created at `\\.\pipe\opensase` with SDDL `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)`:
+   - `SYSTEM` (`SY`) and `Administrators` (`BA`) receive Generic All (`GA`) access.
+   - `Interactive Users` (`IU`) receive Generic Read and Generic Write (`GRGW`) access, allowing the desktop UI of the signed-in interactive user to connect.
+   - Remote or network callers receive no access.
+2. **Role-Based Privilege Separation (Who May Call What):**
+   - **Interactive Users:** May query client status (`GET /v1/status`), view recent traffic flows (`GET /v1/flows`), stream events (`GET /v1/events`), and initiate tunnel connections or disconnections (`POST /v1/connect`, `POST /v1/disconnect`).
+   - **Administrators Only:** Device enrollment (`POST /v1/enroll`) and unenrollment (`POST /v1/unenroll`) require Administrator privileges (membership in `S-1-5-32-544` and an elevated token). Calls from unprivileged interactive users receive HTTP 403 Forbidden.
+   - **State Directory ACL:** The state directory (`%ProgramData%\OpenSASE`) is created with a protected DACL restricted to `SYSTEM` and `Administrators`.
+
+#### Common Protections
+1. **Host Header Defense:**
+   To defend against DNS rebinding if a local proxy or browser ever accesses the endpoint, requests whose `Host` header is neither `localhost` (with optional port) nor empty are rejected with HTTP 403 Forbidden.
+2. **Request Constraints:**
    Request bodies are limited to 64 KiB. JSON decoders reject unknown fields (HTTP 400).
-5. **Credential Safety:**
+3. **Credential Safety:**
    Provisioning keys and session secrets are never returned in responses, included in error messages, or written to log files.
 
 ---

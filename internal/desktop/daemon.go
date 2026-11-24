@@ -300,7 +300,27 @@ func (d *Daemon) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/events", d.handleEvents)
 
 	// Wrap with access control and host header defense
-	return hostHeaderMiddleware(d.peerAccessMiddleware(mux))
+	return hostHeaderMiddleware(d.peerAccessMiddleware(d.adminOpMiddleware(mux)))
+}
+
+type adminOpOverrideKey struct{}
+
+// withAdminOpAllowed injects an allowAdminOp override into the context for testing.
+func withAdminOpAllowed(ctx context.Context, allow bool) context.Context {
+	return context.WithValue(ctx, adminOpOverrideKey{}, allow)
+}
+
+func (d *Daemon) adminOpMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimSuffix(r.URL.Path, "/")
+		if (p == "/v1/enroll" || p == "/v1/unenroll") && r.Method == http.MethodPost {
+			if !allowAdminOp(r.Context()) {
+				writeJSONError(w, http.StatusForbidden, "forbidden: administrator privileges required")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func hostHeaderMiddleware(next http.Handler) http.Handler {

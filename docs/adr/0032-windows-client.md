@@ -75,6 +75,30 @@ To allow an unprivileged desktop UI (slice C) to control the client on both Linu
 4. **UI Isolation:**
    - The desktop UI process never holds private keys, certificate material, or session tokens. All cryptographic operations, key generation, and CSR signing remain enclosed within the daemon state directory. Provisioning keys are never returned in responses or recorded in logs.
 
+## Windows service and named pipe (slice B2)
+
+Slice B2 implements Windows service integration and named pipe local API delivery for `opensased`:
+
+1. **Service Registration and Lifecycle (`cmd/opensased`):**
+   - `opensased install`: Connects to the Service Control Manager via `golang.org/x/sys/windows/svc/mgr` and registers the service `OpenSASE` (Display Name: "OpenSASE client") with automatic start (`StartAutomatic`) pointing to the executable with argument `run`. Configures failure recovery actions to restart after 5 seconds up to 3 times. Registers the Windows event log source `OpenSASE`.
+   - `opensased uninstall`: Stops the running service, deletes the service from the SCM, and removes the event log source.
+   - `opensased run`: Detects SCM execution via `svc.IsWindowsService()`. Under SCM, it runs `svc.Run` with a service handler accepting `Stop` and `Shutdown`, reporting transitions (`StartPending`, `Running`, `StopPending`, `Stopped`), and gracefully disconnecting any active tunnel (undoing physical bypass routes and adapter DNS/routes) within a 20-second timeout window. When executed outside the SCM, it runs in the foreground for console debugging until interrupted (Ctrl+C).
+   - **Logging:** Daemon events are recorded to both stderr and the Windows event log (`OpenSASE` source) at Info and Error level. Keying material and tokens are never logged.
+
+2. **Named Pipe Listener with SDDL:**
+   - The daemon listens on named pipe `\\.\pipe\opensase` using `github.com/Microsoft/go-winio` (`winio.ListenPipe`) with `MessageMode: false`.
+   - **Security Descriptor (SDDL):** `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)`
+     - `SYSTEM` (`SY`) and Built-in `Administrators` (`BA`): Granted `GENERIC_ALL` (`GA`).
+     - `Interactive Users` (`IU`): Granted `GENERIC_READ | GENERIC_WRITE` (`GRGW`), allowing the desktop UI running in the logged-in user's desktop session to communicate with the daemon.
+     - Remote/network callers receive no access because only `IU` is granted among non-admin principals.
+
+3. **Privilege Separation and Admin-Only Operations:**
+   - When serving requests over the named pipe, the daemon identifies the caller's token in `ConnContext` by impersonating the pipe client (`windows.ImpersonateNamedPipeClient`) or resolving the peer process token via `GetNamedPipeClientProcessId`.
+   - **Interactive User Operations:** Any connected interactive user is allowed to read status (`GET /v1/status`), view recent flows (`GET /v1/flows`), stream events (`GET /v1/events`), and initiate tunnel connections (`POST /v1/connect`) or disconnections (`POST /v1/disconnect`).
+   - **Admin-Only Operations:** Operations that mutate sensitive device identity—`POST /v1/enroll` and `POST /v1/unenroll`—are guarded by an admin check middleware. The middleware requires the caller token to be a member of `Administrators` (`S-1-5-32-544`) and elevated (`TokenIsElevated != 0`). Non-admin callers or callers whose token cannot be identified receive HTTP 403 Forbidden.
+   - On Linux, this is unified under `allowAdminOp(ctx)`, where enroll/unenroll are restricted to root (UID 0) or the daemon user.
+   - **State Directory ACL:** The state directory defaults to `%ProgramData%\OpenSASE` and is initialized with a protected DACL restricting access to `SYSTEM` and `Administrators` (`mobile.restrictPath` semantics).
+
 ## Consequences
 
 - **Administrator Privileges Required (Slice A):** Because slice A runs interactively as a console application, configuring network interfaces, IP addresses, and routing tables on Windows requires running the process with Administrator privileges. Slice B will eliminate this requirement for end users by introducing a background service.

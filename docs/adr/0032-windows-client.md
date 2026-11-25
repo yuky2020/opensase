@@ -128,4 +128,4 @@ Slice D delivers automated desktop packaging for Windows and Linux built in CI:
    - The Windows MSI is currently unsigned; Windows SmartScreen will display an untrusted application warning until code signing is configured in a later release.
    - Code signing is left for later; .rpm and Arch packages were added afterwards (#53).
 
-The service now has an unrestricted service SID (needed by the planned WFP filters); the MSI path may only expose it after a reboot, to verify on a real install.
+The service now has an unrestricted service SID (needed by the planned WFP filters). `opensased install` sets it at creation. WiX rejects MsiServiceConfig, so for MSI installs the service sets the SID type on itself at its first start; the SCM applies it from the next service start, so the first run after an MSI install has no service SID. To verify on a real install.

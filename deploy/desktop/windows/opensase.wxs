@@ -27,7 +27,6 @@
                         ErrorControl="normal"
                         Arguments="run"
                         Account="LocalSystem">
-          <ServiceConfig ServiceSid="unrestricted" OnInstall="yes" OnReinstall="yes" />
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"

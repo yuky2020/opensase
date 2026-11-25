@@ -335,6 +335,8 @@ func runDaemon(stateDir, pipePath, tunName, controlURL string, connectOnStart, v
 			_ = d.Disconnect()
 		}()
 
+		ensureServiceSID(log)
+
 		svcHandler := &openSASEService{
 			cancel: cancel,
 			done:   done,
@@ -421,4 +423,37 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// ensureServiceSID makes sure the service is configured with an unrestricted service SID,
+// which the kill switch WFP filters use to match the daemon (research #38). `opensased
+// install` sets it at creation; the MSI cannot (WiX rejects MsiServiceConfig), so the
+// service sets it on itself. The SCM applies it from the next service start.
+func ensureServiceSID(log *slog.Logger) {
+	m, err := mgr.Connect()
+	if err != nil {
+		log.Warn("service SID: connect to service manager", "err", err)
+		return
+	}
+	defer func() { _ = m.Disconnect() }()
+	s, err := m.OpenService(serviceName)
+	if err != nil {
+		log.Warn("service SID: open service", "err", err)
+		return
+	}
+	defer func() { _ = s.Close() }()
+	cfg, err := s.Config()
+	if err != nil {
+		log.Warn("service SID: read config", "err", err)
+		return
+	}
+	if cfg.SidType == windows.SERVICE_SID_TYPE_UNRESTRICTED {
+		return
+	}
+	cfg.SidType = windows.SERVICE_SID_TYPE_UNRESTRICTED
+	if err := s.UpdateConfig(cfg); err != nil {
+		log.Warn("service SID: update config", "err", err)
+		return
+	}
+	log.Info("service SID type set to unrestricted; effective from the next service start")
 }

@@ -79,7 +79,9 @@ type Config struct {
 	// OCRURL is the ocrd service that reads the text of images for DLP (ADR-0024), for
 	// example http://ocr:8090. Empty: images carry no text.
 	OCRURL string
-	Logger *slog.Logger
+	// SkipIPForwardCheck skips the Linux net.ipv4.ip_forward check (e.g. for testing).
+	SkipIPForwardCheck bool
+	Logger             *slog.Logger
 }
 
 func (c *Config) defaults() {
@@ -275,6 +277,11 @@ func (e *Edge) run(ctx context.Context) error {
 	}
 
 	// 2. WireGuard on a kernel TUN wrapped by the policy filter.
+	if !e.cfg.SkipIPForwardCheck {
+		if err := checkIPForward(); err != nil {
+			return fmt.Errorf("edge: %w", err)
+		}
+	}
 	tdev, err := tun.CreateTUN(e.cfg.TUNName, e.cfg.MTU)
 	if err != nil {
 		return fmt.Errorf("edge: create TUN %s: %w", e.cfg.TUNName, err)

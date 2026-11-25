@@ -26,6 +26,36 @@ jobs:
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
 
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run fuzz tests
+        run: |
+          go test -list '^Fuzz' ./...
+          for pkg in $(go list ./...); do
+            targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
+            for target in $targets; do
+              echo "Fuzzing $target in $pkg"
+              go test -run '^$' -fuzz "^${target}\$" -fuzztime 20s "$pkg"
+            done
+          done
+
+      - name: Upload fuzz crashers
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashers
+          path: '**/testdata/fuzz/**'
+
   windows:
     name: Windows
     runs-on: windows-latest

@@ -115,6 +115,7 @@ nav:
       - "0032 Windows client": adr/0032-windows-client.md
   - Security:
       - Security policy: security-policy.md
+      - Threat model: security/threat-model.md
       - Test suite: security/test-suite.md
       - Security tester agent: security/security-tester-agent.md
       - Test report 2026-11-20: security/sectest-2026-11-20.md

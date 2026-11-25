@@ -13,6 +13,7 @@ strip_fm CODE_OF_CONDUCT.md >docs/code-of-conduct.md
 strip_fm SECURITY.md >docs/security-policy.md
 strip_fm deploy/release/README.md >docs/containers.md
 strip_fm test/security/README.md >docs/security/test-suite.md
+strip_fm THREAT_MODEL.md >docs/security/threat-model.md
 {
   printf '# Security tester agent\n\n'
   printf '!!! info "Source"\n'

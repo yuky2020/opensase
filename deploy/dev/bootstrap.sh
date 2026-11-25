@@ -41,8 +41,10 @@ set_env OPENSASE_GID "$(id -g)"
 
 mkdir -p pki data
 chmod 700 data # every tenant's policies and flows (ST-09)
-log "building images"
-docker compose build controlplane edge connector
+if [ "${OPENSASE_SKIP_BUILD:-0}" != "1" ]; then
+  log "building images"
+  docker compose build controlplane edge connector
+fi
 
 ctl() { docker compose run --rm --no-deps -T ctl "$@"; }
 

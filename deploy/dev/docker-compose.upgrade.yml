@@ -1,0 +1,12 @@
+services:
+  controlplane:
+    image: ${OPENSASE_PREV_REGISTRY:-ghcr.io/yuky2020}/opensase-controlplane:${OPENSASE_PREV_VERSION}
+    pull_policy: always
+
+  edge:
+    image: ${OPENSASE_PREV_REGISTRY:-ghcr.io/yuky2020}/opensase-edge:${OPENSASE_PREV_VERSION}
+    pull_policy: always
+
+  ctl:
+    image: ${OPENSASE_PREV_REGISTRY:-ghcr.io/yuky2020}/opensase-controlplane:${OPENSASE_PREV_VERSION}
+    pull_policy: always

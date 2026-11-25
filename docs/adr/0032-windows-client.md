@@ -126,4 +126,6 @@ Slice D delivers automated desktop packaging for Windows and Linux built in CI:
 
 4. **Known Limitations:**
    - The Windows MSI is currently unsigned; Windows SmartScreen will display an untrusted application warning until code signing is configured in a later release.
-   - RPM packaging and code signing are left for later.
+   - Code signing is left for later; .rpm and Arch packages were added afterwards (#53).
+
+The service now has an unrestricted service SID (needed by the planned WFP filters); the MSI path may only expose it after a reboot, to verify on a real install.

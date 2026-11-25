@@ -166,6 +166,8 @@ func installService() error {
 		ErrorControl: mgr.ErrorNormal,
 		DisplayName:  serviceDisplayName,
 		Description:  serviceDesc,
+		// The WFP filters of the kill switch match the daemon by its service SID (issue #38 research).
+		SidType: windows.SERVICE_SID_TYPE_UNRESTRICTED,
 	}
 
 	s, err = m.CreateService(serviceName, exePath, cfg, "run")

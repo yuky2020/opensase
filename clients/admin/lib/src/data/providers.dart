@@ -98,5 +98,33 @@ final flowsProvider = FutureProvider.family<List<FlowRecord>, String>(
   (ref, t) async => (await ref.watch(apiProvider).listFlows(t, limit: flowLimit)).records,
 );
 
+/// Refresh period of the Experience screen; null disables the timer (tests).
+final experienceRefreshPeriodProvider = Provider<Duration?>((ref) => const Duration(seconds: 60));
+
+/// Query parameters for digital experience telemetry (issue #76).
+class ExperienceQuery {
+  const ExperienceQuery({required this.tenant, required this.since, this.device});
+
+  final String tenant;
+  final DateTime since;
+  final String? device;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ExperienceQuery &&
+          runtimeType == other.runtimeType &&
+          tenant == other.tenant &&
+          since.millisecondsSinceEpoch ~/ 1000 == other.since.millisecondsSinceEpoch ~/ 1000 &&
+          device == other.device;
+
+  @override
+  int get hashCode => Object.hash(tenant, since.millisecondsSinceEpoch ~/ 1000, device);
+}
+
+final experienceProvider = FutureProvider.family<List<ExperienceSummary>, ExperienceQuery>(
+  (ref, q) => ref.watch(apiProvider).experience(q.tenant, since: q.since, device: q.device),
+);
+
 /// Current time; overridable in tests.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);

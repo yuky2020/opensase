@@ -1455,4 +1455,64 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get policyTestResultSnapshot => 'Snapshot version';
+
+  @override
+  String get navExperience => 'Experience';
+
+  @override
+  String get experienceSubtitle => 'Digital experience telemetry across devices and Edges.';
+
+  @override
+  String get experiencePeriod => 'Period';
+
+  @override
+  String get experiencePeriodHour1 => '1 hour';
+
+  @override
+  String get experiencePeriodHours24 => '24 hours';
+
+  @override
+  String get experiencePeriodDays7 => '7 days';
+
+  @override
+  String get experiencePeriodDays30 => '30 days';
+
+  @override
+  String get experienceFilterDevice => 'Filter by device name';
+
+  @override
+  String get experienceStatDevicesMeasured => 'Devices measured';
+
+  @override
+  String get experienceStatMedianRtt => 'Median RTT p50';
+
+  @override
+  String get experienceStatHighLossRows => 'Rows with loss > 2%';
+
+  @override
+  String get experienceColDevice => 'Device';
+
+  @override
+  String get experienceColEdge => 'Edge';
+
+  @override
+  String get experienceColSamples => 'Samples';
+
+  @override
+  String get experienceColRttP50 => 'RTT p50';
+
+  @override
+  String get experienceColRttP95 => 'RTT p95';
+
+  @override
+  String get experienceColLoss => 'Loss';
+
+  @override
+  String get experienceColDnsP50 => 'DNS p50';
+
+  @override
+  String get experienceColLast => 'Last sample';
+
+  @override
+  String get experienceEmpty => 'No digital experience data for this period';
 }

@@ -97,3 +97,18 @@ Status chip colors:
 - **Green:** Valid with 14 or more days remaining.
 - **Amber:** Warning: certificate expires in fewer than 14 days.
 - **Red:** Expired.
+
+## Digital experience
+
+The **Experience** page (`/experience`) is available to all tenant roles and provides digital
+experience telemetry across enrolled client devices and Edge nodes.
+
+Administrators evaluate connectivity quality over selectable time windows (1 hour, 24 hours,
+7 days, or 30 days, defaulting to 24 hours) with automatic background refreshes every 60 seconds:
+
+- **Devices measured:** Total count of unique tenant devices reporting telemetry within the window.
+- **Median RTT p50:** Median round-trip latency across all reporting device-Edge pairs.
+- **Loss and latency warnings:** Highlights links with packet loss above 2% (warning) or 10% (critical block), and tail latency RTT p95 exceeding 150 ms (warning).
+
+The table resolves device identifiers against enrolled names and offers a real-time device filter.
+Telemetry probe collection and query details are described in [Monitoring](../operations/monitoring.md#digital-experience).

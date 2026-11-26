@@ -162,6 +162,22 @@ class AdminApi {
     return v == null ? FlowBatch() : FlowBatch.fromJson(obj(v, 'flows'));
   }
 
+  // --- digital experience (issue #76) ---
+
+  Future<List<ExperienceSummary>> experience(String tenant, {DateTime? since, String? device}) async {
+    final query = <String, String>{};
+    if (since != null) {
+      query['since'] = '${since.millisecondsSinceEpoch ~/ 1000}';
+    }
+    if (device != null && device.isNotEmpty) {
+      query['device'] = device;
+    }
+    return _list(
+      await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/experience', query: query.isEmpty ? null : query),
+      ExperienceSummary.fromJson,
+    );
+  }
+
   // --- devices ---
 
   Future<List<AdminDevice>> listDevices(String tenant) async =>

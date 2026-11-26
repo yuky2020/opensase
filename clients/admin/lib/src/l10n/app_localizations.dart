@@ -2174,6 +2174,66 @@ abstract class AppLocalizations {
   String get policyTestResultRuleId;
   String get policyTestResultReason;
   String get policyTestResultSnapshot;
+
+  /// Experience page title / nav label.
+  String get navExperience;
+
+  /// Experience page subtitle.
+  String get experienceSubtitle;
+
+  /// Period selector label.
+  String get experiencePeriod;
+
+  /// 1 hour period.
+  String get experiencePeriodHour1;
+
+  /// 24 hours period.
+  String get experiencePeriodHours24;
+
+  /// 7 days period.
+  String get experiencePeriodDays7;
+
+  /// 30 days period.
+  String get experiencePeriodDays30;
+
+  /// Filter text field label.
+  String get experienceFilterDevice;
+
+  /// Summary card: devices measured.
+  String get experienceStatDevicesMeasured;
+
+  /// Summary card: median RTT p50.
+  String get experienceStatMedianRtt;
+
+  /// Summary card: rows with loss > 2%.
+  String get experienceStatHighLossRows;
+
+  /// Table column: Device.
+  String get experienceColDevice;
+
+  /// Table column: Edge.
+  String get experienceColEdge;
+
+  /// Table column: Samples.
+  String get experienceColSamples;
+
+  /// Table column: RTT p50.
+  String get experienceColRttP50;
+
+  /// Table column: RTT p95.
+  String get experienceColRttP95;
+
+  /// Table column: Loss.
+  String get experienceColLoss;
+
+  /// Table column: DNS p50.
+  String get experienceColDnsP50;
+
+  /// Table column: Last sample.
+  String get experienceColLast;
+
+  /// Empty state message.
+  String get experienceEmpty;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

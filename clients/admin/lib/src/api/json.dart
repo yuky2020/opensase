@@ -29,6 +29,14 @@ bool boolean(Json j, String key) {
   throw FormatException('"$key" must be a boolean, got $v');
 }
 
+double floating(Json j, String key) {
+  final v = j[key];
+  if (v == null) return 0.0;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  throw FormatException('"$key" must be a number, got $v');
+}
+
 /// Reads a list of strings; Go writes a nil slice as null.
 List<String> strList(Json j, String key) {
   final v = j[key];

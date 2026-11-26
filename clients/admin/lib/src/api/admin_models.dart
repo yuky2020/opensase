@@ -1139,3 +1139,48 @@ class PolicyTestResult {
 
   Json toJson() => {'decision': decision.toJson(), 'snapshotVersion': snapshotVersion};
 }
+
+/// api.ExperienceSummary (issue #76).
+class ExperienceSummary {
+  ExperienceSummary({
+    this.deviceId = '',
+    this.edgeId = '',
+    this.samples = 0,
+    this.rttP50Ms = 0.0,
+    this.rttP95Ms = 0.0,
+    this.lossPct = 0.0,
+    this.dnsP50Ms = 0.0,
+    this.last,
+  });
+
+  String deviceId;
+  String edgeId;
+  int samples;
+  double rttP50Ms;
+  double rttP95Ms;
+  double lossPct;
+  double dnsP50Ms;
+  DateTime? last;
+
+  factory ExperienceSummary.fromJson(Json j) => ExperienceSummary(
+    deviceId: str(j, 'deviceId'),
+    edgeId: str(j, 'edgeId'),
+    samples: integer(j, 'samples'),
+    rttP50Ms: floating(j, 'rttP50Ms'),
+    rttP95Ms: floating(j, 'rttP95Ms'),
+    lossPct: floating(j, 'lossPct'),
+    dnsP50Ms: floating(j, 'dnsP50Ms'),
+    last: time(j, 'last'),
+  );
+
+  Json toJson() => {
+    'deviceId': deviceId,
+    'edgeId': edgeId,
+    'samples': samples,
+    'rttP50Ms': rttP50Ms,
+    'rttP95Ms': rttP95Ms,
+    'lossPct': lossPct,
+    'dnsP50Ms': dnsP50Ms,
+    'last': goTime(last),
+  };
+}

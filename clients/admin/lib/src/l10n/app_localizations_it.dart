@@ -1465,4 +1465,64 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get policyTestResultSnapshot => 'Versione snapshot';
+
+  @override
+  String get navExperience => 'Esperienza';
+
+  @override
+  String get experienceSubtitle => 'Telemetria dell\'esperienza digitale tra dispositivi ed Edge.';
+
+  @override
+  String get experiencePeriod => 'Periodo';
+
+  @override
+  String get experiencePeriodHour1 => '1 ora';
+
+  @override
+  String get experiencePeriodHours24 => '24 ore';
+
+  @override
+  String get experiencePeriodDays7 => '7 giorni';
+
+  @override
+  String get experiencePeriodDays30 => '30 giorni';
+
+  @override
+  String get experienceFilterDevice => 'Filtra per nome dispositivo';
+
+  @override
+  String get experienceStatDevicesMeasured => 'Dispositivi misurati';
+
+  @override
+  String get experienceStatMedianRtt => 'RTT p50 mediano';
+
+  @override
+  String get experienceStatHighLossRows => 'Righe con perdita > 2%';
+
+  @override
+  String get experienceColDevice => 'Dispositivo';
+
+  @override
+  String get experienceColEdge => 'Edge';
+
+  @override
+  String get experienceColSamples => 'Campioni';
+
+  @override
+  String get experienceColRttP50 => 'RTT p50';
+
+  @override
+  String get experienceColRttP95 => 'RTT p95';
+
+  @override
+  String get experienceColLoss => 'Perdita';
+
+  @override
+  String get experienceColDnsP50 => 'DNS p50';
+
+  @override
+  String get experienceColLast => 'Ultimo campione';
+
+  @override
+  String get experienceEmpty => 'Nessun dato di esperienza digitale per questo periodo';
 }

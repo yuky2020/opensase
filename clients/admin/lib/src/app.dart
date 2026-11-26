@@ -24,6 +24,7 @@ import 'ui/admin_tokens_screen.dart';
 import 'ui/sso_screen.dart';
 import 'ui/oidc_signin_screen.dart';
 import 'ui/audit_screen.dart';
+import 'ui/experience_screen.dart';
 import 'ui/status_screen.dart';
 import 'ui/tenants_screen.dart';
 import 'ui/theme.dart';
@@ -146,6 +147,14 @@ final _dests = <_Dest>[
     Icons.list_alt,
     (c) => c.l10n.navActivity,
     ActivityScreen.new,
+    perTenant: true,
+  ),
+  _Dest(
+    '/experience',
+    Icons.speed_outlined,
+    Icons.speed,
+    (c) => c.l10n.navExperience,
+    ExperienceScreen.new,
     perTenant: true,
   ),
   _Dest(

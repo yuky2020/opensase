@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -75,20 +76,26 @@ func TestPublishSubscribe(t *testing.T) {
 	a, b := pgPair(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	got := make(chan string, 4)
+	got := make(chan string, 64)
 	var resyncs atomic.Int32
 	go b.Subscribe(ctx, func(k string) { got <- k }, func() { resyncs.Add(1) })
 	waitFor(t, func() bool { return resyncs.Load() == 1 }, "listening")
-	if err := a.Publish(ctx, "device-1"); err != nil {
+	// Test schemas share one database, so other packages' notifications arrive too: wait
+	// for this test's own key and ignore the rest.
+	key := fmt.Sprintf("device-%d", time.Now().UnixNano())
+	if err := a.Publish(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case k := <-got:
-		if k != "device-1" {
-			t.Fatalf("got %q", k)
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case k := <-got:
+			if k == key {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no notification")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no notification")
 	}
 }
 

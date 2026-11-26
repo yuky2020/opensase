@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -81,18 +82,29 @@ func (a *Authority) InspectionCA(tenantID string) (*CA, error) {
 		return ca, nil
 	}
 	c, k := a.inspectPaths(tenantID)
-	ca, err := LoadCA(c, k)
-	switch {
-	case err == nil:
-	case errors.Is(err, os.ErrNotExist):
-		if ca, err = newInspectionRoot(tenantID); err != nil {
+	var ca *CA
+	var err error
+	if a.store != nil {
+		if ca, err = a.storedCA(context.Background(), tenantID, CAKindInspection, func() (*CA, error) { return newInspectionRoot(tenantID) }); err != nil {
 			return nil, err
 		}
 		if err := SaveCA(ca, c, k); err != nil {
 			return nil, err
 		}
-	default:
-		return nil, fmt.Errorf("pki: load inspection CA %q: %w", tenantID, err)
+	} else {
+		ca, err = LoadCA(c, k)
+		switch {
+		case err == nil:
+		case errors.Is(err, os.ErrNotExist):
+			if ca, err = newInspectionRoot(tenantID); err != nil {
+				return nil, err
+			}
+			if err := SaveCA(ca, c, k); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("pki: load inspection CA %q: %w", tenantID, err)
+		}
 	}
 	if a.inspect == nil {
 		a.inspect = map[string]*CA{}

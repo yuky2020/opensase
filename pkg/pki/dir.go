@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"context"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -170,6 +171,9 @@ type Authority struct {
 	mu      sync.Mutex
 	tenants map[string]*CA
 	inspect map[string]*CA // tenant inspection roots (ADR-0018), loaded on first use
+
+	store CAStore // shared database copy of the CAs (issue #66); nil: files only
+	kek   []byte  // seals CA keys in store
 }
 
 // OpenAuthority loads the root CA from dir and every tenant CA under dir/tenants.
@@ -223,7 +227,13 @@ func (a *Authority) TenantCA(tenantID string) (*CA, error) {
 	if ca, ok := a.tenants[tenantID]; ok {
 		return ca, nil
 	}
-	ca, err := a.Root.NewTenantCA(tenantID)
+	var ca *CA
+	var err error
+	if a.store != nil {
+		ca, err = a.storedCA(context.Background(), tenantID, CAKindTenant, func() (*CA, error) { return a.Root.NewTenantCA(tenantID) })
+	} else {
+		ca, err = a.Root.NewTenantCA(tenantID)
+	}
 	if err != nil {
 		return nil, err
 	}

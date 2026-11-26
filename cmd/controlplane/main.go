@@ -32,6 +32,7 @@ func run() error {
 	listen := flag.String("listen", ":9443", "HTTPS listen address")
 	dbPath := flag.String("db", "controlplane.db", "SQLite database path")
 	pkiDir := flag.String("pki", "pki", "PKI directory (see opensasectl pki init)")
+	kekFile := flag.String("ca-kek-file", "", "file with the 32-byte key that seals tenant CA keys in the database (default <pki>/ca-kek.key, created if missing); every Control Plane replica must use the same key")
 	edgesFile := flag.String("edges", "", "JSON file with []api.EdgeInfo returned at enrollment (default <pki>/edges.json if present)")
 	controlURL := flag.String("control-url", "https://controlplane:9443", "Control Plane URL returned to devices")
 	maxConns := flag.Int("max-conns", controlplane.DefaultMaxConns, "maximum concurrent connections")
@@ -103,6 +104,17 @@ func run() error {
 			log.Warn("close store", "err", err)
 		}
 	}()
+	kekPath := *kekFile
+	if kekPath == "" {
+		kekPath = filepath.Join(*pkiDir, pki.CAKeyEncryptionKeyFile)
+	}
+	kek, err := pki.LoadOrCreateKEK(kekPath)
+	if err != nil {
+		return err
+	}
+	if err := auth.UseStore(ctx, st, kek); err != nil {
+		return fmt.Errorf("tenant CAs in the database: %w", err)
+	}
 
 	srv, err := controlplane.New(controlplane.Config{
 		Store: st, Authority: auth, SigningKey: sk, SigningKeyID: keyID,

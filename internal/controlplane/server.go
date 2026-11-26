@@ -314,6 +314,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		ErrorLog:    slog.NewLogLogger(s.log.Handler(), slog.LevelDebug),
 	}
 	go s.maintain(ctx)
+	go s.refreshCAs(ctx)
 	go s.categoriesLoop(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ServeTLS(netutil.LimitListener(ln, s.cfg.MaxConns), "", "") }()
@@ -327,6 +328,29 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		return err
 	}
 }
+
+// refreshCAs loads tenant CAs created by other Control Plane replicas into the client CA
+// pool, so their devices can connect here within caRefreshInterval (issue #66).
+func (s *Server) refreshCAs(ctx context.Context) {
+	t := time.NewTicker(caRefreshInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if err := s.cfg.Authority.Refresh(ctx); err != nil {
+			if ctx.Err() == nil {
+				s.log.Warn("tenant CA refresh failed", "err", err)
+			}
+			continue
+		}
+		s.pool.Store(s.cfg.Authority.ClientCAPool())
+	}
+}
+
+const caRefreshInterval = 30 * time.Second
 
 // maintain re-signs snapshots before they expire and prunes old versions.
 func (s *Server) maintain(ctx context.Context) {

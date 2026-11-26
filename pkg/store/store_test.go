@@ -267,6 +267,82 @@ func TestFlows(t *testing.T) {
 	}
 }
 
+func TestExperience(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	seed(t, s)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	dev1Samples := []api.ExperienceSample{
+		{At: now.Add(-2 * time.Hour), EdgeID: "e1", RTTms: 25.5, LossPct: 0.0, DNSms: 12.0, Network: "wifi"},
+		{At: now.Add(-1 * time.Hour), EdgeID: "e1", RTTms: 30.0, LossPct: 10.0, DNSms: 15.5, Network: "cellular"},
+		{At: now, EdgeID: "e2", RTTms: 45.0, LossPct: 20.0, DNSms: 0.0, Network: ""},
+	}
+	dev2Samples := []api.ExperienceSample{
+		{At: now, EdgeID: "e1", RTTms: 10.0, LossPct: 0.0, DNSms: 5.0, Network: "ethernet"},
+	}
+
+	if err := s.InsertExperience(ctx, "acme", "dev-1", dev1Samples); err != nil {
+		t.Fatalf("insert dev-1 experience: %v", err)
+	}
+	if err := s.InsertExperience(ctx, "acme", "dev-2", dev2Samples); err != nil {
+		t.Fatalf("insert dev-2 experience: %v", err)
+	}
+	if err := s.InsertExperience(ctx, "ghost", "dev-1", dev1Samples); err == nil {
+		t.Fatal("experience for unknown tenant accepted")
+	}
+
+	tests := []struct {
+		name      string
+		tenant    string
+		since     time.Time
+		deviceID  string
+		wantCount int
+	}{
+		{"all devices all time", "acme", now.Add(-3 * time.Hour), "", 4},
+		{"all devices since 90m ago", "acme", now.Add(-90 * time.Minute), "", 3},
+		{"dev-1 only", "acme", now.Add(-3 * time.Hour), "dev-1", 3},
+		{"dev-2 only", "acme", now.Add(-3 * time.Hour), "dev-2", 1},
+		{"unknown device", "acme", now.Add(-3 * time.Hour), "dev-ghost", 0},
+		{"cross-tenant query", "other", now.Add(-3 * time.Hour), "", 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := s.ExperienceSince(ctx, tc.tenant, tc.since, tc.deviceID)
+			if err != nil {
+				t.Fatalf("ExperienceSince failed: %v", err)
+			}
+			if len(got) != tc.wantCount {
+				t.Fatalf("got %d rows, want %d", len(got), tc.wantCount)
+			}
+			for _, r := range got {
+				if tc.deviceID != "" && r.DeviceID != tc.deviceID {
+					t.Errorf("got device %q, want %q", r.DeviceID, tc.deviceID)
+				}
+				if r.At.Before(tc.since) {
+					t.Errorf("got sample at %v before since %v", r.At, tc.since)
+				}
+			}
+		})
+	}
+
+	// Retention: delete samples older than 90 minutes ago (should delete dev1Samples[0]).
+	deleted, err := s.DeleteExperienceBefore(ctx, now.Add(-90*time.Minute))
+	if err != nil {
+		t.Fatalf("DeleteExperienceBefore failed: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted %d rows, want 1", deleted)
+	}
+	remaining, err := s.ExperienceSince(ctx, "acme", now.Add(-3*time.Hour), "")
+	if err != nil {
+		t.Fatalf("ExperienceSince after retention: %v", err)
+	}
+	if len(remaining) != 3 {
+		t.Fatalf("remaining %d rows, want 3", len(remaining))
+	}
+}
+
 // TestUpdateTenantPolicyConditional covers issue #66: the update sees the stored policy, an
 // error aborts the write, and a write bumps the version.
 func TestUpdateTenantPolicyConditional(t *testing.T) {

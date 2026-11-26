@@ -34,6 +34,7 @@ var copyTables = []struct{ name, identity, order string }{
 	{"user_groups", "", "user_id, grp"},
 	{"scim_groups", "", "id"},
 	{"scim_tokens", "", "tenant_id"},
+	{"experience_samples", "id", "id"},
 }
 
 // CopyCount is the number of rows copied for one table.

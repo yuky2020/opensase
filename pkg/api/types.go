@@ -49,6 +49,7 @@
 //	POST /v1/admin/tenants/{t}/provisioning-keys   ProvisioningKeyRequest -> ProvisioningKey
 //	PUT  /v1/admin/tenants/{t}/policy   TenantPolicy -> 204 (recompiles all device snapshots)
 //	GET  /v1/admin/tenants/{t}/flows?limit=   -> FlowBatch
+//	GET  /v1/admin/tenants/{t}/experience?since=<unix seconds, default 24 h ago>&device=<id> -> []ExperienceSummary (issue #76)
 //	GET  /v1/admin/tenants/{t}/policy  -> TenantPolicy
 //	POST /v1/admin/tenants/{t}/policy-test PolicyTestRequest -> PolicyTestResult (any tenant role; read only, not logged; issue #75)
 //	GET  /v1/admin/tenants/{t}/devices -> []AdminDevice (internal/controlplane)
@@ -235,6 +236,34 @@ type FlowRecord struct {
 // FlowBatch is the body of POST /v1/flows and the reply to the admin flows query.
 type FlowBatch struct {
 	Records []FlowRecord `json:"records"`
+	// Probes are digital experience samples sent by devices with their flows (issue #76).
+	// Edges send none; the Control Plane ignores Probes in batches sent with an edge cert.
+	Probes []ExperienceSample `json:"probes,omitempty"`
+}
+
+// ExperienceSample is one digital experience measurement of a device (issue #76): a short
+// burst of probes to the session endpoint of the Edge the device uses, and a DNS query
+// through the tunnel resolver.
+type ExperienceSample struct {
+	At      time.Time `json:"at"`
+	EdgeID  string    `json:"edgeId"`
+	RTTms   float64   `json:"rttMs"`             // median round trip of the answered probes; 0 if none answered
+	LossPct float64   `json:"lossPct"`           // share of probes without an answer, 0 to 100
+	DNSms   float64   `json:"dnsMs"`             // DNS resolution time through the tunnel; 0 if not measured
+	Network string    `json:"network,omitempty"` // policy.NetworkType at the time of the sample
+}
+
+// ExperienceSummary aggregates the samples of one device on one Edge since a time, for
+// GET /v1/admin/tenants/{t}/experience (issue #76).
+type ExperienceSummary struct {
+	DeviceID string    `json:"deviceId"`
+	EdgeID   string    `json:"edgeId"`
+	Samples  int       `json:"samples"`
+	RTTp50   float64   `json:"rttP50Ms"`
+	RTTp95   float64   `json:"rttP95Ms"`
+	LossPct  float64   `json:"lossPct"`  // mean of the samples
+	DNSp50   float64   `json:"dnsP50Ms"` // over samples that measured DNS; 0 if none
+	Last     time.Time `json:"last"`
 }
 
 // SessionRequest is the body of POST /v1/session on an Edge.

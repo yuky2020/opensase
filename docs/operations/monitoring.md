@@ -47,6 +47,30 @@ It reads `GET /v1/admin/status` (super-admin).
 | `opensase_edge_blocks_total{layer}` | counter | Blocked flows and queries by policy layer |
 | `opensase_edge_peer_sync_failures_total` | counter | Failed syncs with the Control Plane |
 
+## Digital experience
+
+Devices report lightweight digital experience probes with their flow batches (`POST /v1/flows`).
+Each sample measures:
+
+- `rttMs`: round-trip time in milliseconds to the Edge session endpoint (median of answered probes);
+- `lossPct`: probe packet loss percentage (0–100%);
+- `dnsMs`: DNS resolution latency through the Edge tunnel resolver;
+- `network`: active network type (`wifi`, `cellular`, `roaming`, `ethernet`, `unknown`).
+
+Administrators query aggregated metrics by tenant, Edge, and device:
+
+```
+GET /v1/admin/tenants/{tenant}/experience?since=<unix-seconds>&device=<device-id>
+```
+
+- `since`: defaults to 24 hours ago (maximum retention query window: 30 days).
+- `device`: optional device ID filter.
+
+The endpoint returns aggregates per `(deviceId, edgeId)` sorted by device then Edge:
+sample count, `rttP50Ms` and `rttP95Ms` (nearest-rank percentiles over samples with RTT > 0),
+mean `lossPct`, `dnsP50Ms` (over samples with DNS latency > 0), and the timestamp of the latest sample (`last`).
+Old experience samples are purged automatically following the configured flow retention policy.
+
 ## Alerts
 
 [`deploy/observability/alerts.yml`](https://github.com/yuky2020/opensase/blob/main/deploy/observability/alerts.yml)

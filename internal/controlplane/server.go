@@ -275,6 +275,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/policy", s.handleGetPolicy)
 			r.Post("/policy-test", s.handlePolicyTest) // read only: every role (roleAllows)
 			r.Get("/flows", s.handleListFlows)
+			r.Get("/experience", s.handleExperience)
 			r.Get("/devices", s.handleListDevices)
 			r.Post("/devices/{d}/revoke", s.handleRevokeDevice)
 			r.Get("/devices/{d}/routes", s.handleGetDeviceRoutes)
@@ -415,6 +416,11 @@ func (s *Server) singletonJobs(ctx context.Context) {
 		s.log.Warn("flow retention failed", "err", err)
 	} else if n > 0 {
 		s.log.Info("old flow records deleted", "count", n, "retention", s.cfg.FlowRetention)
+	}
+	if n, err := s.cfg.Store.DeleteExperienceBefore(ctx, s.now().Add(-s.cfg.FlowRetention)); err != nil && ctx.Err() == nil {
+		s.log.Warn("experience retention failed", "err", err)
+	} else if n > 0 {
+		s.log.Info("old experience samples deleted", "count", n, "retention", s.cfg.FlowRetention)
 	}
 	if _, err := s.cfg.Store.DeleteAuditBefore(ctx, s.now().Add(-s.cfg.AuditRetention)); err != nil && ctx.Err() == nil {
 		s.log.Warn("audit retention failed", "err", err)

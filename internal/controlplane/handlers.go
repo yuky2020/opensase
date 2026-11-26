@@ -313,6 +313,7 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 	byTenant := map[string][]api.FlowRecord{}
 	byDevice := map[string]int{} // records per device in this batch, for the rate limit
 	dropped := 0
+	var validProbes []api.ExperienceSample
 	if p.id.Kind == pki.PeerDevice {
 		for _, rec := range b.Records {
 			rec = sanitizeFlow(rec, now)
@@ -320,7 +321,19 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 			rec.DeviceID, rec.Where = p.device.ID, "device"
 			byTenant[p.device.TenantID] = append(byTenant[p.device.TenantID], rec)
 		}
-		byDevice[p.device.ID] = len(b.Records)
+		probes := b.Probes
+		if len(probes) > 60 {
+			dropped += len(probes) - 60
+			probes = probes[:60]
+		}
+		for _, pr := range probes {
+			if s.validateProbe(r.Context(), pr, now) {
+				validProbes = append(validProbes, pr)
+			} else {
+				dropped++
+			}
+		}
+		byDevice[p.device.ID] = len(b.Records) + len(validProbes)
 	} else {
 		// An edge may only report flows of devices with a live session on it.
 		tenants := map[string]string{} // device -> tenant, "" if not allowed
@@ -364,12 +377,27 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 		}
 		byTenant[t] = kept
 	}
+	var keptProbes []api.ExperienceSample
+	if p.id.Kind == pki.PeerDevice {
+		for _, pr := range validProbes {
+			if granted[p.device.ID] > 0 {
+				granted[p.device.ID]--
+				keptProbes = append(keptProbes, pr)
+			}
+		}
+	}
 	if dropped > 0 {
 		s.log.WarnContext(r.Context(), "flow records dropped (rate limit or no live session)", "count", dropped)
 	}
 	for t, recs := range byTenant {
 		if err := s.cfg.Store.InsertFlows(r.Context(), t, recs); err != nil {
 			s.internalErr(w, r, "store flows", err)
+			return
+		}
+	}
+	if len(keptProbes) > 0 {
+		if err := s.cfg.Store.InsertExperience(r.Context(), p.device.TenantID, p.device.ID, keptProbes); err != nil {
+			s.internalErr(w, r, "store experience", err)
 			return
 		}
 	}

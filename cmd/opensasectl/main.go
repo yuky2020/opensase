@@ -151,6 +151,8 @@ commands:
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
+  store backup -db FILE.db -o OUT.db       (consistent copy of a SQLite database, also while the Control Plane runs)
+  store restore -from BACKUP.db -to FILE.db (check a backup and restore it; stop the Control Plane first)
   store migrate -from FILE.db [-to URL]   (copy a stopped SQLite Control Plane to PostgreSQL, ADR-0033;
                                            URL defaults to $OPENSASE_DB so the password stays off the command line)
 
@@ -234,6 +236,10 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return pqCheck(ctx, g, rest)
 	case "store migrate":
 		return storeMigrate(ctx, rest)
+	case "store backup":
+		return storeBackup(ctx, rest)
+	case "store restore":
+		return storeRestore(ctx, rest)
 	}
 	return fmt.Errorf("unknown command %q (run without arguments for help)", cmd)
 }
@@ -1277,5 +1283,45 @@ func storeMigrate(ctx context.Context, args []string) error {
 		fmt.Printf("%-28s %d\n", c.Table, c.Rows)
 	}
 	fmt.Println("copied; row counts and the audit chain verified. Start the Control Plane with -db set to the PostgreSQL URL.")
+	return nil
+}
+
+// storeBackup writes a consistent copy of a SQLite database (issue #67).
+func storeBackup(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("store backup", flag.ExitOnError)
+	db := fs.String("db", "", "SQLite database of the Control Plane")
+	out := fs.String("o", "", "backup file to create")
+	_ = fs.Parse(args)
+	if *db == "" || *out == "" {
+		return errors.New("store backup needs -db and -o")
+	}
+	if _, err := os.Stat(*db); err != nil {
+		return err
+	}
+	st, err := store.Open(ctx, *db)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	if err := st.Backup(ctx, *out); err != nil {
+		return err
+	}
+	fmt.Println("backup written to", *out, "(also back up the PKI directory)")
+	return nil
+}
+
+// storeRestore checks a backup and restores it (issue #67).
+func storeRestore(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("store restore", flag.ExitOnError)
+	from := fs.String("from", "", "backup file")
+	to := fs.String("to", "", "database path to create (move the old one aside first)")
+	_ = fs.Parse(args)
+	if *from == "" || *to == "" {
+		return errors.New("store restore needs -from and -to")
+	}
+	if err := store.Restore(ctx, *from, *to); err != nil {
+		return err
+	}
+	fmt.Println("restored to", *to, "; the audit chain verifies. Restore the PKI directory from the same backup, then start the Control Plane.")
 	return nil
 }

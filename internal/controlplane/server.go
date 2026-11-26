@@ -77,9 +77,16 @@ type Config struct {
 	CategoriesFile    string
 	CategoriesURL     string
 	CategoriesRefresh time.Duration
-	OIDCClient        *http.Client     // optional; default timeout 10s (issue #17)
-	Logger            *slog.Logger     // default slog.Default()
-	Now               func() time.Time // default time.Now
+	// Scheduled backups (issue #67, SQLite only): every BackupEvery (default 24h) the leader
+	// writes the database and an archive of PKIDir to BackupDir, keeping BackupKeep (default
+	// 7) of each. Empty BackupDir: no scheduled backups.
+	BackupDir   string
+	BackupEvery time.Duration
+	BackupKeep  int
+	PKIDir      string
+	OIDCClient  *http.Client     // optional; default timeout 10s (issue #17)
+	Logger      *slog.Logger     // default slog.Default()
+	Now         func() time.Time // default time.Now
 }
 
 // Server is the Control Plane. Create it with New.
@@ -315,6 +322,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 	}
 	go s.maintain(ctx)
 	go s.refreshCAs(ctx)
+	go s.backupLoop(ctx)
 	go s.cfg.Store.KeepLeadership(ctx, func(leader bool) { s.log.Info("leadership changed", "leader", leader) })
 	go s.cfg.Store.Subscribe(ctx, s.notify.notify, s.notify.notifyAll)
 	go s.categoriesLoop(ctx)

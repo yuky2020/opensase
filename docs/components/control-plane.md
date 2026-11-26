@@ -69,6 +69,18 @@ Moving an existing install: stop the Control Plane, then run
 `OPENSASE_DB=postgres://… opensasectl store migrate -from controlplane.db`. The command
 copies every table and checks the row counts and the audit chain.
 
+Backups (SQLite, issue #67):
+
+- `-backup-dir DIR` writes `controlplane-<time>.db` (an online `VACUUM INTO` copy) and
+  `pki-<time>.tar.gz` every `-backup-every` (default 24h). It keeps `-backup-keep` of each
+  (default 7). The files are mode 0600 and hold private keys: copy them off the host.
+- On demand: `opensasectl store backup -db controlplane.db -o backup.db`.
+- Restore: stop the Control Plane, move the old database aside, run
+  `opensasectl store restore -from backup.db -to controlplane.db` (it checks that the backup
+  opens and that its audit chain verifies), restore the PKI directory from the archive with
+  the same time, then start.
+- PostgreSQL: back up with `pg_dump` and the PKI directory.
+
 Failure modes:
 
 - **Database outage**: devices, Edges and Connectors keep working on their cached signed

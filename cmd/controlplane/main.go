@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/yuky2020/opensase/internal/controlplane"
 	"github.com/yuky2020/opensase/pkg/api"
@@ -41,6 +42,9 @@ func run() error {
 	catFile := flag.String("categories-file", "", "web category archive (UT1 blacklists.tar.gz) to load and cache downloads in (ADR-0022)")
 	catURL := flag.String("categories-url", "", "download the category archive from this URL and refresh it daily (e.g. "+categories.DefaultURL+")")
 	portalDir := flag.String("portal-dir", os.Getenv("OPENSASE_PORTAL_DIR"), "serve the admin portal (Flutter web build with index.html) from this directory at /admin/ (or env OPENSASE_PORTAL_DIR)")
+	backupDir := flag.String("backup-dir", "", "write scheduled SQLite backups (database and PKI archive) to this directory (issue #67); empty: none")
+	backupEvery := flag.Duration("backup-every", 24*time.Hour, "interval between scheduled backups")
+	backupKeep := flag.Int("backup-keep", 7, "scheduled backups to keep")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	if *catURL != "" && *catFile == "" {
@@ -124,6 +128,7 @@ func run() error {
 		Store: st, Authority: auth, SigningKey: sk, SigningKeyID: keyID,
 		AdminToken: token, Edges: edges, ControlURL: *controlURL, Logger: log,
 		MaxConns: *maxConns, FlowRetention: *retention, FlowRate: *flowRate, PortalDir: *portalDir, CategoriesFile: *catFile, CategoriesURL: *catURL,
+		BackupDir: *backupDir, BackupEvery: *backupEvery, BackupKeep: *backupKeep, PKIDir: *pkiDir,
 	})
 	if err != nil {
 		return err

@@ -66,6 +66,17 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Admin guide:
+      - Overview: admin/index.md
+      - Onboarding: admin/onboarding.md
+      - Policy: admin/policy.md
+      - DNS: admin/dns.md
+      - Private apps: admin/private-apps.md
+      - Status: admin/status.md
+  - User guide:
+      - Android: user/android.md
+      - Windows: user/windows.md
+      - Linux: user/linux.md
   - Download:
       - Releases: download.md
       - Run the container images: containers.md
@@ -75,9 +86,18 @@ nav:
   - Manual test checklist: testing/manual-checklist.md
   - Operations:
       - Monitoring: operations/monitoring.md
+      - Upgrading: operations/upgrade.md
+      - Backup and restore: operations/backup.md
+      - Certificates and PKI: operations/certificates.md
+      - Troubleshooting: operations/troubleshooting.md
       - DNS security: operations/dns-security.md
       - Device mesh: operations/mesh.md
       - Users and provisioning: operations/identity.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Admin and device API: reference/admin-api.md
+      - Metrics: reference/metrics.md
+      - Tenant policy: reference/policy.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

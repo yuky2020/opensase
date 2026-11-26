@@ -31,6 +31,7 @@ services:
       - ./pki/controlplane.crt:/pki/controlplane.crt:ro
       - ./pki/controlplane.key:/pki/controlplane.key:ro
       - ./pki/snapshot.key:/pki/snapshot.key:ro
+      - ./pki/ca-kek.key:/pki/ca-kek.key:ro
       - ./pki/edges.json:/pki/edges.json:ro
       - ./pki/tenants:/pki/tenants
       - ./data:/data

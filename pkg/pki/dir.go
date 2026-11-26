@@ -123,6 +123,9 @@ func InitDir(dir string, o InitOptions) error {
 	if _, _, err := LoadOrCreateSigningKey(filepath.Join(dir, SnapshotKeyFile)); err != nil {
 		return err
 	}
+	if _, err := LoadOrCreateKEK(filepath.Join(dir, CAKeyEncryptionKeyFile)); err != nil {
+		return err
+	}
 	return nil
 }
 

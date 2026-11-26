@@ -58,6 +58,12 @@ if [ ! -f pki/root.crt ]; then
 else
   log "PKI exists, keeping it"
 fi
+# Key that seals tenant CA keys in the database (issue #66). pki init creates it; a PKI made
+# by an older release does not have it, and the Control Plane's /pki is read-only.
+if [ ! -f pki/ca-kek.key ]; then
+  (umask 077 && head -c 32 /dev/urandom > pki/ca-kek.key)
+fi
+chmod 600 pki/ca-kek.key
 
 # Edges advertise a broker address to Connectors (ADR-0013). pki init writes edges.json
 # without it; add it once, keeping everything else. BROKER_HOST is what connectors dial

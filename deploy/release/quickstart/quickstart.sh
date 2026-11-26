@@ -57,8 +57,11 @@ fi
 
 ADMIN_TOKEN="$(cat /data/admin-token)"
 
+if [ ! -f /data/pki/ca-kek.key ]; then
+  (umask 077 && head -c 32 /dev/urandom > /data/pki/ca-kek.key)
+fi
 chown -R 65532:65532 /data/cp
-for item in root.crt root.key controlplane.crt controlplane.key snapshot.key edges.json tenants; do
+for item in root.crt root.key controlplane.crt controlplane.key snapshot.key ca-kek.key edges.json tenants; do
   if [ -e "/data/pki/$item" ]; then
     chown -R 65532:65532 "/data/pki/$item"
   fi

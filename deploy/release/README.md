@@ -112,7 +112,7 @@ docker run --rm --user "$(id -u):$(id -g)" --entrypoint /opensasectl -v "$PWD/pk
 ```
 
 Give the Control Plane only `root.crt`, `root.key`, `controlplane.crt`, `controlplane.key`,
-`snapshot.key`, `edges.json` and `tenants/` (never `pki/edge`, which holds the Edge keys), and
+`snapshot.key`, `ca-kek.key`, `edges.json` and `tenants/` (never `pki/edge`, which holds the Edge keys), and
 give the Edge only `pki/edge`. With the Control Plane running, create the first tenant, user and
 device provisioning key (the output contains secrets: store it safely):
 

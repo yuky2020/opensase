@@ -199,6 +199,12 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "device certificate required")
 		return
 	}
+	// Reports share the device's flow rate under their own key, so a looping client cannot
+	// turn them into a stream of store writes.
+	if s.flowLimit.take("posture:"+p.device.ID, 1) == 0 {
+		writeErr(w, http.StatusTooManyRequests, "too many posture reports")
+		return
+	}
 	var rep api.Posture
 	if !decodeJSONLimit(w, r, &rep, 16<<10) {
 		return

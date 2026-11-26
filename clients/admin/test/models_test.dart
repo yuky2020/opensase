@@ -312,5 +312,17 @@ void main() {
       CertExpiry.fromJson,
       (v) => v.toJson(),
     );
+    roundTrip(
+      'PolicyTestRequest',
+      '{"deviceId":"d1","flow":{"protocol":"tcp","dstIp":"1.2.3.4","dstPort":443},"edge":true}',
+      PolicyTestRequest.fromJson,
+      (v) => v.toJson(),
+    );
+    roundTrip(
+      'PolicyTestResult',
+      '{"decision":{"action":"block","ruleId":"r1","layer":"tenant","log":true},"snapshotVersion":12}',
+      PolicyTestResult.fromJson,
+      (v) => v.toJson(),
+    );
   });
 }

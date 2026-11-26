@@ -25,6 +25,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get navPolicy => 'Policy';
 
   @override
+  String get navPolicyTest => 'Test policy';
+
+  @override
   String get navPrivateApps => 'App private';
 
   @override
@@ -1391,4 +1394,75 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get onboardingApply => 'Applica';
+
+  @override
+  String get policyTestSubtitle =>
+      'Valuta un flusso di esempio rispetto allo snapshot firmato della policy del dispositivo.';
+
+  @override
+  String get policyTestDevice => 'Dispositivo';
+
+  @override
+  String get policyTestSelectDevice => 'Seleziona un dispositivo';
+
+  @override
+  String get policyTestNoDevices => 'Nessun dispositivo registrato trovato in questo tenant.';
+
+  @override
+  String get policyTestProtocol => 'Protocollo';
+
+  @override
+  String get policyTestDstIp => 'IP di destinazione';
+
+  @override
+  String get policyTestDstPort => 'Porta di destinazione';
+
+  @override
+  String get policyTestDomain => 'Dominio';
+
+  @override
+  String get policyTestApp => 'Pacchetto applicazione';
+
+  @override
+  String get policyTestAppHelp => 'Nome pacchetto Android (disabilitato in modalità Edge)';
+
+  @override
+  String get policyTestNetwork => 'Tipo di rete';
+
+  @override
+  String get policyTestEdge => 'Valuta come Edge';
+
+  @override
+  String get policyTestEdgeHelp =>
+      'Simula la valutazione su un nodo Edge (gli attributi del dispositivo come app e rete vengono ignorati)';
+
+  @override
+  String get policyTestActionTest => 'Test';
+
+  @override
+  String get policyTestTesting => 'Test in corso...';
+
+  @override
+  String get policyTestInvalidIp => 'Inserisci un indirizzo IPv4 o IPv6 valido';
+
+  @override
+  String get policyTestInvalidPort => 'La porta deve essere compresa tra 0 e 65535';
+
+  @override
+  String get policyTestResultTitle => 'Risultato della valutazione';
+
+  @override
+  String get policyTestResultAction => 'Azione';
+
+  @override
+  String get policyTestResultLayer => 'Livello';
+
+  @override
+  String get policyTestResultRuleId => 'ID regola';
+
+  @override
+  String get policyTestResultReason => 'Motivo';
+
+  @override
+  String get policyTestResultSnapshot => 'Versione snapshot';
 }

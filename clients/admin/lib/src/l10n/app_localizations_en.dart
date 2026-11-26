@@ -25,6 +25,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navPolicy => 'Policy';
 
   @override
+  String get navPolicyTest => 'Policy test';
+
+  @override
   String get navPrivateApps => 'Private apps';
 
   @override
@@ -1382,4 +1385,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingApply => 'Apply';
+
+  @override
+  String get policyTestSubtitle => 'Evaluate a sample flow against a device\'s signed policy snapshot.';
+
+  @override
+  String get policyTestDevice => 'Device';
+
+  @override
+  String get policyTestSelectDevice => 'Select a device';
+
+  @override
+  String get policyTestNoDevices => 'No enrolled devices found in this tenant.';
+
+  @override
+  String get policyTestProtocol => 'Protocol';
+
+  @override
+  String get policyTestDstIp => 'Destination IP';
+
+  @override
+  String get policyTestDstPort => 'Destination port';
+
+  @override
+  String get policyTestDomain => 'Domain';
+
+  @override
+  String get policyTestApp => 'Application package';
+
+  @override
+  String get policyTestAppHelp => 'Android package name (disabled in Edge mode)';
+
+  @override
+  String get policyTestNetwork => 'Network type';
+
+  @override
+  String get policyTestEdge => 'Evaluate as the Edge';
+
+  @override
+  String get policyTestEdgeHelp =>
+      'Simulate evaluation on an Edge node (device attributes like app and network are ignored)';
+
+  @override
+  String get policyTestActionTest => 'Test';
+
+  @override
+  String get policyTestTesting => 'Testing...';
+
+  @override
+  String get policyTestInvalidIp => 'Enter a valid IPv4 or IPv6 address';
+
+  @override
+  String get policyTestInvalidPort => 'Port must be between 0 and 65535';
+
+  @override
+  String get policyTestResultTitle => 'Evaluation result';
+
+  @override
+  String get policyTestResultAction => 'Action';
+
+  @override
+  String get policyTestResultLayer => 'Layer';
+
+  @override
+  String get policyTestResultRuleId => 'Rule ID';
+
+  @override
+  String get policyTestResultReason => 'Reason';
+
+  @override
+  String get policyTestResultSnapshot => 'Snapshot version';
 }

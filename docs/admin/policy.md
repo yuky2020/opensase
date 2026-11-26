@@ -187,3 +187,21 @@ To prevent concurrent administrators from overwriting each other's changes, Open
    `412 Precondition Failed`.
 4. The portal displays a conflict error banner and disables saving.
 5. Click **Reload** to fetch the latest server policy, resolve conflicting edits, and save again.
+
+## Test a flow
+
+The **Policy test** screen (`/policy-test`) evaluates sample network flows against a device's current signed policy snapshot without generating network traffic or recording flow logs (issue #75).
+
+Administrators in any tenant role can test how firewall rules, mandatory app policies, and fallback actions resolve for specific traffic:
+
+1. **Select device:** Choose an enrolled device to evaluate its compiled snapshot (showing device name and user).
+2. **Specify flow attributes:**
+   - **Protocol:** Transport protocol (`tcp`, `udp`, or `icmp`).
+   - **Destination IP:** Destination IPv4 or IPv6 address.
+   - **Destination port:** Port number (0–65535).
+   - **Domain:** Optional domain name (e.g. `api.example.com`).
+   - **Application package:** Android package identifier (e.g. `com.example.app`), active only when "Evaluate as the Edge" is off.
+   - **Network type:** Network interface (`wifi`, `cellular`, `roaming`, `ethernet`, or `unknown`).
+3. **Evaluate as the Edge:** Toggle to simulate evaluation on an Edge node. In Edge mode, client-only attributes (application package and network interface) are ignored.
+4. **Test:** Click **Test** to view the verdict chip (`allow` or `block`), decision layer (`tenant`, `user`, `app`, `lockdown`, `ztna`, `default`, or `cloud`), matched rule identifier, reason (if the decision has one), and the snapshot version evaluated.
+

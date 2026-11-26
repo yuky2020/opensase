@@ -122,6 +122,12 @@ abstract class AppLocalizations {
   /// **'Policy'**
   String get navPolicy;
 
+  /// No description provided for @navPolicyTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Policy test'**
+  String get navPolicyTest;
+
   /// No description provided for @navPrivateApps.
   ///
   /// In en, this message translates to:
@@ -2144,6 +2150,30 @@ abstract class AppLocalizations {
   String get onboardingNext;
   String get onboardingBack;
   String get onboardingApply;
+
+  String get policyTestSubtitle;
+  String get policyTestDevice;
+  String get policyTestSelectDevice;
+  String get policyTestNoDevices;
+  String get policyTestProtocol;
+  String get policyTestDstIp;
+  String get policyTestDstPort;
+  String get policyTestDomain;
+  String get policyTestApp;
+  String get policyTestAppHelp;
+  String get policyTestNetwork;
+  String get policyTestEdge;
+  String get policyTestEdgeHelp;
+  String get policyTestActionTest;
+  String get policyTestTesting;
+  String get policyTestInvalidIp;
+  String get policyTestInvalidPort;
+  String get policyTestResultTitle;
+  String get policyTestResultAction;
+  String get policyTestResultLayer;
+  String get policyTestResultRuleId;
+  String get policyTestResultReason;
+  String get policyTestResultSnapshot;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

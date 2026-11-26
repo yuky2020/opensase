@@ -342,21 +342,28 @@ class Flow {
 }
 
 class Decision {
-  Decision({this.action = '', this.ruleId = '', this.layer = '', this.log = false});
+  Decision({this.action = '', this.ruleId = '', this.layer = '', this.log = false, this.reason = ''});
 
   String action;
   String ruleId;
   String layer;
   bool log;
+  String reason;
 
-  factory Decision.fromJson(Json j) =>
-      Decision(action: str(j, 'action'), ruleId: str(j, 'ruleId'), layer: str(j, 'layer'), log: boolean(j, 'log'));
+  factory Decision.fromJson(Json j) => Decision(
+    action: str(j, 'action'),
+    ruleId: str(j, 'ruleId'),
+    layer: str(j, 'layer'),
+    log: boolean(j, 'log'),
+    reason: str(j, 'reason'),
+  );
 
   Json toJson() {
     final j = <String, dynamic>{'action': action};
     putOmit(j, 'ruleId', ruleId);
     j['layer'] = layer;
     j['log'] = log;
+    putOmit(j, 'reason', reason);
     return j;
   }
 }

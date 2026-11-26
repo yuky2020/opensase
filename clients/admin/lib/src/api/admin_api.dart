@@ -147,6 +147,11 @@ class AdminApi {
     p.etag = h['etag'] ?? '';
   }
 
+  /// Evaluates a sample flow against a device's current signed snapshot (issue #75).
+  Future<PolicyTestResult> policyTest(String tenant, PolicyTestRequest request) async => PolicyTestResult.fromJson(
+    obj(await _send('POST', '/v1/admin/tenants/${_seg(tenant)}/policy-test', body: request.toJson()), 'policyTest'),
+  );
+
   /// Control Plane description: the pinned control URL for enrollment QR codes (issue #19).
   Future<AdminInfo> info() async => AdminInfo.fromJson(obj(await _send('GET', '/v1/admin/info'), 'info'));
 

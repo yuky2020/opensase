@@ -1103,3 +1103,39 @@ class TenantOidc {
     return j;
   }
 }
+
+/// api.PolicyTestRequest (issue #75).
+class PolicyTestRequest {
+  PolicyTestRequest({required this.deviceId, Flow? flow, this.edge = false}) : flow = flow ?? Flow();
+
+  String deviceId;
+  Flow flow;
+  bool edge;
+
+  factory PolicyTestRequest.fromJson(Json j) => PolicyTestRequest(
+    deviceId: str(j, 'deviceId'),
+    flow: Flow.fromJson(objOrEmpty(j, 'flow')),
+    edge: boolean(j, 'edge'),
+  );
+
+  Json toJson() {
+    final j = <String, dynamic>{'deviceId': deviceId, 'flow': flow.toJson()};
+    putOmit(j, 'edge', edge);
+    return j;
+  }
+}
+
+/// api.PolicyTestResult (issue #75).
+class PolicyTestResult {
+  PolicyTestResult({Decision? decision, this.snapshotVersion = 0}) : decision = decision ?? Decision();
+
+  Decision decision;
+  int snapshotVersion;
+
+  factory PolicyTestResult.fromJson(Json j) => PolicyTestResult(
+    decision: Decision.fromJson(objOrEmpty(j, 'decision')),
+    snapshotVersion: integer(j, 'snapshotVersion'),
+  );
+
+  Json toJson() => {'decision': decision.toJson(), 'snapshotVersion': snapshotVersion};
+}

@@ -13,6 +13,7 @@ import 'ui/login_screen.dart';
 import 'ui/onboarding_screen.dart';
 import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
+import 'ui/policy_test_screen.dart';
 import 'ui/dns_screen.dart';
 import 'ui/private_apps_screen.dart';
 import 'ui/categories_screen.dart';
@@ -63,6 +64,14 @@ final _dests = <_Dest>[
   _Dest('/tenants', Icons.domain_outlined, Icons.domain, (c) => c.l10n.navTenants, TenantsScreen.new),
   _Dest('/users', Icons.people_outline, Icons.people, (c) => c.l10n.navUsers, UsersScreen.new, perTenant: true),
   _Dest('/policy', Icons.rule_outlined, Icons.rule, (c) => c.l10n.navPolicy, PolicyScreen.new, perTenant: true),
+  _Dest(
+    '/policy-test',
+    Icons.fact_check_outlined,
+    Icons.fact_check,
+    (c) => c.l10n.navPolicyTest,
+    PolicyTestScreen.new,
+    perTenant: true,
+  ),
   _Dest('/dns', Icons.dns_outlined, Icons.dns, (c) => c.l10n.navDns, DnsScreen.new, perTenant: true),
   _Dest(
     '/private-apps',

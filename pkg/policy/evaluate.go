@@ -92,8 +92,9 @@ type Compiled struct {
 
 	web *compiledWeb // ADR-0018; nil when the snapshot has no web policy
 
-	categories []string // ADR-0022
-	safeSearch bool     // ADR-0025
+	categories  []string // ADR-0022
+	safeSearch  bool     // ADR-0025
+	redirectDNS bool     // issue #63
 }
 
 // compiledPrivateApp is a PrivateApp with normalized ports and a precomputed rule ID.
@@ -157,6 +158,10 @@ var categoryName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 // SafeSearch reports whether the device's tenant forces safe search (ADR-0025).
 func (c *Compiled) SafeSearch() bool { return c.safeSearch }
+
+// RedirectDNS reports whether plain DNS to other resolvers goes to the Edge resolver
+// instead of being blocked (issue #63).
+func (c *Compiled) RedirectDNS() bool { return c.redirectDNS }
 
 // Categories returns the web categories the device's tenant blocks (ADR-0022).
 func (c *Compiled) Categories() []string { return c.categories }
@@ -233,6 +238,7 @@ func Compile(s *Snapshot) (*Compiled, error) {
 	}
 
 	dns := &s.DNS
+	c.redirectDNS = dns.RedirectQueries
 	switch dns.BlockResponse {
 	case "", "nxdomain", "zero":
 		c.blockResponse = dns.BlockResponse

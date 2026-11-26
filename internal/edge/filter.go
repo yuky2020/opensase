@@ -244,6 +244,10 @@ func (f *Filter) outbound(pkt []byte) bool {
 	}
 	// Built-in Edge rules (metadata, internal networks, DNS bypass) come before any policy.
 	dec, builtin := f.e.guard.check(dst, flow)
+	if builtin && dec.RuleID == RuleDNSBypass && flow.DstPort == dnsPort && dst.Is4() && c.RedirectDNS() {
+		// Forced DNS (issue #63): the kernel DNATs it to the Edge resolver (redirectDNS).
+		dec = policy.Decision{Action: policy.ActionAllow, RuleID: RuleDNSRedirect, Layer: LayerEdge, Log: true}
+	}
 	if !builtin {
 		dec = c.Evaluate(flow, true)
 	}

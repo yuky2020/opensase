@@ -13,6 +13,9 @@ const (
 	LayerEdge       = "edge"
 	RuleBuiltinDeny = "builtin-deny"
 	RuleDNSBypass   = "builtin-dns-bypass" //nolint:gosec // G101: rule ID, not a credential
+	// RuleDNSRedirect marks plain DNS to another resolver that the kernel redirects to the
+	// Edge resolver (issue #63).
+	RuleDNSRedirect = "builtin-dns-redirect"
 	dnsPort         = 53
 	dotPort         = 853
 	httpsPort       = 443

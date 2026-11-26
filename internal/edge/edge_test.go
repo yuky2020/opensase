@@ -207,6 +207,7 @@ type fixture struct {
 	web    policy.WebPolicy    // Web policy of the snapshots setPeer publishes
 	cats   []string            // Categories of the snapshots setPeer publishes
 	safe   bool                // SafeSearch of the snapshots setPeer publishes
+	redir  bool                // dns.redirectQueries of the snapshots setPeer publishes
 }
 
 func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
@@ -267,7 +268,7 @@ func (fx *fixture) setPeer(id string, v uint64) {
 		DNS: policy.DNSPolicy{BlockResponse: "nxdomain", Blocklists: []policy.Blocklist{
 			{ID: "ads", Domains: []string{"*.doubleclick.net"}},
 			{ID: "saas:dropbox", Category: "saas:file-sharing", Domains: []string{"*.dropbox.com"}},
-		}},
+		}, RedirectQueries: fx.redir},
 		PrivateApps: fx.apps,
 		Web:         fx.web,
 		Categories:  fx.cats,
@@ -893,4 +894,40 @@ func TestEdgeOps(t *testing.T) {
 			t.Errorf("metrics lack %q", want)
 		}
 	}
+}
+
+// TestFilterDNSRedirect covers issue #63: with dns.redirectQueries, plain IPv4 DNS to another
+// resolver passes the filter (the kernel DNATs it to the Edge resolver); DNS over TLS and
+// IPv6 DNS stay blocked.
+func TestFilterDNSRedirect(t *testing.T) {
+	fx := newFixture(t)
+	fx.redir = true
+	fx.setPeer("d1", 1)
+	_ = fx.e.syncPeers(context.Background())
+	d := fx.e.reg.get("d1")
+	fx.e.reg.mu.Lock()
+	_ = fx.e.reg.allocateLocked(d)
+	fx.e.reg.mu.Unlock()
+	me := d.ip4.String()
+	ft := newFakeTUN()
+	f := newFilter(ft, fx.e)
+	defer f.Close()
+	rd := startReader(f)
+	write := func(pkt []byte) bool {
+		before := ft.nWrites()
+		if _, err := f.Write([][]byte{pkt}, 0); err != nil {
+			t.Fatal(err)
+		}
+		return ft.nWrites() > before
+	}
+	if !write(ipv4(me, "8.8.8.8", packet.ProtoUDP, udpDgram(42000, 53))) {
+		t.Fatal("redirected DNS over UDP dropped")
+	}
+	if !write(ipv4(me, "8.8.4.4", packet.ProtoTCP, tcpSeg(42001, 53, packet.FlagSYN))) {
+		t.Fatal("redirected DNS over TCP dropped")
+	}
+	if write(ipv4(me, "1.1.1.1", packet.ProtoTCP, tcpSeg(42002, 853, packet.FlagSYN))) {
+		t.Fatal("DNS over TLS passed")
+	}
+	readOne(t, rd)
 }

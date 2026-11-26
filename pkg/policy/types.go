@@ -213,6 +213,10 @@ type DNSPolicy struct {
 	Blocklists    []Blocklist `json:"blocklists"`
 	AllowDomains  []string    `json:"allowDomains,omitempty"` // override blocklists; same syntax as Match.Domains
 	BlockDomains  []string    `json:"blockDomains,omitempty"`
+	// RedirectQueries sends plain DNS (port 53) that devices address to other resolvers to
+	// the Edge resolver, which answers with this policy, instead of blocking it (issue #63).
+	// DNS over TLS and known DNS-over-HTTPS endpoints stay blocked.
+	RedirectQueries bool `json:"redirectQueries,omitempty"`
 }
 
 // Blocklist is a named list of blocked domains in one category.

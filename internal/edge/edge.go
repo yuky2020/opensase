@@ -410,6 +410,7 @@ func (e *Edge) configureInterface(ctx context.Context, name string) error {
 	if err := e.redirectInspect(ctx, name); err != nil {
 		return err
 	}
+	e.redirectDNS(ctx, name)
 	if e.kroutes != nil {
 		e.kroutes.tunName = name
 		e.syncKernelRoutes(ctx)
@@ -430,6 +431,15 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 	}
 	e.ensureRedirect(ctx, "ztna", []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port})
 	return nil
+}
+
+// redirectDNS sends tunnel DNS addressed to other resolvers to the Edge resolver (issue
+// #63). The filter lets such packets through only for devices whose policy sets
+// dns.redirectQueries; for the others it blocks them before they reach the kernel.
+func (e *Edge) redirectDNS(ctx context.Context, tunName string) {
+	for _, proto := range []string{"udp", "tcp"} {
+		e.ensureRedirect(ctx, "dns-"+proto, []string{"PREROUTING", "-i", tunName, "-p", proto, "--dport", "53", "!", "-d", EdgeIPv4.String(), "-j", "DNAT", "--to-destination", EdgeIPv4.String() + ":53"})
+	}
 }
 
 // redirectInspect installs the REDIRECT of tunnel TCP to ports 80 and 443 to the inspection

@@ -83,6 +83,9 @@ class MethodChannelEngine implements Engine {
   Future<void> openVpnSettings() => _call<void>('openVpnSettings');
 
   @override
+  Future<void> openBrowser(String url) => _call<void>('openBrowser', {'url': url});
+
+  @override
   Future<bool> saveFile(String fileName, String content) =>
       _call<bool>('saveFile', {'fileName': fileName, 'content': content});
 

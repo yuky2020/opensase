@@ -161,6 +161,11 @@ class DaemonEngine implements Engine {
   Future<void> openVpnSettings() async {}
 
   @override
+  Future<void> openBrowser(String url) {
+    throw UnsupportedError('desktop uses opensase enroll -sso');
+  }
+
+  @override
   Future<String?> takeEnrollLink() async => null;
 
   @override

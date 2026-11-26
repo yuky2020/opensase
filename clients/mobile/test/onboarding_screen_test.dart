@@ -20,7 +20,7 @@ Widget host(FakeEngine e) => ProviderScope(
   ),
 );
 
-String textOf(WidgetTester t, String key) => t.widget<TextField>(find.byKey(Key(key))).controller!.text;
+String textOf(WidgetTester t, String key) => t.widget<TextField>(find.byKey(ValueKey(key))).controller!.text;
 
 const link = 'opensase://enroll?control=https%3A%2F%2F10.0.2.2%3A9443%23sha256%3Dabcd&key=osk_TEST';
 
@@ -46,7 +46,7 @@ void main() {
     expect(textOf(t, 'enroll_code'), '', reason: 'the code (with the key) is not left on screen');
     expect(find.textContaining('Code applied'), findsOneWidget);
     expect(e.calls, isNot(contains('enroll')));
-    await t.tap(find.byKey(const Key('enroll_submit')));
+    await t.tap(find.byKey(const ValueKey('enroll_submit')));
     await t.pumpAndSettle();
     expect(e.calls, contains('enroll'));
     expect(textOf(t, 'enroll_key'), '', reason: 'key cleared after enrolling');
@@ -59,7 +59,7 @@ void main() {
     e.deliverEnrollLink(link);
     await t.pumpAndSettle();
     expect(textOf(t, 'enroll_key'), 'osk_TEST');
-    await t.enterText(find.byKey(const Key('enroll_code')), 'http://nope');
+    await t.enterText(find.byKey(const ValueKey('enroll_code')), 'http://nope');
     await t.pumpAndSettle();
     expect(find.text('Not a valid enrollment code'), findsOneWidget);
   });
@@ -68,9 +68,9 @@ void main() {
     final e = FakeEngine(liveTraffic: false);
     await t.pumpWidget(host(e));
     await t.pumpAndSettle();
-    await t.enterText(find.byKey(const Key('enroll_key')), 'invalid');
+    await t.enterText(find.byKey(const ValueKey('enroll_key')), 'invalid');
     await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('enroll_submit')));
+    await t.tap(find.byKey(const ValueKey('enroll_submit')));
     await t.pumpAndSettle();
     expect(find.textContaining('401'), findsOneWidget);
   });

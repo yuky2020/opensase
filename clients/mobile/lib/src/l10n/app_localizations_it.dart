@@ -659,4 +659,28 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get daemonHintWindows => 'avvia il servizio OpenSASE';
+
+  @override
+  String get onboardingOrSso => 'Accedi con la tua organizzazione';
+
+  @override
+  String get onboardingSsoTitle => 'Accedi con la tua organizzazione';
+
+  @override
+  String get onboardingSsoTenant => 'ID organizzazione';
+
+  @override
+  String get onboardingSsoTenantHint => 'es. acme-corp';
+
+  @override
+  String get onboardingSsoTenantInvalid => 'Sono consentiti solo lettere minuscole, numeri e trattini';
+
+  @override
+  String get onboardingSsoButton => 'Accedi';
+
+  @override
+  String get onboardingSsoError => 'Accesso Single Sign-On non riuscito: sessione scaduta o stato non valido';
+
+  @override
+  String get onboardingOrKey => 'oppure inserisci una chiave di provisioning';
 }

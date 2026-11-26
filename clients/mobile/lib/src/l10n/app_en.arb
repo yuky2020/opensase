@@ -340,5 +340,13 @@
   "onboardingCodeApplied": "Code applied: check the details below and tap Enroll",
   "daemonNotRunning": "The OpenSASE service is not running",
   "daemonHintLinux": "sudo systemctl start opensased",
-  "daemonHintWindows": "start the OpenSASE service"
+  "daemonHintWindows": "start the OpenSASE service",
+  "onboardingOrSso": "Sign in with your organization",
+  "onboardingSsoTitle": "Sign in with your organization",
+  "onboardingSsoTenant": "Organization ID",
+  "onboardingSsoTenantHint": "e.g. acme-corp",
+  "onboardingSsoTenantInvalid": "Only lowercase letters, numbers, and hyphens are allowed",
+  "onboardingSsoButton": "Sign in",
+  "onboardingSsoError": "Single sign-on failed: session expired or invalid state",
+  "onboardingOrKey": "or enter a provisioning key"
 }

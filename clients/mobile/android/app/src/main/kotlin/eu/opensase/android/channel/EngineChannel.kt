@@ -119,6 +119,18 @@ class EngineChannel(
                 activity.startActivity(Intent(Settings.ACTION_VPN_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 null
             }
+            "openBrowser" -> {
+                val url = call.arg<String>("url")
+                if (url == null || !url.startsWith("https://")) {
+                    throw IllegalArgumentException("URL must start with https://")
+                }
+                val uri = android.net.Uri.parse(url)
+                if (uri.scheme != "https") {
+                    throw IllegalArgumentException("URL must use https")
+                }
+                activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                null
+            }
             "saveFile" -> activity.saveFile(call.arg("fileName")!!, call.arg("content")!!)
             "takeEnrollLink" -> activity.takeEnrollLink()
             "setConnectOnBoot" -> {

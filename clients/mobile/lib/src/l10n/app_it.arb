@@ -203,5 +203,13 @@
   "onboardingCodeApplied": "Codice applicato: controlla i dati qui sotto e tocca Registra",
   "daemonNotRunning": "Il servizio OpenSASE non è in esecuzione",
   "daemonHintLinux": "sudo systemctl start opensased",
-  "daemonHintWindows": "avvia il servizio OpenSASE"
+  "daemonHintWindows": "avvia il servizio OpenSASE",
+  "onboardingOrSso": "Accedi con la tua organizzazione",
+  "onboardingSsoTitle": "Accedi con la tua organizzazione",
+  "onboardingSsoTenant": "ID organizzazione",
+  "onboardingSsoTenantHint": "es. acme-corp",
+  "onboardingSsoTenantInvalid": "Sono consentiti solo lettere minuscole, numeri e trattini",
+  "onboardingSsoButton": "Accedi",
+  "onboardingSsoError": "Accesso Single Sign-On non riuscito: sessione scaduta o stato non valido",
+  "onboardingOrKey": "oppure inserisci una chiave di provisioning"
 }

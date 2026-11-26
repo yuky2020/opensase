@@ -184,6 +184,16 @@ class FakeEngine implements Engine {
   @override
   Future<void> openVpnSettings() async => calls.add('openVpnSettings');
 
+  String? lastOpenedUrl;
+  final List<String> openedUrls = [];
+
+  @override
+  Future<void> openBrowser(String url) async {
+    calls.add('openBrowser');
+    lastOpenedUrl = url;
+    openedUrls.add(url);
+  }
+
   @override
   Future<bool> saveFile(String fileName, String content) async {
     calls.add('saveFile:$fileName');

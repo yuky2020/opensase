@@ -45,6 +45,9 @@ abstract class Engine {
   /// Opens the system VPN settings (always-on / lockdown live there).
   Future<void> openVpnSettings();
 
+  /// Opens [url] in the system browser.
+  Future<void> openBrowser(String url);
+
   /// Lets the user save [content] as a file named [fileName]. Returns false if cancelled.
   Future<bool> saveFile(String fileName, String content);
 

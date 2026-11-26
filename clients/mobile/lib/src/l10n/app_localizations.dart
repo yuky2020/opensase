@@ -1315,6 +1315,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'start the OpenSASE service'**
   String get daemonHintWindows;
+
+  /// No description provided for @onboardingOrSso.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with your organization'**
+  String get onboardingOrSso;
+
+  /// No description provided for @onboardingSsoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with your organization'**
+  String get onboardingSsoTitle;
+
+  /// No description provided for @onboardingSsoTenant.
+  ///
+  /// In en, this message translates to:
+  /// **'Organization ID'**
+  String get onboardingSsoTenant;
+
+  /// No description provided for @onboardingSsoTenantHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. acme-corp'**
+  String get onboardingSsoTenantHint;
+
+  /// No description provided for @onboardingSsoTenantInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Only lowercase letters, numbers, and hyphens are allowed'**
+  String get onboardingSsoTenantInvalid;
+
+  /// No description provided for @onboardingSsoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get onboardingSsoButton;
+
+  /// No description provided for @onboardingSsoError.
+  ///
+  /// In en, this message translates to:
+  /// **'Single sign-on failed: session expired or invalid state'**
+  String get onboardingSsoError;
+
+  /// No description provided for @onboardingOrKey.
+  ///
+  /// In en, this message translates to:
+  /// **'or enter a provisioning key'**
+  String get onboardingOrKey;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

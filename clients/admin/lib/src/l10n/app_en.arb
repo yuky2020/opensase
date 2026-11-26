@@ -548,5 +548,82 @@
   "dnsErrorZoneRequired": "Zone is required",
   "dnsErrorInvalidServers": "Each server must be an IP or IP:port",
   "dnsErrorInvalidListId": "ID must contain only lowercase letters, numbers, and hyphens",
-  "dnsErrorInvalidHttpsUrl": "Must be a valid https:// URL"
+  "dnsErrorInvalidHttpsUrl": "Must be a valid https:// URL",
+  "navOnboarding": "Get started",
+  "onboardingTitle": "Get started",
+  "onboardingSubtitle": "Initial setup wizard for OpenSASE",
+  "onboardingStepWelcome": "Welcome",
+  "onboardingStepOrg": "Organisation",
+  "onboardingStepSso": "Sign-in",
+  "onboardingStepPolicy": "First policy",
+  "onboardingStepDns": "DNS",
+  "onboardingStepConnectors": "Private apps",
+  "onboardingStepDevices": "Devices",
+  "onboardingStepDone": "Done",
+  "onboardingWelcomeSuper": "Deployment health and readiness status.",
+  "onboardingWelcomeTenant": "Welcome to the OpenSASE admin portal. Complete the steps below to configure your organization.",
+  "onboardingEdgesReporting": "Edges reporting: {reporting} of {total}",
+  "@onboardingEdgesReporting": {
+    "placeholders": {
+      "reporting": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "onboardingCertWarning": "Warning: Certificate '{name}' expires in {days} days",
+  "@onboardingCertWarning": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "days": {"type": "int"}
+    }
+  },
+  "onboardingCertsHealthy": "All certificates are healthy",
+  "onboardingStepStatusDone": "Done",
+  "onboardingStepStatusTodo": "Not done",
+  "onboardingOrgHelp": "Configure the tenant display name.",
+  "onboardingOrgCurrent": "Current organisation: {name} ({id})",
+  "@onboardingOrgCurrent": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "id": {"type": "String"}
+    }
+  },
+  "onboardingOrgCreate": "Create organisation",
+  "onboardingSsoHelp": "Configure Single Sign-On using your OpenID Connect identity provider.",
+  "onboardingTestSignin": "Test sign-in",
+  "onboardingSkipSso": "Skip, use provisioning keys",
+  "onboardingAddGroup": "Add group mapping",
+  "onboardingPolicyHelp": "Choose a baseline security policy template for your tenant.",
+  "onboardingTemplateRecommended": "Recommended",
+  "onboardingTemplateRecommendedDesc": "Allow default action, block malware and phishing categories, and enforce SafeSearch.",
+  "onboardingTemplatePermissive": "Permissive",
+  "onboardingTemplatePermissiveDesc": "Allow default action with no category blocking.",
+  "onboardingPolicyPreview": "Policy JSON preview",
+  "onboardingDnsHelp": "Set internal DNS resolution and security blocklists.",
+  "onboardingDnsZone": "Internal zone name",
+  "onboardingDnsBlocklist": "Security blocklist",
+  "onboardingConnectorHelp": "Deploy a Connector to securely broker access to private network applications.",
+  "onboardingConnectorCreate": "Create Connector",
+  "onboardingConnectorDocker": "Run with Docker",
+  "onboardingConnectorDockerHelp": "Run this command on your connector host. The key is shown only once.",
+  "onboardingConnectorStatus": "Live Connector status",
+  "onboardingPrivateAppsLink": "Add private apps",
+  "onboardingSkip": "Skip",
+  "onboardingDevicesHelp": "Enroll user devices using a provisioning key or QR code.",
+  "onboardingKeyCreate": "Generate provisioning key",
+  "onboardingPlatformAndroid": "Android",
+  "onboardingPlatformAndroidDesc": "Install the OpenSASE app and scan the QR code to enroll.",
+  "onboardingPlatformWindows": "Windows",
+  "onboardingPlatformWindowsDesc": "Download and run the Windows MSI installer, then supply the control URL and provisioning key.",
+  "onboardingPlatformLinux": "Linux",
+  "onboardingPlatformLinuxDesc": "Install the Linux package (deb or rpm) and run the enrollment command with the provisioning key.",
+  "onboardingDevicesLive": "Live enrolled devices",
+  "onboardingDoneTitle": "Setup complete!",
+  "onboardingDoneSubtitle": "Your OpenSASE deployment is ready to secure your traffic and private applications.",
+  "onboardingLinkStatus": "Status page",
+  "onboardingLinkPolicy": "Policy editor",
+  "onboardingLinkDns": "DNS settings",
+  "onboardingLinkDocs": "Documentation",
+  "onboardingNext": "Next",
+  "onboardingBack": "Back",
+  "onboardingApply": "Apply"
 }

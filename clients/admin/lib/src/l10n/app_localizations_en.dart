@@ -1200,4 +1200,186 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dnsErrorInvalidHttpsUrl => 'Must be a valid https:// URL';
+
+  @override
+  String get navOnboarding => 'Get started';
+
+  @override
+  String get onboardingTitle => 'Get started';
+
+  @override
+  String get onboardingSubtitle => 'Initial setup wizard for OpenSASE';
+
+  @override
+  String get onboardingStepWelcome => 'Welcome';
+
+  @override
+  String get onboardingStepOrg => 'Organisation';
+
+  @override
+  String get onboardingStepSso => 'Sign-in';
+
+  @override
+  String get onboardingStepPolicy => 'First policy';
+
+  @override
+  String get onboardingStepDns => 'DNS';
+
+  @override
+  String get onboardingStepConnectors => 'Private apps';
+
+  @override
+  String get onboardingStepDevices => 'Devices';
+
+  @override
+  String get onboardingStepDone => 'Done';
+
+  @override
+  String get onboardingWelcomeSuper => 'Deployment health and readiness status.';
+
+  @override
+  String get onboardingWelcomeTenant =>
+      'Welcome to the OpenSASE admin portal. Complete the steps below to configure your organization.';
+
+  @override
+  String onboardingEdgesReporting(int reporting, int total) => 'Edges reporting: $reporting of $total';
+
+  @override
+  String onboardingCertWarning(String name, int days) => 'Warning: Certificate \'$name\' expires in $days days';
+
+  @override
+  String get onboardingCertsHealthy => 'All certificates are healthy';
+
+  @override
+  String get onboardingStepStatusDone => 'Done';
+
+  @override
+  String get onboardingStepStatusTodo => 'Not done';
+
+  @override
+  String get onboardingOrgHelp => 'Configure the tenant display name.';
+
+  @override
+  String onboardingOrgCurrent(String name, String id) => 'Current organisation: $name ($id)';
+
+  @override
+  String get onboardingOrgCreate => 'Create organisation';
+
+  @override
+  String get onboardingSsoHelp => 'Configure Single Sign-On using your OpenID Connect identity provider.';
+
+  @override
+  String get onboardingTestSignin => 'Test sign-in';
+
+  @override
+  String get onboardingSkipSso => 'Skip, use provisioning keys';
+
+  @override
+  String get onboardingAddGroup => 'Add group mapping';
+
+  @override
+  String get onboardingPolicyHelp => 'Choose a baseline security policy template for your tenant.';
+
+  @override
+  String get onboardingTemplateRecommended => 'Recommended';
+
+  @override
+  String get onboardingTemplateRecommendedDesc =>
+      'Allow default action, block malware and phishing categories, and enforce SafeSearch.';
+
+  @override
+  String get onboardingTemplatePermissive => 'Permissive';
+
+  @override
+  String get onboardingTemplatePermissiveDesc => 'Allow default action with no category blocking.';
+
+  @override
+  String get onboardingPolicyPreview => 'Policy JSON preview';
+
+  @override
+  String get onboardingDnsHelp => 'Set internal DNS resolution and security blocklists.';
+
+  @override
+  String get onboardingDnsZone => 'Internal zone name';
+
+  @override
+  String get onboardingDnsBlocklist => 'Security blocklist';
+
+  @override
+  String get onboardingConnectorHelp => 'Deploy a Connector to securely broker access to private network applications.';
+
+  @override
+  String get onboardingConnectorCreate => 'Create Connector';
+
+  @override
+  String get onboardingConnectorDocker => 'Run with Docker';
+
+  @override
+  String get onboardingConnectorDockerHelp => 'Run this command on your connector host. The key is shown only once.';
+
+  @override
+  String get onboardingConnectorStatus => 'Live Connector status';
+
+  @override
+  String get onboardingPrivateAppsLink => 'Add private apps';
+
+  @override
+  String get onboardingSkip => 'Skip';
+
+  @override
+  String get onboardingDevicesHelp => 'Enroll user devices using a provisioning key or QR code.';
+
+  @override
+  String get onboardingKeyCreate => 'Generate provisioning key';
+
+  @override
+  String get onboardingPlatformAndroid => 'Android';
+
+  @override
+  String get onboardingPlatformAndroidDesc => 'Install the OpenSASE app and scan the QR code to enroll.';
+
+  @override
+  String get onboardingPlatformWindows => 'Windows';
+
+  @override
+  String get onboardingPlatformWindowsDesc =>
+      'Download and run the Windows MSI installer, then supply the control URL and provisioning key.';
+
+  @override
+  String get onboardingPlatformLinux => 'Linux';
+
+  @override
+  String get onboardingPlatformLinuxDesc =>
+      'Install the Linux package (deb or rpm) and run the enrollment command with the provisioning key.';
+
+  @override
+  String get onboardingDevicesLive => 'Live enrolled devices';
+
+  @override
+  String get onboardingDoneTitle => 'Setup complete!';
+
+  @override
+  String get onboardingDoneSubtitle =>
+      'Your OpenSASE deployment is ready to secure your traffic and private applications.';
+
+  @override
+  String get onboardingLinkStatus => 'Status page';
+
+  @override
+  String get onboardingLinkPolicy => 'Policy editor';
+
+  @override
+  String get onboardingLinkDns => 'DNS settings';
+
+  @override
+  String get onboardingLinkDocs => 'Documentation';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingApply => 'Apply';
 }

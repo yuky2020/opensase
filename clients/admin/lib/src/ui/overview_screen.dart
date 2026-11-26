@@ -1,11 +1,15 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../api/admin_models.dart';
 import '../data/flow_stats.dart';
 import '../data/providers.dart';
+import '../data/session.dart';
 import 'common.dart';
+
+const onboardingSessionKey = 'opensase.admin.onboarding.checked';
 
 /// Chart series colours: allow and block, validated for CVD separation on both surfaces
 /// (dataviz validator). Red/green verdict colours of the theme fail it, so the chart uses
@@ -19,11 +23,67 @@ import 'common.dart';
   );
 }
 
-class OverviewScreen extends ConsumerWidget {
+class OverviewScreen extends ConsumerStatefulWidget {
   const OverviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OverviewScreen> createState() => _OverviewScreenState();
+}
+
+class _OverviewScreenState extends ConsumerState<OverviewScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAutoOnboarding());
+  }
+
+  Future<void> _checkAutoOnboarding() async {
+    try {
+      final store = ref.read(tabStorageProvider);
+      if (store.read(onboardingSessionKey) != null) return;
+      store.write(onboardingSessionKey, '1');
+
+      final tenant = ref.read(currentTenantProvider);
+      if (tenant == null) {
+        final tenants = await ref.read(apiProvider).listTenants();
+        if (tenants.isEmpty) {
+          _navigateToOnboarding();
+          return;
+        }
+        final t = tenants.first.id;
+        final devices = await ref.read(apiProvider).listDevices(t);
+        final policy = await ref.read(apiProvider).getPolicy(t);
+        if (devices.isEmpty && policy.rules.isEmpty) {
+          _navigateToOnboarding();
+        }
+        return;
+      }
+
+      final devices = await ref.read(apiProvider).listDevices(tenant);
+      final policy = await ref.read(apiProvider).getPolicy(tenant);
+      if (devices.isEmpty && policy.rules.isEmpty) {
+        _navigateToOnboarding();
+      }
+    } catch (_) {
+      // Never block the rest of the portal.
+    }
+  }
+
+  void _navigateToOnboarding() {
+    if (!mounted) return;
+    bool atOverview = false;
+    try {
+      atOverview = GoRouterState.of(context).matchedLocation == '/overview';
+    } catch (_) {
+      atOverview = false;
+    }
+    if (atOverview) {
+      context.go('/onboarding');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = context.l10n;
     final now = ref.watch(clockProvider)();
     final tenant = ref.watch(currentTenantProvider);

@@ -10,6 +10,7 @@ import 'ui/security_events_screen.dart';
 import 'ui/common.dart';
 import 'ui/infra_screens.dart';
 import 'ui/login_screen.dart';
+import 'ui/onboarding_screen.dart';
 import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
 import 'ui/dns_screen.dart';
@@ -51,6 +52,14 @@ class _Dest {
 
 final _dests = <_Dest>[
   _Dest('/overview', Icons.dashboard_outlined, Icons.dashboard, (c) => c.l10n.navOverview, OverviewScreen.new),
+  _Dest(
+    '/onboarding',
+    Icons.flag_outlined,
+    Icons.flag,
+    (c) => c.l10n.navOnboarding,
+    OnboardingScreen.new,
+    perTenant: true,
+  ),
   _Dest('/tenants', Icons.domain_outlined, Icons.domain, (c) => c.l10n.navTenants, TenantsScreen.new),
   _Dest('/users', Icons.people_outline, Icons.people, (c) => c.l10n.navUsers, UsersScreen.new, perTenant: true),
   _Dest('/policy', Icons.rule_outlined, Icons.rule, (c) => c.l10n.navPolicy, PolicyScreen.new, perTenant: true),

@@ -10,6 +10,7 @@ export 'browser_nav_stub.dart' if (dart.library.js_interop) 'browser_nav_web.dar
 typedef BrowserNavigator = void Function(String url);
 
 final browserNavProvider = Provider<BrowserNavigator>((ref) => openUrl);
+final browserTabNavProvider = Provider<BrowserNavigator>((ref) => openUrlInNewTab);
 
 String buildOidcLoginUrl(String tenant, {Uri? base}) {
   final b = base ?? Uri.base;

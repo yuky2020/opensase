@@ -228,6 +228,7 @@ func (s *Server) Handler() http.Handler {
 		r.Use(s.requireDeviceOrEdge)
 		r.Post("/v1/decide", s.handleDecide)
 		r.Post("/v1/flows", s.handleFlows)
+		r.Post("/v1/posture", s.handlePosture)
 	})
 	// Connectors (ADR-0013). Connector certificates are accepted on these routes only.
 	r.With(short, s.limitEnroll).Post("/v1/connector/enroll", s.handleConnectorEnroll)
@@ -277,6 +278,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/flows", s.handleListFlows)
 			r.Get("/experience", s.handleExperience)
 			r.Get("/devices", s.handleListDevices)
+			r.Get("/devices/{d}/posture", s.handleGetDevicePosture)
 			r.Post("/devices/{d}/revoke", s.handleRevokeDevice)
 			r.Get("/devices/{d}/routes", s.handleGetDeviceRoutes)
 			r.Put("/devices/{d}/routes", s.handlePutDeviceRoutes)
@@ -471,7 +473,11 @@ func writeValidationErr(w http.ResponseWriter, err error) {
 // decodeJSON decodes exactly one JSON object. A body of `null` is refused: it would decode
 // to the zero value and, on PUT policy, silently wipe the tenant policy. So is trailing data.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+	return decodeJSONLimit(w, r, v, maxBody)
+}
+
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false

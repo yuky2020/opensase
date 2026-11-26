@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/policy"
 	"github.com/yuky2020/opensase/pkg/saas"
 	"github.com/yuky2020/opensase/pkg/store"
+	"github.com/yuky2020/opensase/pkg/tunneladdr"
 )
 
 // MergeLayers builds the firewall and DNS sections of a device Snapshot from the tenant layer
@@ -117,6 +119,11 @@ func validateTenantPolicy(tp api.TenantPolicy) error {
 		if r.Source != "" && r.Source != policy.SourceTenant {
 			return &policy.ValidationError{Field: fmt.Sprintf("rules[%d].source", i), Msg: fmt.Sprintf("must be %q", policy.SourceTenant)}
 		}
+		switch r.Posture {
+		case "", policy.PostureCompliant, policy.PostureNoncompliant:
+		default:
+			return &policy.ValidationError{Field: fmt.Sprintf("rules[%d].posture", i), Msg: fmt.Sprintf("invalid posture condition %q", r.Posture)}
+		}
 	}
 	switch tp.DecideDefault {
 	case "", policy.ActionAllow, policy.ActionBlock:
@@ -136,6 +143,9 @@ func validateTenantPolicy(tp api.TenantPolicy) error {
 		return err
 	}
 	if err := validateMesh(tp.Mesh); err != nil {
+		return err
+	}
+	if err := validatePosturePolicy(tp.Posture); err != nil {
 		return err
 	}
 	fw, dns := MergeLayers(tp, nil)
@@ -202,6 +212,11 @@ func validatePrivateApps(apps []api.TenantPrivateApp) error {
 		case !pki.ValidID(a.ConnectorGroup):
 			return &policy.ValidationError{Field: field + ".connectorGroup", Msg: "must match [a-zA-Z0-9][a-zA-Z0-9._-]*"}
 		}
+		switch a.Posture {
+		case "", policy.PostureCompliant, policy.PostureNoncompliant:
+		default:
+			return &policy.ValidationError{Field: field + ".posture", Msg: fmt.Sprintf("invalid posture condition %q", a.Posture)}
+		}
 		seen[a.ID] = true
 		for j, p := range a.Ports {
 			if p.From == 0 {
@@ -229,11 +244,18 @@ func stripUsers(apps []api.TenantPrivateApp) []policy.PrivateApp {
 	return out
 }
 
-// entitledApps returns the private apps user u may reach: those with an empty Users list,
-// or listing u's ID or (case-insensitively) u's email. Users is stripped.
-func entitledApps(apps []api.TenantPrivateApp, u store.User) []policy.PrivateApp {
+// entitledApps returns the private apps user u may reach on a device with compliance status compliant:
+// those matching the posture condition, and with an empty Users list or listing u's ID or email.
+// Users is stripped.
+func entitledApps(apps []api.TenantPrivateApp, u store.User, compliant bool) []policy.PrivateApp {
 	var out []policy.PrivateApp
 	for _, a := range apps {
+		if a.Posture == policy.PostureCompliant && !compliant {
+			continue
+		}
+		if a.Posture == policy.PostureNoncompliant && compliant {
+			continue
+		}
 		ok := len(a.Users) == 0
 		for _, x := range a.Users {
 			if x == u.ID || (u.Email != "" && strings.EqualFold(x, u.Email)) {
@@ -297,12 +319,27 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 		return nil, err
 	}
 	rules := map[string]*api.UserRules{}
-	users := map[string][]policy.PrivateApp{} // user ID -> entitled private apps
+	users := map[string]store.User{} // user ID -> user, for private app entitlement
 	out := make(map[string]store.SnapshotRecord, len(devs))
 	for _, d := range devs {
 		if d.TenantID != tenantID {
 			return nil, fmt.Errorf("device %s is not in tenant %s", d.ID, tenantID)
 		}
+		dp, err := s.cfg.Store.DevicePosture(ctx, d.ID)
+		var failing []string
+		now := s.now().UTC().Truncate(time.Second)
+		if errors.Is(err, store.ErrNotFound) {
+			// A device created less than 10 minutes ago with no report is treated as compliant (grace period, ADR-0035).
+			if now.Sub(d.CreatedAt) >= 10*time.Minute {
+				failing = postureFailing(tp.Posture, nil)
+			}
+		} else if err != nil {
+			return nil, fmt.Errorf("load posture for device %s: %w", d.ID, err)
+		} else {
+			failing = postureFailing(tp.Posture, &dp.Posture)
+		}
+		compliant := len(failing) == 0
+
 		ur, ok := rules[d.UserID]
 		if !ok {
 			r, err := s.cfg.Store.GetUserRules(ctx, tenantID, d.UserID)
@@ -314,16 +351,26 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 			}
 			rules[d.UserID] = ur
 		}
-		apps, ok := users[d.UserID]
-		if !ok && len(tp.PrivateApps) > 0 {
-			u, err := s.cfg.Store.GetUser(ctx, tenantID, d.UserID)
-			if err != nil {
-				return nil, fmt.Errorf("load user %s: %w", d.UserID, err)
-			}
-			apps = entitledApps(tp.PrivateApps, u)
-			users[d.UserID] = apps
-		}
 		fw, dns := MergeLayers(tp, ur)
+
+		// Filter tenant rules by device posture condition:
+		// PostureCompliant is kept only when compliant, PostureNoncompliant only when !compliant.
+		// Rule.Posture is cleared in the compiled snapshot.
+		var filteredRules []policy.Rule
+		for _, r := range fw.Rules {
+			if r.Source == policy.SourceTenant {
+				if r.Posture == policy.PostureCompliant && !compliant {
+					continue
+				}
+				if r.Posture == policy.PostureNoncompliant && compliant {
+					continue
+				}
+				r.Posture = policy.PostureAny
+			}
+			filteredRules = append(filteredRules, r)
+		}
+		fw.Rules = filteredRules
+
 		if needsUserScope(tp) {
 			u, err := s.cfg.Store.GetUser(ctx, tenantID, d.UserID)
 			if err != nil {
@@ -335,24 +382,130 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 			}
 			fw.Rules = scopeRules(fw.Rules, u, groups)
 		}
-		now := s.now().UTC().Truncate(time.Second)
+
+		var apps []policy.PrivateApp
+		if len(tp.PrivateApps) > 0 {
+			u, ok := users[d.UserID]
+			if !ok {
+				var err error
+				if u, err = s.cfg.Store.GetUser(ctx, tenantID, d.UserID); err != nil {
+					return nil, fmt.Errorf("load user %s: %w", d.UserID, err)
+				}
+				users[d.UserID] = u
+			}
+			apps = entitledApps(tp.PrivateApps, u, compliant)
+		}
+
+		snapFW := fw
+		snapApps := apps
+		snapMesh := meshInbound(tp.Mesh, d)
+		var postureFailingList []string
+		if !compliant {
+			postureFailingList = failing
+		}
+
+		if !compliant && tp.Posture.Restrict {
+			// Restricted snapshot (ADR-0035):
+			// Keep envelope, identity, DNS servers and signing as normal.
+			// Firewall default action is block, with only:
+			// 1. DNS (udp and tcp port 53) to tunnel resolver addresses (100.64.0.1, fd7a:5a5e::1).
+			// 2. TCP 443 to Control Plane address(es). Assumption: Control Plane host is
+			//    derived from s.cfg.ControlURL, falling back to 127.0.0.1 if unconfigured.
+			// 3. Remediation domains (rules with Match.Domains).
+			// No private apps; no mesh grants.
+			var restrictedRules []policy.Rule
+			rulePrio := 1
+
+			// 1. Allow DNS to tunnel resolver addresses
+			restrictedRules = append(restrictedRules, policy.Rule{
+				ID:       "posture:dns",
+				Source:   policy.SourceTenant,
+				Priority: rulePrio,
+				Action:   policy.ActionAllow,
+				Match: policy.Match{
+					Protocols: []string{"udp", "tcp"},
+					CIDRs:     []string{tunneladdr.EdgeIPv4.String() + "/32", tunneladdr.EdgeIPv6.String() + "/128"},
+					Ports:     []policy.PortRange{{From: 53, To: 53}},
+				},
+			})
+			rulePrio++
+
+			// 2. Allow TCP 443 to Control Plane address(es)
+			cpMatch := policy.Match{
+				Protocols: []string{"tcp"},
+				Ports:     []policy.PortRange{{From: 443, To: 443}},
+			}
+			if s.cfg.ControlURL != "" {
+				if u, err := url.Parse(s.cfg.ControlURL); err == nil {
+					if p, err := strconv.ParseUint(u.Port(), 10, 16); err == nil && p > 0 {
+						cpMatch.Ports = []policy.PortRange{{From: uint16(p), To: uint16(p)}}
+					}
+					h := u.Hostname()
+					if ip, err := netip.ParseAddr(h); err == nil {
+						if ip.Is4() {
+							cpMatch.CIDRs = []string{ip.String() + "/32"}
+						} else {
+							cpMatch.CIDRs = []string{ip.String() + "/128"}
+						}
+					} else if h != "" {
+						cpMatch.Domains = []string{h}
+					}
+				}
+			}
+			if len(cpMatch.CIDRs) == 0 && len(cpMatch.Domains) == 0 {
+				cpMatch.CIDRs = []string{"127.0.0.1/32"}
+			}
+			restrictedRules = append(restrictedRules, policy.Rule{
+				ID:       "posture:controlplane",
+				Source:   policy.SourceTenant,
+				Priority: rulePrio,
+				Action:   policy.ActionAllow,
+				Match:    cpMatch,
+			})
+			rulePrio++
+
+			// 3. Allow remediation domains
+			if len(tp.Posture.RemediationDomains) > 0 {
+				restrictedRules = append(restrictedRules, policy.Rule{
+					ID:       "posture:remediation",
+					Source:   policy.SourceTenant,
+					Priority: rulePrio,
+					Action:   policy.ActionAllow,
+					Match: policy.Match{
+						Domains: tp.Posture.RemediationDomains,
+					},
+				})
+			}
+
+			snapFW = policy.FirewallPolicy{
+				DefaultAction:     policy.ActionBlock,
+				AllowUserRules:    false,
+				Lockdown:          tp.Lockdown, // never weaker than the normal snapshot
+				DisableKillSwitch: tp.DisableKillSwitch,
+				Rules:             restrictedRules,
+			}
+			snapApps = nil
+			snapMesh = nil
+		}
+
 		exp := now.Add(s.cfg.SnapshotTTL)
 		rec, err := s.cfg.Store.SaveSnapshot(ctx, d.ID, now, exp, func(v uint64) ([]byte, error) {
 			snap := &policy.Snapshot{
-				SchemaVersion: policy.CurrentSchemaVersion,
-				Version:       v,
-				TenantID:      d.TenantID,
-				UserID:        d.UserID,
-				DeviceID:      d.ID,
-				IssuedAt:      now,
-				ExpiresAt:     exp,
-				Firewall:      fw,
-				DNS:           dns,
-				PrivateApps:   apps,
-				Web:           tp.Web,
-				Categories:    append(slices.Clone(tp.Categories), listCategories(tenantID, tp)...),
-				SafeSearch:    tp.SafeSearch,
-				MeshInbound:   meshInbound(tp.Mesh, d),
+				SchemaVersion:  policy.CurrentSchemaVersion,
+				Version:        v,
+				TenantID:       d.TenantID,
+				UserID:         d.UserID,
+				DeviceID:       d.ID,
+				IssuedAt:       now,
+				ExpiresAt:      exp,
+				Firewall:       snapFW,
+				DNS:            dns,
+				PrivateApps:    snapApps,
+				Web:            tp.Web,
+				Categories:     append(slices.Clone(tp.Categories), listCategories(tenantID, tp)...),
+				SafeSearch:     tp.SafeSearch,
+				MeshInbound:    snapMesh,
+				PostureFailing: postureFailingList,
 			}
 			env, err := policy.Sign(snap, s.cfg.SigningKeyID, s.cfg.SigningKey)
 			if err != nil {

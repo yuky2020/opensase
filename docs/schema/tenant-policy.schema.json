@@ -130,6 +130,15 @@
               "type": "string"
             },
             "description": "Limit the rule to these identity provider groups, issue #68."
+          },
+          "posture": {
+            "type": "string",
+            "enum": [
+              "",
+              "compliant",
+              "noncompliant"
+            ],
+            "description": "Limit the rule to devices matching the posture condition (ADR-0035)."
           }
         },
         "additionalProperties": false
@@ -339,6 +348,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "posture": {
+            "type": "string",
+            "enum": [
+              "",
+              "compliant",
+              "noncompliant"
+            ],
+            "description": "Limit the application to devices matching the posture condition (ADR-0035)."
           }
         },
         "additionalProperties": false
@@ -676,6 +694,63 @@
               }
             },
             "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "posture": {
+      "type": "object",
+      "description": "Device posture policy defining minimum OS/client versions and required signals (ADR-0035).",
+      "properties": {
+        "minOsVersion": {
+          "type": "object",
+          "description": "Minimum OS version required at enrolment per platform.",
+          "properties": {
+            "android": {
+              "type": "string"
+            },
+            "windows": {
+              "type": "string"
+            },
+            "linux": {
+              "type": "string"
+            },
+            "macos": {
+              "type": "string"
+            },
+            "ios": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "minClientVersion": {
+          "type": "string",
+          "description": "Minimum client version required at enrolment."
+        },
+        "require": {
+          "type": "array",
+          "description": "Signals required from devices (diskEncryption, screenLock, firewall, managed).",
+          "items": {
+            "type": "string",
+            "enum": [
+              "diskEncryption",
+              "screenLock",
+              "firewall",
+              "managed"
+            ]
+          }
+        },
+        "restrict": {
+          "type": "boolean",
+          "description": "Whether failing devices receive a restricted snapshot with default block."
+        },
+        "remediationDomains": {
+          "type": "array",
+          "description": "Domain names allowed in the restricted snapshot for remediation.",
+          "items": {
+            "type": "string"
           }
         }
       },

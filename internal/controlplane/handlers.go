@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -56,6 +57,23 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.Sum256([]byte(req.ProvisioningKey))
 	var certPEM, tenantCAPEM []byte
 	dev, err := s.cfg.Store.Enroll(r.Context(), hash[:], s.now(), func(e store.Enrollment) (store.Device, error) { //nolint:contextcheck // runs synchronously inside the store transaction and uses r.Context()
+		if req.Posture != nil {
+			tp := api.TenantPolicy{Posture: e.Posture} // read in the enrolment transaction
+			os := req.Posture.OS
+			if os == "" {
+				os = req.Platform
+			}
+			if minOS, ok := tp.Posture.MinOSVersion[os]; ok && minOS != "" {
+				if compareVersions(req.Posture.OSVersion, minOS) < 0 {
+					return store.Device{}, &postureError{msg: fmt.Sprintf("posture: OS version below the minimum %s", minOS)}
+				}
+			}
+			if tp.Posture.MinClientVersion != "" {
+				if compareVersions(req.Posture.ClientVersion, tp.Posture.MinClientVersion) < 0 {
+					return store.Device{}, &postureError{msg: fmt.Sprintf("posture: client version below the minimum %s", tp.Posture.MinClientVersion)}
+				}
+			}
+		}
 		ca, err := s.cfg.Authority.TenantCA(r.Context(), e.TenantID)
 		if err != nil {
 			return store.Device{}, err
@@ -68,6 +86,11 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		certPEM, tenantCAPEM = pemChain, ca.CertPEM()
 		return store.Device{ID: id, Name: req.DeviceName, Platform: req.Platform, CertSerial: leaf.SerialNumber.String()}, nil
 	})
+	var pe *postureError
+	if errors.As(err, &pe) {
+		writeErr(w, http.StatusForbidden, pe.msg)
+		return
+	}
 	if errors.Is(err, store.ErrKeyInvalid) {
 		s.obs.enrollFails.Inc()
 		s.log.WarnContext(r.Context(), "enrollment rejected: provisioning key invalid")
@@ -77,6 +100,26 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.internalErr(w, r, "enroll", err)
 		return
+	}
+	if req.Posture != nil {
+		p := *req.Posture
+		if p.OS == "" {
+			p.OS = dev.Platform
+		}
+		now := s.now().UTC()
+		if p.CollectedAt.IsZero() {
+			p.CollectedAt = now
+		}
+		tp, err := s.tenantPolicy(r.Context(), dev.TenantID)
+		if err != nil {
+			s.internalErr(w, r, "tenant policy", err)
+			return
+		}
+		failing := postureFailing(tp.Posture, &p)
+		if err := s.cfg.Store.SetDevicePosture(r.Context(), dev.TenantID, dev.ID, p, failing, now); err != nil {
+			s.internalErr(w, r, "store initial posture", err)
+			return
+		}
 	}
 	if _, err := s.compileDevices(r.Context(), dev.TenantID, []store.Device{dev}); err != nil {
 		s.internalErr(w, r, "initial snapshot", err)

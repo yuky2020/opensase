@@ -92,6 +92,7 @@ nav:
       - Troubleshooting: operations/troubleshooting.md
       - DNS security: operations/dns-security.md
       - Device mesh: operations/mesh.md
+      - Device posture: operations/posture.md
       - Users and provisioning: operations/identity.md
   - Reference:
       - CLI: reference/cli.md

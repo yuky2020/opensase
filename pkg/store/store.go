@@ -320,6 +320,9 @@ func (s *Store) CreateProvisioningKey(ctx context.Context, k ProvisioningKey) er
 type Enrollment struct {
 	TenantID string
 	UserID   string
+	// Posture is the tenant's posture policy, read in the same transaction so that the
+	// enrolment callback needs no other store call (ADR-0035).
+	Posture api.PosturePolicy
 }
 
 // Device is a row of the devices table.
@@ -402,6 +405,18 @@ func (s *Store) Enroll(ctx context.Context, hash []byte, now time.Time, mkDevice
 		}
 		if err != nil {
 			return err
+		}
+		var raw string
+		switch err := tx.QueryRowContext(ctx, `SELECT policy FROM tenant_policy WHERE tenant_id = ?`, e.TenantID).Scan(&raw); {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		default:
+			var tp api.TenantPolicy
+			if err := json.Unmarshal([]byte(raw), &tp); err != nil {
+				return fmt.Errorf("store: decode tenant policy: %w", err)
+			}
+			e.Posture = tp.Posture
 		}
 		d, err = mkDevice(e)
 		if err != nil {

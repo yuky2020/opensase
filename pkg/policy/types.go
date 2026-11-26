@@ -217,6 +217,28 @@ type DNSPolicy struct {
 	// the Edge resolver, which answers with this policy, instead of blocking it (issue #63).
 	// DNS over TLS and known DNS-over-HTTPS endpoints stay blocked.
 	RedirectQueries bool `json:"redirectQueries,omitempty"`
+	// Internal DNS (issue #62). Zone is the tenant's internal zone: the Edge answers
+	// <device>.<user>.<zone> with the device's tunnel addresses. Records are answered by the
+	// Edge; Forwarders send their zones to other resolvers (for example the company's own
+	// DNS, reachable from the Edge). LogQueries records allowed queries as flows too.
+	Zone       string         `json:"zone,omitempty"`
+	Records    []DNSRecord    `json:"records,omitempty"`
+	Forwarders []DNSForwarder `json:"forwarders,omitempty"`
+	LogQueries bool           `json:"logQueries,omitempty"`
+}
+
+// DNSRecord is an internal record answered by the Edge resolver (issue #62).
+type DNSRecord struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"` // A, AAAA, CNAME, TXT
+	Value string `json:"value"`
+	TTL   int    `json:"ttl,omitempty"` // seconds, default 300, at most 86400
+}
+
+// DNSForwarder sends queries for Zone and its subdomains to Servers (IP or IP:port).
+type DNSForwarder struct {
+	Zone    string   `json:"zone"`
+	Servers []string `json:"servers"`
 }
 
 // Blocklist is a named list of blocked domains in one category.

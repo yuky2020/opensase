@@ -42,6 +42,7 @@ type device struct {
 	// cpOffset is the offset the Control Plane assigned (issue #70), the same on every Edge;
 	// 0 if the Control Plane is older and the Edge picks one.
 	cpOffset uint32
+	dnsName  string // "<device>.<user>" in the tenant's internal zone (issue #62)
 	ip4      netip.Addr
 	ip6      netip.Addr
 
@@ -88,6 +89,7 @@ type registry struct {
 	reserved map[uint32]bool // offsets the Control Plane assigned (issue #70)
 	next     uint32
 	byIP     atomic.Pointer[map[netip.Addr]*device]
+	byName   atomic.Pointer[map[string]*device] // tenant + "/" + dnsName (issue #62)
 	routes   atomic.Pointer[[]routeEntry]
 	serials  atomic.Pointer[map[string]string] // device ID -> current cert serial (ST-01)
 }
@@ -96,6 +98,8 @@ func newRegistry() *registry {
 	r := &registry{devices: map[string]*device{}, used: map[uint32]bool{}, next: 2}
 	empty := map[netip.Addr]*device{}
 	r.byIP.Store(&empty)
+	noNames := map[string]*device{}
+	r.byName.Store(&noNames)
 	emptyRoutes := []routeEntry{}
 	r.routes.Store(&emptyRoutes)
 	noSerials := map[string]string{}
@@ -119,6 +123,11 @@ func (r *registry) byTunnelIP(ip netip.Addr) *device {
 	return nil
 }
 
+// byDNSName returns the device of tenant with this internal DNS name, or nil (issue #62).
+func (r *registry) byDNSName(tenant, name string) *device {
+	return (*r.byName.Load())[tenant+"/"+name]
+}
+
 // serial returns the current certificate serial of a device from the last feed ("" if none).
 func (r *registry) serial(id string) string { return (*r.serials.Load())[id] }
 
@@ -132,8 +141,12 @@ func (r *registry) get(id string) *device {
 // reindexLocked rebuilds the IP index and route table. Caller holds mu.
 func (r *registry) reindexLocked() {
 	m := make(map[netip.Addr]*device, 2*len(r.devices))
+	names := make(map[string]*device, len(r.devices))
 	var routes []routeEntry
 	for _, d := range r.devices {
+		if d.dnsName != "" {
+			names[d.tenantID+"/"+d.dnsName] = d
+		}
 		if d.offset != 0 {
 			m[d.ip4], m[d.ip6] = d, d
 		}
@@ -142,6 +155,7 @@ func (r *registry) reindexLocked() {
 		}
 	}
 	r.byIP.Store(&m)
+	r.byName.Store(&names)
 	r.routes.Store(&routes)
 }
 
@@ -287,6 +301,10 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		d := r.devices[p.DeviceID]
 		if d == nil {
 			continue
+		}
+		if d.dnsName != p.DNSName {
+			d.dnsName = p.DNSName
+			routesChanged = true // rebuilds the name index too
 		}
 		if p.TunnelOffset != 0 && tunneladdr.Usable(p.TunnelOffset) {
 			d.cpOffset = p.TunnelOffset

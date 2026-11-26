@@ -65,6 +65,11 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 	q := req.Question[0]
 	name := normalize(q.Name)
+	// Internal names (issue #62): device names in the tenant zone and the tenant's records
+	// are answered here and never forwarded.
+	if rs.answerInternal(w, req, c, d, name, q) {
+		return
+	}
 	if blocked, list := c.EvaluateDNS(name); blocked {
 		rs.block(w, req, c, d, client, name, "dns:"+list, q)
 		return
@@ -93,9 +98,23 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	ctx, cancel := context.WithTimeout(rs.e.ctx, 5*time.Second)
 	defer cancel()
-	resp, _, err := rs.udp.ExchangeContext(ctx, req, rs.upstream)
-	if err == nil && resp.Truncated {
-		resp, _, err = rs.tcp.ExchangeContext(ctx, req, rs.upstream)
+	servers := []string{rs.upstream}
+	if f, ok := c.Forwarder(name); ok { // conditional forwarding (issue #62)
+		servers = servers[:0]
+		for _, sv := range f.Servers {
+			servers = append(servers, sv.String())
+		}
+	}
+	var resp *dns.Msg
+	var err error
+	for _, server := range servers {
+		resp, _, err = rs.udp.ExchangeContext(ctx, req, server)
+		if err == nil && resp.Truncated {
+			resp, _, err = rs.tcp.ExchangeContext(ctx, req, server)
+		}
+		if err == nil && resp != nil {
+			break
+		}
 	}
 	if err != nil || resp == nil {
 		m := new(dns.Msg)
@@ -135,8 +154,92 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if c.BlockECH() {
 		stripECH(resp)
 	}
+	if c.LogQueries() {
+		rs.e.flows.add(api.FlowRecord{
+			Start: now, End: now, Where: "edge", DeviceID: d.id,
+			Flow:     policy.Flow{Protocol: "udp", SrcIP: client.String(), DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
+			Decision: policy.Decision{Action: policy.ActionAllow, RuleID: "dns:query", Layer: "dns", Log: true},
+		})
+	}
 	resp.Id = req.Id
 	_ = w.WriteMsg(resp)
+}
+
+// answerInternal answers device names in the tenant zone and the tenant's records (issue
+// #62). It reports whether it answered.
+func (rs *resolver) answerInternal(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled, d *device, name string, q dns.Question) bool {
+	if z := c.Zone(); z != "" && (name == z || strings.HasSuffix(name, "."+z)) && len(c.Records(name)) == 0 {
+		m := new(dns.Msg)
+		m.SetReply(req)
+		m.Authoritative, m.RecursionAvailable = true, true
+		var target *device
+		if label := strings.TrimSuffix(strings.TrimSuffix(name, z), "."); label != "" {
+			target = rs.e.reg.byDNSName(d.tenantID, label)
+		}
+		if target == nil {
+			if name != z {
+				m.SetRcode(req, dns.RcodeNameError)
+			}
+			_ = w.WriteMsg(m)
+			return true
+		}
+		rs.e.reg.mu.Lock()
+		ip4, ip6, has := target.ip4, target.ip6, target.offset != 0
+		rs.e.reg.mu.Unlock()
+		if has && q.Qclass == dns.ClassINET {
+			hdr := dns.RR_Header{Name: q.Name, Class: dns.ClassINET, Ttl: 60}
+			switch q.Qtype {
+			case dns.TypeA:
+				hdr.Rrtype = dns.TypeA
+				m.Answer = append(m.Answer, &dns.A{Hdr: hdr, A: ip4.AsSlice()})
+			case dns.TypeAAAA:
+				if rs.e.ipv6 {
+					hdr.Rrtype = dns.TypeAAAA
+					m.Answer = append(m.Answer, &dns.AAAA{Hdr: hdr, AAAA: ip6.AsSlice()})
+				}
+			}
+		}
+		_ = w.WriteMsg(m)
+		return true
+	}
+	recs := c.Records(name)
+	if len(recs) == 0 {
+		return false
+	}
+	m := new(dns.Msg)
+	m.SetReply(req)
+	m.Authoritative, m.RecursionAvailable = true, true
+	for _, r := range recs {
+		hdr := dns.RR_Header{Name: q.Name, Class: dns.ClassINET, Ttl: r.TTL}
+		switch {
+		case r.Type == policy.RecordCNAME:
+			hdr.Rrtype = dns.TypeCNAME
+			m.Answer = append(m.Answer, &dns.CNAME{Hdr: hdr, Target: dns.Fqdn(r.Value)})
+			// Follow one internal CNAME level; other targets the client resolves itself.
+			for _, t := range c.Records(r.Value) {
+				th := dns.RR_Header{Name: dns.Fqdn(r.Value), Class: dns.ClassINET, Ttl: t.TTL}
+				switch {
+				case t.Type == policy.RecordA && q.Qtype == dns.TypeA:
+					th.Rrtype = dns.TypeA
+					m.Answer = append(m.Answer, &dns.A{Hdr: th, A: t.Addr.AsSlice()})
+				case t.Type == policy.RecordAAAA && q.Qtype == dns.TypeAAAA:
+					th.Rrtype = dns.TypeAAAA
+					m.Answer = append(m.Answer, &dns.AAAA{Hdr: th, AAAA: t.Addr.AsSlice()})
+				}
+			}
+		case r.Type == policy.RecordA && q.Qtype == dns.TypeA:
+			hdr.Rrtype = dns.TypeA
+			m.Answer = append(m.Answer, &dns.A{Hdr: hdr, A: r.Addr.AsSlice()})
+		case r.Type == policy.RecordAAAA && q.Qtype == dns.TypeAAAA:
+			hdr.Rrtype = dns.TypeAAAA
+			m.Answer = append(m.Answer, &dns.AAAA{Hdr: hdr, AAAA: r.Addr.AsSlice()})
+		case r.Type == policy.RecordTXT && q.Qtype == dns.TypeTXT:
+			hdr.Rrtype = dns.TypeTXT
+			m.Answer = append(m.Answer, &dns.TXT{Hdr: hdr, Txt: []string{r.Value}})
+		}
+	}
+	_ = w.WriteMsg(m)
+	return true
 }
 
 // synthesize answers a private app name: A with the sticky synthetic address of

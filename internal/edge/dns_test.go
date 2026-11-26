@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/miekg/dns"
+
+	"github.com/yuky2020/opensase/pkg/policy"
 )
 
 func startDNS(t *testing.T, h dns.Handler) string {
@@ -88,5 +90,83 @@ func TestResolver(t *testing.T) {
 	m.SetQuestion("example.com.", dns.TypeA)
 	if resp, _, err := c.Exchange(m, edgeDNS); err != nil || resp.Rcode != dns.RcodeRefused {
 		t.Fatalf("unknown client: %v %v", resp, err)
+	}
+}
+
+// TestResolverInternalDNS covers issue #62: device names in the tenant zone, tenant records
+// and conditional forwarding.
+func TestResolverInternalDNS(t *testing.T) {
+	fx := newFixture(t)
+	forwarded := startDNS(t, dns.HandlerFunc(func(w dns.ResponseWriter, req *dns.Msg) {
+		m := new(dns.Msg)
+		m.SetReply(req)
+		m.Answer = append(m.Answer, &dns.A{Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 30}, A: net.IPv4(10, 9, 9, 9)})
+		_ = w.WriteMsg(m)
+	}))
+	upstream := startDNS(t, dns.HandlerFunc(func(w dns.ResponseWriter, req *dns.Msg) {
+		m := new(dns.Msg)
+		m.SetRcode(req, dns.RcodeRefused) // never asked for internal names
+		_ = w.WriteMsg(m)
+	}))
+	fx.dnsMod = func(d *policy.DNSPolicy) {
+		d.Zone = "corp.internal"
+		d.Records = []policy.DNSRecord{
+			{Name: "nas.corp.internal", Type: "A", Value: "10.0.0.5"},
+			{Name: "wiki.corp.internal", Type: "CNAME", Value: "nas.corp.internal"},
+		}
+		d.Forwarders = []policy.DNSForwarder{{Zone: "ad.example", Servers: []string{forwarded}}}
+	}
+	fx.setPeer("d1", 1)
+	fx.setPeer("d2", 1)
+	fx.cp.mu.Lock()
+	for i := range fx.cp.peers.Devices {
+		fx.cp.peers.Devices[i].DNSName = fx.cp.peers.Devices[i].DeviceID + ".alice"
+	}
+	fx.cp.mu.Unlock()
+	_ = fx.e.syncPeers(context.Background())
+	r := fx.e.reg
+	r.mu.Lock()
+	d1, d2 := r.devices["d1"], r.devices["d2"]
+	d1.offset, d1.ip4 = 2, netip.MustParseAddr("127.0.0.1")
+	d2.offset, d2.ip4 = 3, netip.MustParseAddr("100.64.0.3")
+	r.reindexLocked()
+	r.mu.Unlock()
+	edgeDNS := startDNS(t, newResolver(fx.e, upstream))
+
+	ask := func(name string, qt uint16) *dns.Msg {
+		t.Helper()
+		m := new(dns.Msg)
+		m.SetQuestion(name, qt)
+		resp, _, err := new(dns.Client).Exchange(m, edgeDNS)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return resp
+	}
+	a := func(resp *dns.Msg) string {
+		for _, rr := range resp.Answer {
+			if v, ok := rr.(*dns.A); ok {
+				return v.A.String()
+			}
+		}
+		return ""
+	}
+	if got := a(ask("d2.alice.corp.internal.", dns.TypeA)); got != "100.64.0.3" {
+		t.Fatalf("device name: %q", got)
+	}
+	if resp := ask("nobody.alice.corp.internal.", dns.TypeA); resp.Rcode != dns.RcodeNameError {
+		t.Fatalf("unknown device name: %s", dns.RcodeToString[resp.Rcode])
+	}
+	if got := a(ask("nas.corp.internal.", dns.TypeA)); got != "10.0.0.5" {
+		t.Fatalf("record: %q", got)
+	}
+	if resp := ask("wiki.corp.internal.", dns.TypeA); a(resp) != "10.0.0.5" || len(resp.Answer) != 2 {
+		t.Fatalf("cname: %v", resp.Answer)
+	}
+	if got := a(ask("dc1.ad.example.", dns.TypeA)); got != "10.9.9.9" {
+		t.Fatalf("forwarded: %q", got)
+	}
+	if resp := ask("public.example.", dns.TypeA); resp.Rcode != dns.RcodeRefused {
+		t.Fatalf("other names go upstream: %s", dns.RcodeToString[resp.Rcode])
 	}
 }

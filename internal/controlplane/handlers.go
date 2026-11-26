@@ -407,6 +407,7 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Connectors = append(out.Connectors, api.EdgeConnector{ConnectorID: c.ID, TenantID: c.TenantID, Group: c.Group, CertSerial: c.CertSerial})
 	}
+	names := deviceDNSNames(act)
 	for _, a := range act {
 		if !scoped(a.Device.TenantID) {
 			continue
@@ -430,6 +431,7 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 			CertSerial:   a.Device.CertSerial,
 			Routes:       routeStrs,
 			TunnelOffset: a.Device.TunnelOffset,
+			DNSName:      names[a.Device.ID],
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -57,3 +57,38 @@ policy:
 ```
 
 DNS over TLS, DNS over HTTPS and IPv6 DNS to other resolvers stay blocked.
+
+## Internal DNS
+
+The Edge resolver also answers the tenant's internal names (issue #62):
+
+```json
+"dns": {
+  "blockResponse": "nxdomain",
+  "zone": "corp.internal",
+  "records": [
+    {"name": "nas.corp.internal", "type": "A", "value": "10.0.0.5"},
+    {"name": "wiki.corp.internal", "type": "CNAME", "value": "nas.corp.internal"}
+  ],
+  "forwarders": [
+    {"zone": "ad.example.com", "servers": ["10.0.0.53", "10.0.0.54"]}
+  ],
+  "logQueries": false
+}
+```
+
+- **Device names.** With `zone` set, every device of the tenant is
+  `<device>.<user>.<zone>`, for example `laptop.alice.corp.internal`. It answers with the
+  device's tunnel addresses, which stay the same on every Edge. The Control Plane derives
+  the name from the device name and the user ID, and adds a suffix when two devices of a user
+  have the same name.
+- **Records.** `records` holds A, AAAA, CNAME and TXT records the Edge answers itself.
+  The TTL defaults to 300 seconds and is at most 86400.
+- **Forwarding.** `forwarders` sends a zone and its subdomains to other resolvers, for
+  example the company's own DNS reachable from the Edge (a Private Edge in the office). The
+  most specific zone wins.
+- **Query log.** `logQueries` also records allowed queries as flow records (layer `dns`), so
+  the portal can show them. Blocked queries are always recorded. Mind the volume and the
+  retention of flow records.
+
+Internal names and records are answered before blocklists and never go upstream.

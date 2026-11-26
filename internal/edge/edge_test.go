@@ -203,11 +203,12 @@ type fixture struct {
 	wg     *fakeWG
 	e      *Edge
 	cancel context.CancelFunc
-	apps   []policy.PrivateApp // PrivateApps of the snapshots setPeer publishes
-	web    policy.WebPolicy    // Web policy of the snapshots setPeer publishes
-	cats   []string            // Categories of the snapshots setPeer publishes
-	safe   bool                // SafeSearch of the snapshots setPeer publishes
-	redir  bool                // dns.redirectQueries of the snapshots setPeer publishes
+	apps   []policy.PrivateApp     // PrivateApps of the snapshots setPeer publishes
+	web    policy.WebPolicy        // Web policy of the snapshots setPeer publishes
+	cats   []string                // Categories of the snapshots setPeer publishes
+	safe   bool                    // SafeSearch of the snapshots setPeer publishes
+	redir  bool                    // dns.redirectQueries of the snapshots setPeer publishes
+	dnsMod func(*policy.DNSPolicy) // adjusts the DNS policy setPeer publishes
 }
 
 func newFixture(t *testing.T) *fixture { t.Helper(); return newFixtureCfg(t, nil) }
@@ -273,6 +274,9 @@ func (fx *fixture) setPeer(id string, v uint64) {
 		Web:         fx.web,
 		Categories:  fx.cats,
 		SafeSearch:  fx.safe,
+	}
+	if fx.dnsMod != nil {
+		fx.dnsMod(&snap.DNS)
 	}
 	env, err := policy.Sign(snap, fx.kid, fx.sk)
 	if err != nil {

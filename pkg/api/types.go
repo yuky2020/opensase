@@ -266,6 +266,9 @@ type EdgeDevice struct {
 	// assigned by the Control Plane so the device has the same tunnel addresses on every
 	// Edge (issue #70). 0: the Edge picks one (older Control Plane).
 	TunnelOffset uint32 `json:"tunnelOffset,omitempty"`
+	// DNSName is "<device>.<user>", unique in the tenant: the Edge answers
+	// <DNSName>.<dns.zone> with the device's tunnel addresses (issue #62).
+	DNSName string `json:"dnsName,omitempty"`
 }
 
 // DeviceRoutes is the body of GET/PUT /v1/admin/tenants/{tenant}/devices/{device}/routes (issue #21, slice B).

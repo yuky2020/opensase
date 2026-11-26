@@ -92,9 +92,13 @@ type Compiled struct {
 
 	web *compiledWeb // ADR-0018; nil when the snapshot has no web policy
 
-	categories  []string // ADR-0022
-	safeSearch  bool     // ADR-0025
-	redirectDNS bool     // issue #63
+	categories  []string                    // ADR-0022
+	safeSearch  bool                        // ADR-0025
+	redirectDNS bool                        // issue #63
+	zone        string                      // issue #62
+	records     map[string][]CompiledRecord // issue #62
+	forwarders  []CompiledForwarder         // issue #62, longest zone first
+	logQueries  bool                        // issue #62
 }
 
 // compiledPrivateApp is a PrivateApp with normalized ports and a precomputed rule ID.
@@ -244,6 +248,9 @@ func Compile(s *Snapshot) (*Compiled, error) {
 		c.blockResponse = dns.BlockResponse
 	default:
 		return nil, verr("dns.blockResponse", "invalid value %q", dns.BlockResponse)
+	}
+	if err := compileInternalDNS(c, dns); err != nil {
+		return nil, err
 	}
 	var err error
 	if c.dnsAllow, err = buildSet(dns.AllowDomains, "", "dns.allowDomains"); err != nil {

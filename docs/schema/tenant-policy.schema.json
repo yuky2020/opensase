@@ -7,7 +7,11 @@
   "properties": {
     "defaultAction": {
       "type": "string",
-      "enum": ["allow", "block", "ask"],
+      "enum": [
+        "allow",
+        "block",
+        "ask"
+      ],
       "description": "Default fallback action when no firewall rule matches."
     },
     "allowUserRules": {
@@ -29,14 +33,21 @@
           },
           "source": {
             "type": "string",
-            "enum": ["tenant", "user"]
+            "enum": [
+              "tenant",
+              "user"
+            ]
           },
           "priority": {
             "type": "integer"
           },
           "action": {
             "type": "string",
-            "enum": ["allow", "block", "ask"]
+            "enum": [
+              "allow",
+              "block",
+              "ask"
+            ]
           },
           "match": {
             "type": "object",
@@ -51,7 +62,13 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["wifi", "cellular", "roaming", "ethernet", "unknown"]
+                  "enum": [
+                    "wifi",
+                    "cellular",
+                    "roaming",
+                    "ethernet",
+                    "unknown"
+                  ]
                 }
               },
               "protocols": {
@@ -112,15 +129,27 @@
         "properties": {
           "wifi": {
             "type": "string",
-            "enum": ["allow", "block", "ask"]
+            "enum": [
+              "allow",
+              "block",
+              "ask"
+            ]
           },
           "cellular": {
             "type": "string",
-            "enum": ["allow", "block", "ask"]
+            "enum": [
+              "allow",
+              "block",
+              "ask"
+            ]
           },
           "roaming": {
             "type": "string",
-            "enum": ["allow", "block", "ask"]
+            "enum": [
+              "allow",
+              "block",
+              "ask"
+            ]
           }
         },
         "additionalProperties": false
@@ -132,7 +161,10 @@
       "properties": {
         "blockResponse": {
           "type": "string",
-          "enum": ["nxdomain", "zero"]
+          "enum": [
+            "nxdomain",
+            "zero"
+          ]
         },
         "blocklists": {
           "type": "array",
@@ -169,6 +201,81 @@
           "items": {
             "type": "string"
           }
+        },
+        "redirectQueries": {
+          "type": "boolean",
+          "description": "Answer plain IPv4 DNS sent to other resolvers at the Edge resolver instead of blocking it (issue #63)."
+        },
+        "zone": {
+          "type": "string",
+          "description": "Internal zone; devices are <device>.<user>.<zone> (issue #62)."
+        },
+        "records": {
+          "type": "array",
+          "maxItems": 2000,
+          "description": "Internal records answered by the Edge (issue #62).",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type",
+              "value"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "AAAA",
+                  "CNAME",
+                  "TXT"
+                ]
+              },
+              "value": {
+                "type": "string"
+              },
+              "ttl": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 86400
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "forwarders": {
+          "type": "array",
+          "maxItems": 32,
+          "description": "Conditional forwarding: zones sent to other resolvers (issue #62).",
+          "items": {
+            "type": "object",
+            "required": [
+              "zone",
+              "servers"
+            ],
+            "properties": {
+              "zone": {
+                "type": "string"
+              },
+              "servers": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": {
+                  "type": "string",
+                  "description": "IP or IP:port"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "logQueries": {
+          "type": "boolean",
+          "description": "Record allowed DNS queries as flow records too (issue #62)."
         }
       },
       "additionalProperties": false
@@ -293,7 +400,10 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["allow", "block"]
+                "enum": [
+                  "allow",
+                  "block"
+                ]
               }
             },
             "additionalProperties": false
@@ -358,7 +468,10 @@
               },
               "action": {
                 "type": "string",
-                "enum": ["allow", "block"]
+                "enum": [
+                  "allow",
+                  "block"
+                ]
               },
               "blockUnscanned": {
                 "type": "boolean"
@@ -415,8 +528,46 @@
     },
     "decideDefault": {
       "type": "string",
-      "enum": ["allow", "block"],
+      "enum": [
+        "allow",
+        "block"
+      ],
       "description": "Fallback action for flows deferred to the cloud decision API."
+    },
+    "customLists": {
+      "type": "array",
+      "description": "Domain blocklists downloaded from https URLs every 6 hours (issue #63).",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https://"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "builtinLists": {
+      "type": "array",
+      "description": "Built-in blocklists by ID (GET /v1/admin/blocklists, issue #63).",
+      "items": {
+        "type": "string",
+        "enum": [
+          "malware"
+        ]
+      }
     }
   },
   "additionalProperties": false

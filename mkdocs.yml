@@ -69,6 +69,7 @@ nav:
   - Download:
       - Releases: download.md
       - Run the container images: containers.md
+      - Verify a download: verify.md
   - Release quality bar: release-quality-bar.md
   - Manual test checklist: testing/manual-checklist.md
   - Architecture:

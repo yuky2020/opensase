@@ -2,7 +2,8 @@
 
 Every release is built by CI from a tag and published on
 [GitHub Releases](https://github.com/yuky2020/opensase/releases), with a `SHA256SUMS` file for
-all downloads. Container images go to the GitHub Container Registry.
+all downloads. Container images go to the GitHub Container Registry. From v0.3.0 on, checksums
+and images are signed: see [Verify a download](verify.md).
 
 !!! warning "Pre-release"
     Versions `0.x` are pre-releases: APIs and on-disk formats can still change. Do not run them

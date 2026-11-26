@@ -82,6 +82,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +123,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
+        id: build
         uses: docker/build-push-action@v6
         env:
           DOCKER_BUILD_RECORD_UPLOAD: false
@@ -135,6 +138,28 @@ jobs:
             ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}:latest
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Sign the image, attach the SBOM and the build provenance
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "$IMAGE@$DIGEST"
+          syft "$IMAGE@$DIGEST" -o spdx-json=sbom.spdx.json
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
   quickstart:
     name: Container image (quickstart)
     needs: [gate, images]
@@ -142,6 +167,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -166,6 +193,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
+        id: build
         uses: docker/build-push-action@v6
         env:
           DOCKER_BUILD_RECORD_UPLOAD: false
@@ -180,6 +208,28 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/opensase-quickstart:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/opensase-quickstart:latest
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Sign the image, attach the SBOM and the build provenance
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/opensase-quickstart
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "$IMAGE@$DIGEST"
+          syft "$IMAGE@$DIGEST" -o spdx-json=sbom.spdx.json
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}/opensase-quickstart
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
   binaries:
     name: Standalone binaries
@@ -433,6 +483,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -454,14 +506,27 @@ jobs:
           pattern: "{binaries,msi,deb,apk,rpm,arch}"
           merge-multiple: true
 
-      - name: Generate release checksums, notes, and publish release
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Source SBOM, checksums and their signature
+        run: |
+          syft dir:. --exclude ./dist -o spdx-json="dist/opensase-${VERSION}-source.spdx.json"
+          cd dist && sha256sum * > SHA256SUMS
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+
+      - name: Attest build provenance of the release files
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - name: Generate release notes and publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd dist && sha256sum * > SHA256SUMS
-          grep -v ' SHA256SUMS$' SHA256SUMS > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS
-          cd ..
-
           PRERELEASE_FLAG=""
           if [[ "${VERSION}" =~ ^0\. ]]; then
             PRERELEASE_FLAG="--prerelease"
@@ -488,6 +553,17 @@ jobs:
           | \`opensase-${VERSION}-1-x86_64.pkg.tar.zst\` | Arch Linux (x86_64) | Arch Linux package (systemd service and desktop app) |
           | \`opensase-${VERSION}-android-debug.apk\` | Android | Android client application (debug-signed build) |
           | \`opensase-${VERSION}-<os>-<arch>.*\` | Linux (amd64, arm64), Windows (amd64) | Standalone command-line binaries and tools |
+
+          ### Verify
+
+          \`SHA256SUMS\` is signed with keyless cosign by this release workflow, and every image is signed and carries an SBOM and build provenance. See the [verification guide](https://yuky2020.github.io/opensase/verify/).
+
+          \`\`\`shell
+          cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \\
+            --certificate-identity-regexp '^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/v' \\
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          sha256sum -c SHA256SUMS --ignore-missing
+          \`\`\`
 
           ### Known Limitations
 

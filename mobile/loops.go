@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -284,17 +286,32 @@ func (e *Engine) sessionLoop(rs *runState) {
 	bo := backoff{min: 5 * time.Second, max: 2 * time.Minute}
 	next := time.Now().Add(rs.session().rotateAfter())
 	reset := false // the next attempt is a new session, not a rotation
+	avoid := ""    // Edge to try last on the next new session (it stopped answering)
+	pr := prober{lastRx: time.Now()}
+	tick := min(e.livenessInterval, e.probeInterval)
 	for {
-		if !sleep(rs.ctx, max(0, min(time.Until(next), e.livenessInterval))) {
+		if !sleep(rs.ctx, max(0, min(time.Until(next), tick))) {
 			return
 		}
 		now := time.Now()
 		if !reset {
-			hs, _, _ := peerStats(rs.dev)
+			hs, _, rx := peerStats(rs.dev)
 			if age := e.handshakeAge(rs, hs, now); age > e.livenessTimeout {
 				e.log.Warn("WireGuard handshake is stale; setting up a new session", "age", age.Round(time.Second).String())
 				e.setState(StateConnecting, "tunnel down: no WireGuard handshake")
+				reset, next, avoid = true, now, rs.session().edge.ID
+			} else if why, edgeDown := e.probe(rs, &pr, rx, now); why != "" {
+				e.log.Warn("Edge session lost; setting up a new session", "edge", rs.session().edge.ID, "reason", why)
+				e.setState(StateConnecting, "tunnel down: "+why)
 				reset, next = true, now
+				if edgeDown {
+					avoid = rs.session().edge.ID
+				}
+			} else if e.failbackDue(rs, now) {
+				if err := e.failback(rs); err != nil {
+					e.log.Info("preferred Edge still unavailable", "err", err)
+				}
+				pr = prober{lastRx: time.Now()}
 			}
 		}
 		if now.Before(next) {
@@ -309,7 +326,7 @@ func (e *Engine) sessionLoop(rs *runState) {
 			}
 		}
 		if reset {
-			err = e.resetSession(rs)
+			err = e.resetSession(rs, avoid)
 		}
 		if err != nil {
 			if rs.ctx.Err() != nil {
@@ -320,10 +337,122 @@ func (e *Engine) sessionLoop(rs *runState) {
 			next = time.Now().Add(bo.next())
 			continue
 		}
-		reset = false
+		reset, avoid = false, ""
+		pr = prober{lastRx: time.Now()}
 		bo.reset()
 		next = time.Now().Add(rs.session().rotateAfter())
 	}
+}
+
+// prober tracks tunnel activity between session probes (issue #70).
+type prober struct {
+	rx       uint64    // last received byte count
+	lastRx   time.Time // when rx last grew
+	lastSent time.Time // last probe
+	failures int       // consecutive unanswered probes
+}
+
+// probe checks the session when the tunnel has been idle for probeIdle. It returns a reason
+// when a new session is needed, and edgeDown when the Edge itself did not answer.
+func (e *Engine) probe(rs *runState, p *prober, rx uint64, now time.Time) (why string, edgeDown bool) {
+	if rx != p.rx {
+		p.rx, p.lastRx, p.failures = rx, now, 0
+		return "", false
+	}
+	if now.Sub(p.lastRx) < e.probeIdle || now.Sub(p.lastSent) < e.probeInterval {
+		return "", false
+	}
+	p.lastSent = now
+	sess := rs.session()
+	ctx, cancel := context.WithTimeout(rs.ctx, e.probeTimeout)
+	live, err := e.probeSession(ctx, rs, sess)
+	cancel()
+	switch {
+	case err != nil:
+		p.failures++
+		e.log.Debug("session probe failed", "edge", sess.edge.ID, "failures", p.failures, "err", err)
+		if p.failures >= probeFailures {
+			return fmt.Sprintf("Edge %s not answering", sess.edge.ID), true
+		}
+	case !live:
+		return fmt.Sprintf("Edge %s no longer has the session (restarted?)", sess.edge.ID), false
+	default:
+		p.failures = 0
+	}
+	return "", false
+}
+
+// probeSession asks the session's Edge whether the session is live (GET /v1/session/{id}).
+// The probe connection is kept for the next probes, so idle probing does not repeat the
+// post-quantum handshake.
+func (e *Engine) probeSession(ctx context.Context, rs *runState, sess *session) (bool, error) {
+	rs.sessMu.Lock()
+	if rs.probeEdge != sess.edge.ID || rs.probeClient == nil {
+		if rs.probeClient != nil {
+			rs.probeClient.CloseIdleConnections()
+		}
+		rs.probeClient = &http.Client{Transport: pqTransport(mtlsConfig(rs.id.enrollment, pki.ServerEdge, sess.edge.ID), e.protect, e.hosts, true)}
+		rs.probeEdge = sess.edge.ID
+	}
+	c := rs.probeClient
+	rs.sessMu.Unlock()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, joinURL(sess.edge.SessionURL, "/v1/session/"+url.PathEscape(sess.resp.SessionID)), nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return false, err
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	_ = resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("probe: HTTP %d", resp.StatusCode)
+	}
+}
+
+// closeProbeLocked drops the probe connection. Caller holds sessMu.
+func (rs *runState) closeProbeLocked() {
+	if rs.probeClient != nil {
+		rs.probeClient.CloseIdleConnections()
+		rs.probeClient, rs.probeEdge = nil, ""
+	}
+}
+
+// failbackDue reports whether the client runs on a backup Edge and has been stable there for
+// failbackAfter, so it should try the preferred (first) Edge again.
+func (e *Engine) failbackDue(rs *runState, now time.Time) bool {
+	edges := rs.id.resp.Edges
+	if len(edges) < 2 {
+		return false
+	}
+	rs.sessMu.Lock()
+	defer rs.sessMu.Unlock()
+	if rs.sess.edge.ID == edges[0].ID || now.Sub(rs.sessSince) < e.failbackAfter || now.Sub(rs.failbackTried) < e.failbackAfter {
+		return false
+	}
+	rs.failbackTried = now
+	return true
+}
+
+// failback moves the tunnel back to the preferred Edge if it accepts a new session.
+func (e *Engine) failback(rs *runState) error {
+	ctx, cancel := context.WithTimeout(rs.ctx, 20*time.Second)
+	defer cancel()
+	next, err := e.setupSession(ctx, rs.id.enrollment, rs.id.resp.Edges[0], nil)
+	if err != nil {
+		return err
+	}
+	if err := e.install(rs, next); err != nil {
+		return err
+	}
+	e.log.Info("back on the preferred Edge", "edge", next.edge.ID)
+	return nil
 }
 
 // session returns the current session.
@@ -345,17 +474,22 @@ func (e *Engine) handshakeAge(rs *runState, hs int64, now time.Time) time.Durati
 	return now.Sub(ref)
 }
 
-// resetSession sets up a new session at epoch 0 (new WireGuard key, any Edge) and
-// reconfigures WireGuard completely. The old configuration is kept if it fails.
-func (e *Engine) resetSession(rs *runState) error {
+// resetSession sets up a new session at epoch 0 (new WireGuard key, any Edge, avoid last)
+// and reconfigures WireGuard completely. The old configuration is kept if it fails.
+func (e *Engine) resetSession(rs *runState, avoid string) error {
 	ctx, cancel := context.WithTimeout(rs.ctx, 45*time.Second)
 	defer cancel()
-	next, err := e.newSession(ctx, rs.id)
+	next, err := e.newSession(ctx, rs.id, avoid)
 	if err != nil {
 		return err
 	}
+	return e.install(rs, next)
+}
+
+// install replaces the running session with next (a new epoch-0 session).
+func (e *Engine) install(rs *runState, next *session) error {
 	cfg := uapiFull(next)
-	err = rs.dev.IpcSetOperation(bytes.NewReader(cfg))
+	err := rs.dev.IpcSetOperation(bytes.NewReader(cfg))
 	clear(cfg)
 	if err != nil {
 		next.wipe()
@@ -364,9 +498,11 @@ func (e *Engine) resetSession(rs *runState) error {
 	rs.sessMu.Lock()
 	old := rs.sess
 	rs.sess, rs.sessSince = next, time.Now()
+	rs.closeProbeLocked() // a new session may use a renewed certificate or another Edge
 	rs.sessMu.Unlock()
 	if old.resp.TunnelIPv4 != next.resp.TunnelIPv4 || old.resp.TunnelIPv6 != next.resp.TunnelIPv6 {
-		// The TUN interface keeps the old addresses; the app must rebuild it.
+		// The TUN interface keeps the old addresses; the app must rebuild it. With a
+		// Control Plane that assigns tunnel offsets (issue #70) this does not happen.
 		e.log.Warn("tunnel address changed on the new session; reconnect required",
 			"old", old.resp.TunnelIPv4, "new", next.resp.TunnelIPv4)
 	}

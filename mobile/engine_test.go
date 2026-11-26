@@ -145,6 +145,11 @@ type fakeCloud struct {
 	sessions0        int                          // epoch-0 session setups
 	rotationMode     string                       // "", "409", "lost"
 	extraKeys        []api.SigningKey             // served by /v1/pki/ca in addition to k1
+
+	edge2     *httptest.Server // second Edge (issue #70), listed after edge-1
+	down      map[string]bool  // Edge ID -> answers 503 to everything
+	forgotten map[string]bool  // Edge ID -> probes answer 404 (restarted, session lost)
+	lastEdge  string           // Edge of the last epoch-0 session
 }
 
 const (
@@ -178,10 +183,42 @@ func newFakeCloud(t *testing.T) *fakeCloud {
 	cpMux.HandleFunc("POST /v1/renew", fc.requireCert(fc.renew))
 	cpMux.HandleFunc("GET /v1/pki/ca", fc.requireCert(fc.pkiCA))
 	fc.cp = startTLS(t, fc.pki, cpMux, true, pki.ControlPlaneURI())
-	edgeMux := http.NewServeMux()
-	edgeMux.HandleFunc("POST /v1/session", fc.requireCert(fc.session))
-	fc.edge = startTLS(t, fc.pki, edgeMux, true, pki.EdgeURI("edge-1"))
+	fc.down, fc.forgotten = map[string]bool{}, map[string]bool{}
+	fc.edge = startTLS(t, fc.pki, fc.edgeMux("edge-1"), true, pki.EdgeURI("edge-1"))
+	fc.edge2 = startTLS(t, fc.pki, fc.edgeMux("edge-2"), true, pki.EdgeURI("edge-2"))
 	return fc
+}
+
+// edgeMux serves one fake Edge: session setup and the session probe (issue #70).
+func (fc *fakeCloud) edgeMux(id string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/session", fc.requireCert(func(w http.ResponseWriter, r *http.Request) {
+		fc.mu.Lock()
+		fc.lastEdge = id
+		fc.forgotten[id] = false
+		fc.mu.Unlock()
+		fc.session(w, r)
+	}))
+	mux.HandleFunc("GET /v1/session/{sid}", fc.requireCert(func(w http.ResponseWriter, r *http.Request) {
+		fc.mu.Lock()
+		gone := fc.forgotten[id]
+		fc.mu.Unlock()
+		if gone {
+			http.Error(w, "no such session", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fc.mu.Lock()
+		dead := fc.down[id]
+		fc.mu.Unlock()
+		if dead {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // deviceCert issues a device certificate for pub with the configured validity.
@@ -290,8 +327,10 @@ func (fc *fakeCloud) enroll(w http.ResponseWriter, r *http.Request) {
 		TenantID: testTenant, UserID: "u1", DeviceID: testDevice,
 		CertificatePEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		CAPEM:          fc.pki.caPEM,
-		Edges: []api.EdgeInfo{{ID: "edge-1", Region: "test", SessionURL: fc.edge.URL,
-			WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))}},
+		Edges: []api.EdgeInfo{
+			{ID: "edge-1", Region: "test", SessionURL: fc.edge.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
+			{ID: "edge-2", Region: "test", SessionURL: fc.edge2.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
+		},
 		SnapshotKeys: []api.SigningKey{{KeyID: testKeyID, Algorithm: policy.AlgEd25519, PublicKey: fc.signKey.Public().(ed25519.PublicKey)}},
 		ControlURL:   fc.cp.URL,
 	})
@@ -736,4 +775,56 @@ func ecdhX25519(priv []byte) ([]byte, error) {
 		return nil, err
 	}
 	return k.PublicKey().Bytes(), nil
+}
+
+// TestEdgeFailover covers issue #70: a restarted Edge (session lost) gets a new session at
+// once; an Edge that stops answering is left for the next one; after a stable period the
+// client returns to the preferred Edge.
+func TestEdgeFailover(t *testing.T) {
+	fc := newFakeCloud(t)
+	e, _ := newTestEngine(t, fc)
+	e.probeInterval, e.probeIdle, e.probeTimeout = 50*time.Millisecond, 50*time.Millisecond, 500*time.Millisecond
+	e.livenessInterval, e.failbackAfter = 50*time.Millisecond, 700*time.Millisecond
+	if err := e.Enroll(fc.cp.URL, "pk-good", "pixel"); err != nil {
+		t.Fatal(err)
+	}
+	ct := tuntest.NewChannelTUN()
+	if err := e.StartDevice(ct.TUN(), "wifi"); err != nil {
+		t.Fatal(err)
+	}
+	defer e.Stop()
+	edge := func() string {
+		var st statusJSON
+		_ = json.Unmarshal([]byte(e.Status()), &st)
+		return st.Edge
+	}
+	sessions := func() int {
+		fc.mu.Lock()
+		defer fc.mu.Unlock()
+		return fc.sessions0
+	}
+	if edge() != "edge-1" {
+		t.Fatalf("starts on %s", edge())
+	}
+
+	// Edge restart: the probe finds no session; the client sets up a new one on edge-1.
+	before := sessions()
+	fc.mu.Lock()
+	fc.forgotten["edge-1"] = true
+	fc.mu.Unlock()
+	waitUntil(t, "new session after the Edge lost it", func() bool { return sessions() > before && edge() == "edge-1" })
+
+	// Edge down: the client moves to edge-2.
+	start := time.Now()
+	fc.mu.Lock()
+	fc.down["edge-1"] = true
+	fc.mu.Unlock()
+	waitUntil(t, "failover to edge-2", func() bool { return edge() == "edge-2" })
+	t.Logf("failover took %s", time.Since(start).Round(time.Millisecond))
+
+	// edge-1 is back: after failbackAfter the client returns to it.
+	fc.mu.Lock()
+	fc.down["edge-1"] = false
+	fc.mu.Unlock()
+	waitUntil(t, "failback to edge-1", func() bool { return edge() == "edge-1" })
 }

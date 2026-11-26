@@ -55,6 +55,20 @@ const (
 	defaultLivenessInterval = 30 * time.Second
 )
 
+// Edge failover (issue #70). When nothing came through the tunnel for probeIdle, the client
+// asks the Edge whether its session is still live, every probeInterval. A missing session
+// (Edge restarted) means a new session at once; probeFailures unanswered probes mean the
+// Edge is down and the client moves to the next Edge. Together this keeps the failover
+// under 30 seconds. On a backup Edge, the client returns to the first Edge of the list after
+// failbackAfter of stable service.
+const (
+	defaultProbeInterval = 10 * time.Second
+	defaultProbeIdle     = 10 * time.Second
+	defaultProbeTimeout  = 4 * time.Second
+	defaultFailbackAfter = 5 * time.Minute
+	probeFailures        = 2
+)
+
 // Engine is the Client core. See mobile/api.go for the method contract.
 type Engine struct {
 	stateDir string
@@ -90,6 +104,10 @@ type Engine struct {
 	livenessTimeout  time.Duration
 	livenessInterval time.Duration
 	renewRetryMin    time.Duration
+	probeInterval    time.Duration
+	probeIdle        time.Duration
+	probeTimeout     time.Duration
+	failbackAfter    time.Duration
 }
 
 // identity is the enrolled device plus its Control Plane client. Every cp connection must
@@ -123,6 +141,10 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 		livenessTimeout:  defaultLivenessTimeout,
 		livenessInterval: defaultLivenessInterval,
 		renewRetryMin:    defaultMinRenewRetry,
+		probeInterval:    defaultProbeInterval,
+		probeIdle:        defaultProbeIdle,
+		probeTimeout:     defaultProbeTimeout,
+		failbackAfter:    defaultFailbackAfter,
 	}
 	if platform != nil {
 		e.protect = platform.Protect
@@ -357,7 +379,7 @@ func (e *Engine) TunnelConfig() (string, error) {
 	e.setState(StateConnecting, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	s, err := e.newSession(ctx, id)
+	s, err := e.newSession(ctx, id, "")
 	if err != nil {
 		e.setState(StateError, err.Error())
 		return "", err
@@ -369,10 +391,21 @@ func (e *Engine) TunnelConfig() (string, error) {
 	return tunnelConfig(s), nil
 }
 
-// newSession tries each Edge in order.
-func (e *Engine) newSession(ctx context.Context, id *identity) (*session, error) {
+// newSession tries each Edge in order. avoid (an Edge ID, or "") is tried last: it is the
+// Edge that just stopped answering (issue #70).
+func (e *Engine) newSession(ctx context.Context, id *identity, avoid string) (*session, error) {
+	edges := make([]api.EdgeInfo, 0, len(id.resp.Edges))
+	var last []api.EdgeInfo
+	for _, ed := range id.resp.Edges {
+		if ed.ID == avoid {
+			last = append(last, ed)
+			continue
+		}
+		edges = append(edges, ed)
+	}
+	edges = append(edges, last...)
 	var errs []error
-	for _, edge := range id.resp.Edges {
+	for _, edge := range edges {
 		s, err := e.setupSession(ctx, id.enrollment, edge, nil)
 		if err == nil {
 			e.log.Info("session established", "edge", edge.ID, "epoch", s.resp.Epoch, "kex", s.kex)
@@ -409,10 +442,13 @@ type runState struct {
 	dns    *dnsfilter.Interceptor
 	id     *identity
 
-	sessMu    sync.Mutex
-	sess      *session
-	started   time.Time
-	sessSince time.Time // when sess was fully configured (liveness grace period)
+	sessMu        sync.Mutex
+	sess          *session
+	started       time.Time
+	sessSince     time.Time    // when sess was fully configured (liveness grace period)
+	probeClient   *http.Client // keeps the session probe connection (issue #70)
+	probeEdge     string       // Edge of probeClient
+	failbackTried time.Time
 
 	pendingFlows []api.FlowRecord // owned by the flow loop
 	stale        atomic.Bool
@@ -453,7 +489,7 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	}
 	if sess == nil {
 		sctx, scancel := context.WithTimeout(ctx, 45*time.Second)
-		sess, err = e.newSession(sctx, id)
+		sess, err = e.newSession(sctx, id, "")
 		scancel()
 		if err != nil {
 			cancel()
@@ -552,6 +588,7 @@ func (e *Engine) Stop() {
 	}
 	cancel()
 	rs.sessMu.Lock()
+	rs.closeProbeLocked()
 	rs.sess.wipe()
 	rs.sessMu.Unlock()
 	e.setState(StateStopped, "")

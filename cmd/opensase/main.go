@@ -51,6 +51,7 @@ commands:
   connect                  connect the VPN tunnel
   disconnect               disconnect the VPN tunnel
   enroll -control URL      enroll device with the Control Plane
+                           [-key-file F | -sso TENANT] (-sso: sign in with the identity provider)
   unenroll [-yes]          unenroll device
   flows [-n 50]            list recent traffic flows
   events [-f]              stream engine events
@@ -244,6 +245,7 @@ func runEnroll(client *desktop.Client, args []string, jsonOut bool, timeout time
 	controlURL := fs.String("control", "", "Control Plane URL")
 	name := fs.String("name", "", "device name (default hostname)")
 	keyFile := fs.String("key-file", "", "file containing provisioning key")
+	sso := fs.String("sso", "", "sign in with the organisation's identity provider instead of a key: the tenant ID (issue #68)")
 
 	if err := fs.Parse(args); err != nil {
 		return usageErr("%v", err)
@@ -264,7 +266,14 @@ func runEnroll(client *desktop.Client, args []string, jsonOut bool, timeout time
 
 	var key []byte
 	var readErr error
-	if *keyFile != "" {
+	if *sso != "" {
+		sctx, scancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		key, readErr = ssoKey(sctx, *controlURL, *sso)
+		scancel()
+		if readErr != nil {
+			return readErr
+		}
+	} else if *keyFile != "" {
 		key, readErr = os.ReadFile(*keyFile)
 		if readErr != nil {
 			return fmt.Errorf("read key file: %w", readErr)

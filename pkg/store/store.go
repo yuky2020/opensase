@@ -266,6 +266,15 @@ func (s *Store) GetUser(ctx context.Context, tenantID, userID string) (User, err
 	return u, mapErr(err)
 }
 
+// UserByEmail returns the user of tenantID with this email (case-insensitive). ErrNotFound
+// if none.
+func (s *Store) UserByEmail(ctx context.Context, tenantID, email string) (User, error) {
+	var u User
+	err := s.db.QueryRowContext(ctx, `SELECT id, tenant_id, email, name FROM users WHERE tenant_id = ? AND lower(email) = lower(?)`, tenantID, email).
+		Scan(&u.ID, &u.TenantID, &u.Email, &u.Name)
+	return u, mapErr(err)
+}
+
 // ListUsers returns the users of a tenant, ordered by email.
 func (s *Store) ListUsers(ctx context.Context, tenantID string) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, tenant_id, email, name FROM users WHERE tenant_id = ? ORDER BY email, id`, tenantID)
@@ -385,7 +394,8 @@ func (s *Store) Enroll(ctx context.Context, hash []byte, now time.Time, mkDevice
 	err := s.tx(ctx, func(tx *txh) error {
 		var e Enrollment
 		err := tx.QueryRowContext(ctx, `UPDATE provisioning_keys SET uses = uses + 1
-			WHERE key_hash = ? AND uses < max_uses AND expires_at > ? RETURNING tenant_id, user_id`, hash, now.Unix()).
+			WHERE key_hash = ? AND uses < max_uses AND expires_at > ?
+			AND user_id IN (SELECT id FROM users WHERE active = 1) RETURNING tenant_id, user_id`, hash, now.Unix()).
 			Scan(&e.TenantID, &e.UserID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrKeyInvalid

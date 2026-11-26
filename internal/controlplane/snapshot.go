@@ -56,6 +56,7 @@ func MergeLayers(tp api.TenantPolicy, ur *api.UserRules) (policy.FirewallPolicy,
 	if tp.AllowUserRules && ur != nil {
 		for _, r := range ur.Rules {
 			r.Source = policy.SourceUser
+			r.Users, r.Groups = nil, nil // scoping is for tenant rules only (issue #68)
 			fw.Rules = append(fw.Rules, r)
 		}
 		for pkg, ap := range ur.Apps {
@@ -323,6 +324,17 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 			users[d.UserID] = apps
 		}
 		fw, dns := MergeLayers(tp, ur)
+		if needsUserScope(tp) {
+			u, err := s.cfg.Store.GetUser(ctx, tenantID, d.UserID)
+			if err != nil {
+				return nil, fmt.Errorf("load user %s: %w", d.UserID, err)
+			}
+			groups, err := s.cfg.Store.UserGroups(ctx, d.UserID)
+			if err != nil {
+				return nil, err
+			}
+			fw.Rules = scopeRules(fw.Rules, u, groups)
+		}
 		now := s.now().UTC().Truncate(time.Second)
 		exp := now.Add(s.cfg.SnapshotTTL)
 		rec, err := s.cfg.Store.SaveSnapshot(ctx, d.ID, now, exp, func(v uint64) ([]byte, error) {
@@ -568,6 +580,38 @@ func meshInbound(m api.MeshPolicy, d store.Device) []policy.MeshGrant {
 		}
 		out = append(out, policy.MeshGrant{RuleID: r.ID, FromAll: r.From.All, FromUsers: r.From.Users,
 			FromDevices: r.From.Devices, Protocol: r.Protocol, Ports: r.Ports})
+	}
+	return out
+}
+
+// needsUserScope reports whether some tenant rule is limited to users or groups (issue #68).
+func needsUserScope(tp api.TenantPolicy) bool {
+	for _, r := range tp.Rules {
+		if len(r.Users) > 0 || len(r.Groups) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// scopeRules keeps the rules that apply to user u (in groups) and clears their Users and
+// Groups, which only the Control Plane evaluates (issue #68).
+func scopeRules(rules []policy.Rule, u store.User, groups []string) []policy.Rule {
+	out := rules[:0:0]
+	for _, r := range rules {
+		if len(r.Users) > 0 || len(r.Groups) > 0 {
+			match := slices.Contains(r.Users, u.ID) || slices.ContainsFunc(r.Users, func(x string) bool { return strings.EqualFold(x, u.Email) })
+			for _, g := range r.Groups {
+				if slices.Contains(groups, g) {
+					match = true
+				}
+			}
+			if !match {
+				continue
+			}
+			r.Users, r.Groups = nil, nil
+		}
+		out = append(out, r)
 	}
 	return out
 }

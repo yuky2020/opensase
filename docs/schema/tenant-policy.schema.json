@@ -116,6 +116,20 @@
           },
           "description": {
             "type": "string"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Limit the rule to these users (ID or email), issue #68."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Limit the rule to these identity provider groups, issue #68."
           }
         },
         "additionalProperties": false

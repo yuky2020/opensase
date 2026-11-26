@@ -207,6 +207,11 @@ type Rule struct {
 	Match       Match      `json:"match"`
 	Log         bool       `json:"log"`
 	Description string     `json:"description,omitempty"`
+	// Users and Groups limit a tenant rule to some users (ID or email) or identity provider
+	// groups (issue #68). The Control Plane keeps the rule only in the snapshots of matching
+	// users and clears both fields, so devices and Edges never see them.
+	Users  []string `json:"users,omitempty"`
+	Groups []string `json:"groups,omitempty"`
 }
 
 // Match holds the conditions of a Rule (see Rule for how they combine).

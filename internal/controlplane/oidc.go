@@ -299,6 +299,10 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		writeOIDCErrorPage(w, http.StatusBadRequest, "Sign-in Failed", "Identity verification failed.")
 		return
 	}
+	if pending.Purpose == "enroll" {
+		s.finishEnrollOIDC(w, r, pending, claims)
+		return
+	}
 
 	roleRank := func(role string) int {
 		switch role {

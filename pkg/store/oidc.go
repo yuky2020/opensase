@@ -73,6 +73,11 @@ type OIDCPending struct {
 	Verifier  string
 	Nonce     string
 	ExpiresAt time.Time
+	// Purpose is "admin" (portal sign-in) or "enroll" (device enrolment, issue #68); an
+	// enrolment returns to ReturnTo with ClientState.
+	Purpose     string
+	ReturnTo    string
+	ClientState string
 }
 
 // PutOIDCPending stores p after deleting expired sign-ins. It returns ErrCapacity when limit
@@ -93,8 +98,11 @@ func (s *Store) PutOIDCPending(ctx context.Context, p OIDCPending, now time.Time
 	if n >= limit {
 		return ErrCapacity
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO oidc_pending(state, tenant_id, verifier, nonce, expires_at) VALUES (?, ?, ?, ?, ?)`,
-		p.State, p.TenantID, p.Verifier, p.Nonce, p.ExpiresAt.Unix()); err != nil {
+	if p.Purpose == "" {
+		p.Purpose = "admin"
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO oidc_pending(state, tenant_id, verifier, nonce, expires_at, purpose, return_to, client_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.State, p.TenantID, p.Verifier, p.Nonce, p.ExpiresAt.Unix(), p.Purpose, p.ReturnTo, p.ClientState); err != nil {
 		return mapErr(err)
 	}
 	return tx.Commit()
@@ -105,8 +113,8 @@ func (s *Store) PutOIDCPending(ctx context.Context, p OIDCPending, now time.Time
 func (s *Store) TakeOIDCPending(ctx context.Context, state string, now time.Time) (OIDCPending, error) {
 	p := OIDCPending{State: state}
 	var exp int64
-	err := s.db.QueryRowContext(ctx, `DELETE FROM oidc_pending WHERE state = ? RETURNING tenant_id, verifier, nonce, expires_at`, state).
-		Scan(&p.TenantID, &p.Verifier, &p.Nonce, &exp)
+	err := s.db.QueryRowContext(ctx, `DELETE FROM oidc_pending WHERE state = ? RETURNING tenant_id, verifier, nonce, expires_at, purpose, return_to, client_state`, state).
+		Scan(&p.TenantID, &p.Verifier, &p.Nonce, &exp, &p.Purpose, &p.ReturnTo, &p.ClientState)
 	if err != nil {
 		return OIDCPending{}, mapErr(err)
 	}
@@ -115,4 +123,37 @@ func (s *Store) TakeOIDCPending(ctx context.Context, state string, now time.Time
 		return OIDCPending{}, ErrNotFound
 	}
 	return p, nil
+}
+
+// SetUserGroups replaces the identity provider groups of a user (issue #68).
+func (s *Store) SetUserGroups(ctx context.Context, tenantID, userID string, groups []string) error {
+	return s.tx(ctx, func(tx *txh) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM user_groups WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		for _, g := range groups {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO user_groups(tenant_id, user_id, grp) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, tenantID, userID, g); err != nil {
+				return mapErr(err)
+			}
+		}
+		return nil
+	})
+}
+
+// UserGroups returns the groups of a user, sorted.
+func (s *Store) UserGroups(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT grp FROM user_groups WHERE user_id = ? ORDER BY grp`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }

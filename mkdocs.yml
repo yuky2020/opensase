@@ -77,6 +77,7 @@ nav:
       - Monitoring: operations/monitoring.md
       - DNS security: operations/dns-security.md
       - Device mesh: operations/mesh.md
+      - Users and provisioning: operations/identity.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

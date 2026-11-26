@@ -212,6 +212,8 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/v1/pki/ca", s.handlePKI)
 	r.Get("/v1/auth/oidc/{tenant}/login", s.handleOIDCLogin)
 	r.Get("/v1/auth/oidc/callback", s.handleOIDCCallback)
+	r.With(s.limitEnroll).Get("/v1/enroll/oidc/{tenant}/start", s.handleEnrollOIDCStart)
+	r.Route("/scim/v2/{tenant}", s.scimRoutes) // issue #68
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireDevice)
@@ -266,6 +268,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/users", s.handleCreateUser)
 			r.Post("/connectors", s.handleCreateConnector)
 			r.Get("/connectors", s.handleListConnectors)
+			r.Post("/scim-token", s.handleCreateSCIMToken) // admin role only (roleAllows)
 			r.Post("/connectors/{c}/revoke", s.handleRevokeConnector)
 			r.Post("/provisioning-keys", s.handleCreateKey)
 			r.Put("/policy", s.handlePutPolicy)

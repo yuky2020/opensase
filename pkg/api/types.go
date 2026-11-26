@@ -28,6 +28,9 @@
 //	POST /v1/decide                     DecideRequest -> DecideResponse (mTLS device cert, or edge cert with ?device=<id>, evaluated in edge mode)
 //	POST /v1/flows                      FlowBatch -> 202 (mTLS device or edge cert; with an edge cert the tenant comes from each record's DeviceID)
 //	GET  /v1/edges                      -> DeviceEdges; for devices, mTLS (issue #71)
+//	GET  /v1/enroll/oidc/{tenant}/start?return_to=URL&state=S -> sign-in at the identity provider, then
+//	     a redirect to URL?code=<single-use provisioning key, 5 min>&state=S (issue #68); URL is a
+//	     loopback http URL or opensase://enroll
 //	GET  /v1/edge/peers                 -> EdgePeers; for Edges, mTLS with edge cert (a Private Edge gets only its tenant)
 //	POST /v1/edge/sessions              EdgeSessions -> 204 (edge cert; devices with a live session on that edge, sent every 10s)
 //	GET  /v1/edge/categories?names=a,b  -> binary category data (pkg/categories wire format); ETag, 304; 503 if no list is loaded

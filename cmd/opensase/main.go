@@ -70,6 +70,15 @@ func printJSON(v any) error {
 	return enc.Encode(v)
 }
 
+var postureHints = map[string]string{
+	"osVersion":      "update the operating system",
+	"clientVersion":  "update OpenSASE",
+	"diskEncryption": "turn on disk encryption",
+	"screenLock":     "set a screen lock",
+	"firewall":       "turn on the firewall",
+	"managed":        "use a company-managed device",
+}
+
 func formatStatus(st map[string]any) string {
 	var parts []string
 
@@ -114,7 +123,36 @@ func formatStatus(st map[string]any) string {
 	if errStr, ok := st["error"].(string); ok && errStr != "" {
 		parts = append(parts, fmt.Sprintf("Error: %s", errStr))
 	}
-	return strings.Join(parts, "  ")
+
+	var lines []string
+	if len(parts) > 0 {
+		lines = append(lines, strings.Join(parts, "  "))
+	}
+
+	var failing []string
+	switch pf := st["postureFailing"].(type) {
+	case []string:
+		failing = pf
+	case []any:
+		for _, item := range pf {
+			if s, ok := item.(string); ok {
+				failing = append(failing, s)
+			}
+		}
+	}
+
+	if len(failing) > 0 {
+		lines = append(lines, "Posture: failing")
+		for _, check := range failing {
+			if hint, ok := postureHints[check]; ok {
+				lines = append(lines, fmt.Sprintf("  %s: %s", check, hint))
+			} else if check != "" {
+				lines = append(lines, fmt.Sprintf("  %s", check))
+			}
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func formatFlowsTable(flows []map[string]any) string {

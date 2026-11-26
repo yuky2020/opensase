@@ -39,6 +39,37 @@ The client core queries platform interfaces to gather advisory health signals wi
 
 The client sends these signals to `POST /v1/posture` over its mutual TLS session at connection time, every 15 minutes thereafter, and whenever a local signal changes. Signals that cannot be determined on a platform are reported as `null`.
 
+## What each platform reports
+
+Different platforms report different signals based on operating system interfaces without requiring elevated privileges:
+
+- **Linux**:
+  - `os`: `"linux"`.
+  - `osVersion`: read from `/etc/os-release` `VERSION_ID`, falling back to `/proc/sys/kernel/osrelease`.
+  - `diskEncryption`: `true` when the block device holding `/` (from `/proc/self/mountinfo`) is a device-mapper device whose UUID starts with `CRYPT-` or has such a device among its slaves ancestors; `false` on a plain block device; `null` if it cannot be determined.
+  - `bootTime`: parsed from `/proc/stat` (`btime`).
+  - `screenLock`, `firewall`, `managed`: `null`.
+- **Windows**:
+  - `os`: `"windows"`.
+  - `osVersion`: `<major>.<minor>.<build>` from `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion` (`CurrentMajorVersionNumber`, `CurrentMinorVersionNumber`, `CurrentBuildNumber`).
+  - `firewall`: `true` only when `EnableFirewall` is `1` across all three profiles (`DomainProfile`, `StandardProfile`, `PublicProfile`) in `HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy`; `false` if any profile is disabled; `null` if unreadable.
+  - `managed`: `true` when `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters` has a non-empty `Domain` value; `false` otherwise.
+  - `bootTime`: calculated from system uptime (`GetTickCount64`).
+  - `diskEncryption`, `screenLock`: `null`.
+- **Android**:
+  - `os`: `"android"`.
+  - `osVersion`: Android platform release version.
+  - `diskEncryption`: storage encryption status from device administration interfaces.
+  - `screenLock`: device lock screen security status.
+  - `managed`: work profile or enterprise management status.
+  - `firewall`: `null`.
+  - `bootTime`: system boot timestamp.
+- **Other platforms**:
+  - `os`: runtime operating system name.
+  - All other signals: `null`.
+
+Unknown signals (`null`) fail required checks: if a check is listed in `require`, any device on a platform that cannot report that signal (reporting `null`) fails the check and is evaluated as non-compliant.
+
 ## Checks
 
 The Control Plane compares incoming reports against the tenant's `posture` policy:

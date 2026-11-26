@@ -19,6 +19,7 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/yuky2020/opensase/internal/clientnet"
+	"github.com/yuky2020/opensase/internal/posture"
 	"github.com/yuky2020/opensase/mobile"
 )
 
@@ -40,6 +41,7 @@ type Engine interface {
 	RecentFlows(limit int) string
 	BypassHosts() []string
 	KillSwitch() bool
+	SetPosture(postureJSON string) error
 }
 
 // NetworkManager abstracts TUN creation and network/route configuration.
@@ -164,6 +166,18 @@ func (d *Daemon) IsConnected() bool {
 	return d.connected
 }
 
+func (d *Daemon) updatePosture() {
+	p := posture.Collect()
+	b, err := json.Marshal(p)
+	if err != nil {
+		d.log.Warn("marshal posture failed", "err", err)
+		return
+	}
+	if err := d.eng.SetPosture(string(b)); err != nil {
+		d.log.Warn("set posture failed", "err", err)
+	}
+}
+
 // RecordEvent records an engine event in the ring buffer and dispatches to active event streams.
 func (d *Daemon) RecordEvent(kind, payload string) {
 	ev := Event{Kind: kind, Payload: payload}
@@ -199,6 +213,8 @@ func (d *Daemon) Connect(ctx context.Context) error {
 	if !d.eng.IsEnrolled() {
 		return errors.New("not enrolled")
 	}
+
+	d.updatePosture()
 
 	cfgJSON, err := d.eng.TunnelConfig()
 	if err != nil {
@@ -420,6 +436,8 @@ func (d *Daemon) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	d.updatePosture()
+
 	if err := d.eng.Enroll(req.ControlURL, req.ProvisioningKey, req.DeviceName); err != nil {
 		msg := sanitizeError(err, req.ProvisioningKey)
 		writeJSONError(w, http.StatusBadRequest, msg)
@@ -535,6 +553,19 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		ConnContext:       connContextWithPeerCred,
 	}
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.updatePosture()
+			}
+		}
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {

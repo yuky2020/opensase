@@ -62,6 +62,31 @@ func TestFormatStatus(t *testing.T) {
 			input:    map[string]any{},
 			expected: "",
 		},
+		{
+			name: "PostureFailingSingle",
+			input: map[string]any{
+				"state":          "connected",
+				"postureFailing": []any{"diskEncryption"},
+			},
+			expected: "State: connected\nPosture: failing\n  diskEncryption: turn on disk encryption",
+		},
+		{
+			name: "PostureFailingMultiple",
+			input: map[string]any{
+				"state":          "connected",
+				"edge":           "edge-1",
+				"postureFailing": []any{"osVersion", "clientVersion", "diskEncryption", "screenLock", "firewall", "managed"},
+			},
+			expected: "State: connected  Edge: edge-1\nPosture: failing\n  osVersion: update the operating system\n  clientVersion: update OpenSASE\n  diskEncryption: turn on disk encryption\n  screenLock: set a screen lock\n  firewall: turn on the firewall\n  managed: use a company-managed device",
+		},
+		{
+			name: "PostureFailingEmpty",
+			input: map[string]any{
+				"state":          "connected",
+				"postureFailing": []any{},
+			},
+			expected: "State: connected",
+		},
 	}
 
 	for _, tt := range tests {

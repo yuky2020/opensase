@@ -36,18 +36,21 @@ func (f *fakeDevice) Close() error                           { f.closed = true; 
 func (f *fakeDevice) MTU() (int, error)                      { return 1420, nil }
 
 type fakeEngine struct {
-	mu          sync.Mutex
-	enrolled    bool
-	statusJSON  string
-	flowsJSON   string
-	tcJSON      string
-	enrollCalls int
-	lastURL     string
-	lastKey     string
-	lastName    string
-	enrollErr   error
-	startCalls  int
-	stopCalls   int
+	mu           sync.Mutex
+	enrolled     bool
+	statusJSON   string
+	flowsJSON    string
+	tcJSON       string
+	enrollCalls  int
+	lastURL      string
+	lastKey      string
+	lastName     string
+	enrollErr    error
+	startCalls   int
+	stopCalls    int
+	postureCalls int
+	lastPosture  string
+	postureErr   error
 }
 
 func (f *fakeEngine) IsEnrolled() bool {
@@ -121,6 +124,14 @@ func (f *fakeEngine) KillSwitch() bool { return true }
 
 func (f *fakeEngine) BypassHosts() []string {
 	return []string{"cp.example.com", "edge.example.com"}
+}
+
+func (f *fakeEngine) SetPosture(postureJSON string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.postureCalls++
+	f.lastPosture = postureJSON
+	return f.postureErr
 }
 
 type fakeNetManager struct {
@@ -597,5 +608,36 @@ func TestServeWithUnixSocket(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("serve did not terminate on cancel")
+	}
+}
+
+func TestDaemonPosture(t *testing.T) {
+	eng := &fakeEngine{enrolled: false}
+	d := setupTestDaemon(t, eng, nil)
+
+	// Enroll should call SetPosture before Enroll
+	body := `{"controlUrl":"https://cp:8443","provisioningKey":"test-pk","deviceName":"test-dev"}`
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/enroll", strings.NewReader(body)).WithContext(withAdminOpAllowed(context.Background(), true))
+	w := httptest.NewRecorder()
+	d.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("enroll failed: %d: %s", w.Code, w.Body.String())
+	}
+	if eng.postureCalls < 1 {
+		t.Fatalf("expected SetPosture call before enroll, got %d", eng.postureCalls)
+	}
+	if eng.lastPosture == "" {
+		t.Fatal("expected non-empty posture payload")
+	}
+
+	callsAfterEnroll := eng.postureCalls
+
+	// Connect should call SetPosture before Start
+	if err := d.Connect(context.Background()); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	if eng.postureCalls <= callsAfterEnroll {
+		t.Fatalf("expected SetPosture call before Start, got %d calls total", eng.postureCalls)
 	}
 }

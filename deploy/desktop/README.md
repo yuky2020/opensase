@@ -142,6 +142,28 @@ This stops and disables the systemd service, and removes the application files a
 
 ---
 
+## Kill switch (Linux)
+
+While the tunnel is up, the daemon installs the nftables table `inet opensase_killswitch`.
+It blocks every packet that would leave outside the tunnel, except:
+
+- traffic to the Edge and Control Plane addresses;
+- loopback;
+- DHCP;
+- IPv6 neighbour discovery.
+
+DNS goes to the tunnel resolver through `systemd-resolved` (`resolvectl`). Disconnecting
+removes the table.
+
+If the daemon crashes, the table stays, so nothing leaks, and the daemon removes it when it
+starts again. To get the network back by hand, run:
+
+```bash
+sudo nft delete table inet opensase_killswitch
+```
+
+A tenant can turn the kill switch off with `"disableKillSwitch": true` in its policy.
+
 ## Command line
 
 The command-line client (`opensase` on Linux, `opensase-cli.exe` on Windows) controls the desktop daemon `opensased` through its local API. In the Linux package, the Flutter desktop app is started with `opensase-app` so that the command-line client owns the `opensase` command name.

@@ -17,6 +17,8 @@ type Config struct {
 	MTU    int
 	Bypass []string
 	DNS    []string
+	// KillSwitch blocks traffic outside the tunnel while it is up (issues #78, #79).
+	KillSwitch bool
 }
 
 // Configure configures the TUN device, addresses, routes, and DNS.
@@ -43,3 +45,7 @@ func DefaultTUNName() string {
 func PrintRouteInstructions(c Config) {
 	printRouteInstructionsPlatform(c)
 }
+
+// CleanupKillSwitch removes a kill switch left by a daemon that did not stop cleanly
+// (issue #79). It does nothing where no kill switch is installed.
+func CleanupKillSwitch(ctx context.Context) error { return cleanupKillSwitchPlatform(ctx) }

@@ -88,7 +88,7 @@ Summary:        OpenSASE client and daemon
 License:        Apache-2.0
 URL:            https://github.com/yuky2020/opensase
 BuildArch:      x86_64
-Requires:       gtk3, systemd
+Requires:       gtk3, systemd, nftables
 
 %global debug_package %{nil}
 %global __os_install_post %{nil}

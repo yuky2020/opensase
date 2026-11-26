@@ -359,17 +359,19 @@ type ProvisioningKey struct {
 
 // TenantPolicy is the tenant layer. Rules must all have Source=tenant.
 type TenantPolicy struct {
-	DefaultAction  policy.Action               `json:"defaultAction"`
-	AllowUserRules bool                        `json:"allowUserRules"`
-	Lockdown       bool                        `json:"lockdown"`
-	Rules          []policy.Rule               `json:"rules"`
-	Apps           map[string]policy.AppPolicy `json:"apps"` // tenant-mandated per-app policy; user Apps override only if AllowUserRules
-	DNS            policy.DNSPolicy            `json:"dns"`
-	PrivateApps    []TenantPrivateApp          `json:"privateApps,omitempty"` // ZTNA apps (ADR-0013)
-	SaaS           SaaSPolicy                  `json:"saas,omitzero"`         // SaaS app control (ADR-0017)
-	Web            policy.WebPolicy            `json:"web,omitzero"`          // TLS inspection and URL rules, Edge only (ADR-0018)
-	Categories     []string                    `json:"categories,omitempty"`  // web categories to block (ADR-0022)
-	SafeSearch     bool                        `json:"safeSearch,omitempty"`  // force safe search and restricted video modes (ADR-0025)
+	DefaultAction  policy.Action `json:"defaultAction"`
+	AllowUserRules bool          `json:"allowUserRules"`
+	Lockdown       bool          `json:"lockdown"`
+	// DisableKillSwitch turns the desktop kill switch off (issues #78, #79); default on.
+	DisableKillSwitch bool                        `json:"disableKillSwitch,omitempty"`
+	Rules             []policy.Rule               `json:"rules"`
+	Apps              map[string]policy.AppPolicy `json:"apps"` // tenant-mandated per-app policy; user Apps override only if AllowUserRules
+	DNS               policy.DNSPolicy            `json:"dns"`
+	PrivateApps       []TenantPrivateApp          `json:"privateApps,omitempty"` // ZTNA apps (ADR-0013)
+	SaaS              SaaSPolicy                  `json:"saas,omitzero"`         // SaaS app control (ADR-0017)
+	Web               policy.WebPolicy            `json:"web,omitzero"`          // TLS inspection and URL rules, Edge only (ADR-0018)
+	Categories        []string                    `json:"categories,omitempty"`  // web categories to block (ADR-0022)
+	SafeSearch        bool                        `json:"safeSearch,omitempty"`  // force safe search and restricted video modes (ADR-0025)
 	// Blocklists downloaded by the Control Plane and enforced like categories (issue #63):
 	// CustomLists from the tenant's URLs, BuiltinLists by ID from the built-in catalog.
 	CustomLists  []CustomList `json:"customLists,omitempty"`

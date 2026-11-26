@@ -87,7 +87,7 @@ Package: opensase
 Version: $VERSION
 Architecture: amd64
 Maintainer: OpenSASE project <noreply@opensase.invalid>
-Depends: libgtk-3-0, systemd
+Depends: libgtk-3-0, systemd, nftables
 Section: net
 Priority: optional
 Description: OpenSASE client and daemon

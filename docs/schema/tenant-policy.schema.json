@@ -568,6 +568,10 @@
           "malware"
         ]
       }
+    },
+    "disableKillSwitch": {
+      "type": "boolean",
+      "description": "Let desktop traffic leave outside the tunnel while connected (kill switch off; issues #78, #79)."
     }
   },
   "additionalProperties": false

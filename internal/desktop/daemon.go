@@ -39,6 +39,7 @@ type Engine interface {
 	Status() string
 	RecentFlows(limit int) string
 	BypassHosts() []string
+	KillSwitch() bool
 }
 
 // NetworkManager abstracts TUN creation and network/route configuration.
@@ -142,6 +143,10 @@ func NewDaemon(cfg Config) (*Daemon, error) {
 		}
 		eng.SetLogHandler(d.log.Handler())
 		d.eng = eng
+		// A kill switch left by a daemon that crashed would keep the machine offline.
+		if err := clientnet.CleanupKillSwitch(context.Background()); err != nil {
+			d.log.Warn("leftover kill switch not removed", "err", err)
+		}
 	}
 
 	return d, nil
@@ -221,12 +226,13 @@ func (d *Daemon) Connect(ctx context.Context) error {
 	}
 
 	netCfg := clientnet.Config{
-		Dev:    devName,
-		IPv4:   tc.IPv4,
-		IPv6:   tc.IPv6,
-		MTU:    tc.MTU,
-		Bypass: d.eng.BypassHosts(),
-		DNS:    tc.DNS,
+		Dev:        devName,
+		IPv4:       tc.IPv4,
+		IPv6:       tc.IPv6,
+		MTU:        tc.MTU,
+		Bypass:     d.eng.BypassHosts(),
+		DNS:        tc.DNS,
+		KillSwitch: d.eng.KillSwitch(),
 	}
 
 	undo, err := d.netMgr.Configure(ctx, dev, netCfg, d.log)

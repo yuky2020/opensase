@@ -26,3 +26,5 @@ func printRouteInstructionsPlatform(_ Config) {
 func configurePlatform(_ context.Context, _ tun.Device, _ Config, _ *slog.Logger) (undo func(), err error) {
 	return func() {}, nil
 }
+
+func cleanupKillSwitchPlatform(context.Context) error { return nil }

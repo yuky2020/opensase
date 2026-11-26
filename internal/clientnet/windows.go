@@ -232,3 +232,5 @@ func configurePlatform(ctx context.Context, dev tun.Device, c Config, log *slog.
 
 	return undo, nil
 }
+
+func cleanupKillSwitchPlatform(context.Context) error { return nil }

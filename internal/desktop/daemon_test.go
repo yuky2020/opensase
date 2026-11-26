@@ -117,6 +117,8 @@ func (f *fakeEngine) RecentFlows(limit int) string {
 	return f.flowsJSON
 }
 
+func (f *fakeEngine) KillSwitch() bool { return true }
+
 func (f *fakeEngine) BypassHosts() []string {
 	return []string{"cp.example.com", "edge.example.com"}
 }

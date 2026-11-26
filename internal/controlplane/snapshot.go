@@ -34,11 +34,12 @@ import (
 // An empty DefaultAction fails closed (block). ur may be nil.
 func MergeLayers(tp api.TenantPolicy, ur *api.UserRules) (policy.FirewallPolicy, policy.DNSPolicy) {
 	fw := policy.FirewallPolicy{
-		DefaultAction:  tp.DefaultAction,
-		AllowUserRules: tp.AllowUserRules,
-		Lockdown:       tp.Lockdown,
-		Rules:          make([]policy.Rule, 0, len(tp.Rules)),
-		Apps:           make(map[string]policy.AppPolicy, len(tp.Apps)),
+		DefaultAction:     tp.DefaultAction,
+		AllowUserRules:    tp.AllowUserRules,
+		Lockdown:          tp.Lockdown,
+		DisableKillSwitch: tp.DisableKillSwitch,
+		Rules:             make([]policy.Rule, 0, len(tp.Rules)),
+		Apps:              make(map[string]policy.AppPolicy, len(tp.Apps)),
 	}
 	if fw.DefaultAction == "" {
 		fw.DefaultAction = policy.ActionBlock

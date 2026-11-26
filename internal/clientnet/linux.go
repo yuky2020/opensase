@@ -127,10 +127,21 @@ func configurePlatform(ctx context.Context, _ tun.Device, c Config, log *slog.Lo
 			return nil, err
 		}
 	}
-	if len(c.DNS) > 0 {
-		fmt.Fprintf(os.Stderr, "# DNS: point /etc/resolv.conf at %s to use the tunnel resolver (DNS policy applies to all UDP/53 anyway)\n", strings.Join(c.DNS, ", "))
+	undo = func() {}
+	if c.KillSwitch {
+		if undo, err = enableKillSwitch(ctx, c.Dev, resolveAllow(ctx, c.Bypass), log); err != nil {
+			return nil, fmt.Errorf("kill switch: %w", err)
+		}
 	}
-	return func() {}, nil
+	if len(c.DNS) > 0 {
+		if undoDNS, ok := setTunnelDNS(ctx, c.Dev, c.DNS, log); ok {
+			prev := undo
+			undo = func() { undoDNS(); prev() }
+		} else {
+			fmt.Fprintf(os.Stderr, "# DNS: point /etc/resolv.conf at %s to use the tunnel resolver\n", strings.Join(c.DNS, ", "))
+		}
+	}
+	return undo, nil
 }
 
 func printRouteInstructionsPlatform(c Config) {
@@ -146,4 +157,34 @@ func printRouteInstructionsPlatform(c Config) {
 	if len(c.DNS) > 0 {
 		fmt.Fprintf(os.Stderr, "# DNS: point /etc/resolv.conf at %s to use the tunnel resolver (DNS policy applies to all UDP/53 anyway)\n", strings.Join(c.DNS, ", "))
 	}
+}
+
+// setTunnelDNS makes systemd-resolved send every query to the tunnel resolver (the "~."
+// routing domain), so name resolution works with the kill switch on. It reports false when
+// resolvectl is not available.
+func setTunnelDNS(ctx context.Context, dev string, servers []string, log *slog.Logger) (func(), bool) {
+	if _, err := exec.LookPath("resolvectl"); err != nil {
+		return nil, false
+	}
+	run := func(args ...string) error {
+		out, err := exec.CommandContext(ctx, "resolvectl", args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args from the session config
+		if err != nil {
+			return fmt.Errorf("resolvectl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	if err := run(append([]string{"dns", dev}, servers...)...); err != nil {
+		log.Warn("tunnel DNS not set", "err", err)
+		return nil, false
+	}
+	if err := run("domain", dev, "~."); err != nil {
+		log.Warn("tunnel DNS routing domain not set", "err", err)
+	}
+	_ = run("default-route", dev, "yes")
+	log.Info("DNS goes to the tunnel resolver", "servers", strings.Join(servers, ","))
+	return func() {
+		if err := exec.Command("resolvectl", "revert", dev).Run(); err != nil { //nolint:gosec,noctx // G204: fixed binary; runs at teardown without a request context
+			log.Warn("tunnel DNS not reverted", "err", err)
+		}
+	}, true
 }

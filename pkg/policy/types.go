@@ -169,6 +169,10 @@ type FirewallPolicy struct {
 	// TenantApps lists the packages whose Apps entry was set by the tenant layer. Those entries are
 	// mandatory, and under Lockdown only they can allow an app (ADR-0012, review D1).
 	TenantApps []string `json:"tenantApps,omitempty"`
+	// DisableKillSwitch lets desktop traffic leave outside the tunnel while connected. By
+	// default (false) Windows and Linux clients block everything but the tunnel, the Edge
+	// and Control Plane addresses, loopback, DHCP and neighbour discovery (issues #78, #79).
+	DisableKillSwitch bool `json:"disableKillSwitch,omitempty"`
 }
 
 // AppPolicy is the per-app, per-network verdict. Empty field = not set,

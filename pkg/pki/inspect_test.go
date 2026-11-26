@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"context"
 	"crypto/elliptic"
 	"crypto/x509"
 	"testing"
@@ -12,18 +13,18 @@ func TestInspectionCAPersistsAndIsSeparate(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, _ := OpenAuthority(dir)
-	ca, err := a.InspectionCA("acme")
+	ca, err := a.InspectionCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.InspectionCA("../x"); err == nil {
+	if _, err := a.InspectionCA(context.Background(), "../x"); err == nil {
 		t.Fatal("invalid tenant accepted")
 	}
 	b, err := OpenAuthority(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := b.InspectionCA("acme")
+	again, err := b.InspectionCA(context.Background(), "acme")
 	if err != nil || !again.Cert.Equal(ca.Cert) {
 		t.Fatalf("not persisted: %v", err)
 	}
@@ -34,7 +35,7 @@ func TestInspectionCAPersistsAndIsSeparate(t *testing.T) {
 	if len(ca.Cert.ExtKeyUsage) != 1 || ca.Cert.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
 		t.Fatalf("EKU %v", ca.Cert.ExtKeyUsage)
 	}
-	if _, _, err := a.SignInspectionCSR(newCSR(t, elliptic.P256()), "acme", "../e", 0); err == nil {
+	if _, _, err := a.SignInspectionCSR(context.Background(), newCSR(t, elliptic.P256()), "acme", "../e", 0); err == nil {
 		t.Fatal("invalid edge id accepted")
 	}
 }

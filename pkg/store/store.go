@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
+	"github.com/yuky2020/opensase/pkg/tunneladdr"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
 	_ "modernc.org/sqlite"             // registers the "sqlite" driver
@@ -88,6 +89,10 @@ func finishOpen(ctx context.Context, s *Store) (*Store, error) {
 		return nil, err
 	}
 	if err := s.chainLegacyAudit(ctx); err != nil {
+		_ = s.db.Close()
+		return nil, err
+	}
+	if err := s.assignTunnelOffsets(ctx); err != nil {
 		_ = s.db.Close()
 		return nil, err
 	}
@@ -321,6 +326,55 @@ type Device struct {
 	PrevCertSerial string
 	Revoked        bool
 	CreatedAt      time.Time
+	// TunnelOffset is the device's host offset in the tunnel prefixes (pkg/tunneladdr),
+	// the same on every Edge (issue #70).
+	TunnelOffset uint32
+}
+
+// nextTunnelOffset returns the next unassigned tunnel offset. Offsets only grow, so a
+// revoked device's addresses are never given to another device. Callers run it inside a
+// write transaction.
+func nextTunnelOffset(ctx context.Context, tx *txh) (uint32, error) {
+	var last int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(tunnel_offset), 1) FROM devices`).Scan(&last); err != nil {
+		return 0, err
+	}
+	off := tunneladdr.NextUsable(uint32(last) + 1) //nolint:gosec // G115: offsets are below 2^22
+	if off == 0 {
+		return 0, errors.New("store: tunnel address pool exhausted")
+	}
+	return off, nil
+}
+
+// assignTunnelOffsets gives an offset to every device that has none (devices enrolled before
+// migration 0015).
+func (s *Store) assignTunnelOffsets(ctx context.Context) error {
+	return s.tx(ctx, func(tx *txh) error {
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM devices WHERE tunnel_offset = 0 ORDER BY created_at, id`)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		_ = rows.Close()
+		for _, id := range ids {
+			off, err := nextTunnelOffset(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE devices SET tunnel_offset = ? WHERE id = ?`, off, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // Enroll atomically consumes one use of the provisioning key with the given hash and
@@ -343,8 +397,11 @@ func (s *Store) Enroll(ctx context.Context, hash []byte, now time.Time, mkDevice
 		if err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO devices(id, tenant_id, user_id, name, platform, cert_serial, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			d.ID, e.TenantID, e.UserID, d.Name, d.Platform, d.CertSerial, now.Unix())
+		if d.TunnelOffset, err = nextTunnelOffset(ctx, tx); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO devices(id, tenant_id, user_id, name, platform, cert_serial, created_at, tunnel_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			d.ID, e.TenantID, e.UserID, d.Name, d.Platform, d.CertSerial, now.Unix(), d.TunnelOffset)
 		d.TenantID, d.UserID, d.CreatedAt = e.TenantID, e.UserID, now
 		return err
 	})
@@ -354,12 +411,12 @@ func (s *Store) Enroll(ctx context.Context, hash []byte, now time.Time, mkDevice
 	return d, mapErr(err)
 }
 
-const deviceCols = `id, tenant_id, user_id, name, platform, cert_serial, prev_cert_serial, revoked, created_at`
+const deviceCols = `id, tenant_id, user_id, name, platform, cert_serial, prev_cert_serial, revoked, created_at, tunnel_offset`
 
 func scanDevice(sc interface{ Scan(...any) error }) (Device, error) {
 	var d Device
 	var ts int64
-	err := sc.Scan(&d.ID, &d.TenantID, &d.UserID, &d.Name, &d.Platform, &d.CertSerial, &d.PrevCertSerial, &d.Revoked, &ts)
+	err := sc.Scan(&d.ID, &d.TenantID, &d.UserID, &d.Name, &d.Platform, &d.CertSerial, &d.PrevCertSerial, &d.Revoked, &ts, &d.TunnelOffset)
 	d.CreatedAt = time.Unix(ts, 0)
 	return d, err
 }
@@ -556,7 +613,7 @@ type ActiveSnapshot struct {
 
 // ActiveSnapshots returns every non-revoked device that has a snapshot, with the newest one.
 func (s *Store) ActiveSnapshots(ctx context.Context) ([]ActiveSnapshot, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.tenant_id, d.user_id, d.name, d.platform, d.cert_serial, d.revoked, d.created_at,
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.tenant_id, d.user_id, d.name, d.platform, d.cert_serial, d.revoked, d.created_at, d.tunnel_offset,
 			sv.version, sv.envelope, sv.issued_at, sv.expires_at
 		FROM devices d JOIN snapshot_versions sv ON sv.version =
 			(SELECT MAX(version) FROM snapshot_versions WHERE device_id = d.id AND envelope IS NOT NULL)
@@ -570,7 +627,7 @@ func (s *Store) ActiveSnapshots(ctx context.Context) ([]ActiveSnapshot, error) {
 		var a ActiveSnapshot
 		var ts, iss, exp int64
 		d := &a.Device
-		if err := rows.Scan(&d.ID, &d.TenantID, &d.UserID, &d.Name, &d.Platform, &d.CertSerial, &d.Revoked, &ts,
+		if err := rows.Scan(&d.ID, &d.TenantID, &d.UserID, &d.Name, &d.Platform, &d.CertSerial, &d.Revoked, &ts, &d.TunnelOffset,
 			&a.Snapshot.Version, &a.Snapshot.Envelope, &iss, &exp); err != nil {
 			return nil, err
 		}

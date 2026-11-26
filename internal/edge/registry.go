@@ -15,18 +15,19 @@ import (
 
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/tunneladdr"
 )
 
-// Tunnel address plan. 100.64.0.1 and fd7a:5a5e::1 are the Edge itself.
+// Tunnel address plan (pkg/tunneladdr). 100.64.0.1 and fd7a:5a5e::1 are the Edge itself.
 var (
-	TunnelPrefix4 = netip.MustParsePrefix("100.64.0.0/10")
-	TunnelPrefix6 = netip.MustParsePrefix("fd7a:5a5e::/64")
-	EdgeIPv4      = netip.MustParseAddr("100.64.0.1")
-	EdgeIPv6      = netip.MustParseAddr("fd7a:5a5e::1")
+	TunnelPrefix4 = tunneladdr.Prefix4
+	TunnelPrefix6 = tunneladdr.Prefix6
+	EdgeIPv4      = tunneladdr.EdgeIPv4
+	EdgeIPv6      = tunneladdr.EdgeIPv6
 )
 
 // maxOffset is the largest host offset usable in 100.64.0.0/10 (excluding broadcast).
-const maxOffset = 1<<22 - 2
+const maxOffset = tunneladdr.MaxOffset
 
 // device is the Edge's view of one enrolled device. Fields other than compiled are guarded
 // by registry.mu.
@@ -38,8 +39,11 @@ type device struct {
 	version  uint64
 
 	offset uint32 // 0 = no tunnel address yet
-	ip4    netip.Addr
-	ip6    netip.Addr
+	// cpOffset is the offset the Control Plane assigned (issue #70), the same on every Edge;
+	// 0 if the Control Plane is older and the Edge picks one.
+	cpOffset uint32
+	ip4      netip.Addr
+	ip6      netip.Addr
 
 	routes []netip.Prefix
 
@@ -78,13 +82,14 @@ type routeEntry struct {
 // registry holds devices known from the Control Plane peer feed and their tunnel state.
 // Lookups by tunnel IP or routed prefix on the packet path are lock-free (copy-on-write index).
 type registry struct {
-	mu      sync.Mutex
-	devices map[string]*device
-	used    map[uint32]bool
-	next    uint32
-	byIP    atomic.Pointer[map[netip.Addr]*device]
-	routes  atomic.Pointer[[]routeEntry]
-	serials atomic.Pointer[map[string]string] // device ID -> current cert serial (ST-01)
+	mu       sync.Mutex
+	devices  map[string]*device
+	used     map[uint32]bool
+	reserved map[uint32]bool // offsets the Control Plane assigned (issue #70)
+	next     uint32
+	byIP     atomic.Pointer[map[netip.Addr]*device]
+	routes   atomic.Pointer[[]routeEntry]
+	serials  atomic.Pointer[map[string]string] // device ID -> current cert serial (ST-01)
 }
 
 func newRegistry() *registry {
@@ -140,9 +145,32 @@ func (r *registry) reindexLocked() {
 	r.routes.Store(&routes)
 }
 
-// allocateLocked assigns a tunnel address to d if it has none. Caller holds mu.
+// placeLocked moves d to its Control Plane offset before a new session (epoch 0), so the
+// device gets the same tunnel addresses on every Edge (issue #70). Rotations never move a
+// live session. If another device holds that offset (assigned locally before the Control
+// Plane offered one), d keeps or gets a local offset. Caller holds mu.
+func (r *registry) placeLocked(d *device) {
+	want := d.cpOffset
+	if want == 0 || d.offset == want || r.used[want] {
+		return
+	}
+	if d.offset != 0 {
+		delete(r.used, d.offset)
+	}
+	r.used[want] = true
+	d.offset = want
+	d.ip4, d.ip6 = addrAt(want)
+	r.reindexLocked()
+}
+
+// allocateLocked assigns a tunnel address to d if it has none: its Control Plane offset if
+// free, else the next free local one. Caller holds mu.
 func (r *registry) allocateLocked(d *device) error {
 	if d.offset != 0 {
+		return nil
+	}
+	if d.cpOffset != 0 && !r.used[d.cpOffset] {
+		r.placeLocked(d)
 		return nil
 	}
 	for range maxOffset {
@@ -151,7 +179,7 @@ func (r *registry) allocateLocked(d *device) error {
 		if r.next > maxOffset {
 			r.next = 2
 		}
-		if r.used[off] {
+		if r.used[off] || r.reservedLocked(off) {
 			continue
 		}
 		if a4, _ := addrAt(off); SyntheticPrefix.Contains(a4) {
@@ -166,16 +194,17 @@ func (r *registry) allocateLocked(d *device) error {
 	return errors.New("edge: tunnel address pool exhausted")
 }
 
-// addrAt returns the IPv4 and IPv6 tunnel addresses with host offset off.
-func addrAt(off uint32) (netip.Addr, netip.Addr) {
-	b4 := TunnelPrefix4.Addr().As4()
-	base := uint32(b4[0])<<24 | uint32(b4[1])<<16 | uint32(b4[2])<<8 | uint32(b4[3])
-	v := base + off
-	ip4 := netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)})
-	b6 := TunnelPrefix6.Addr().As16()
-	b6[12], b6[13], b6[14], b6[15] = byte(off>>24), byte(off>>16), byte(off>>8), byte(off)
-	return ip4, netip.AddrFrom16(b6)
+// reservedLocked reports whether the Control Plane assigned off to some device, so a local
+// allocation does not take it. Caller holds mu.
+func (r *registry) reservedLocked(off uint32) bool {
+	if r.reserved == nil {
+		return false
+	}
+	return r.reserved[off]
 }
+
+// addrAt returns the IPv4 and IPv6 tunnel addresses with host offset off.
+func addrAt(off uint32) (netip.Addr, netip.Addr) { return tunneladdr.AddrAt(off) }
 
 // syncResult describes what changed in a peer feed sync.
 type syncResult struct {
@@ -198,6 +227,12 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		serials[p.DeviceID] = p.CertSerial
 	}
 	r.serials.Store(&serials)
+	reserved := make(map[uint32]bool, len(peers.Devices))
+	for _, p := range peers.Devices {
+		if p.TunnelOffset != 0 {
+			reserved[p.TunnelOffset] = true
+		}
+	}
 	// Verify and compile outside the lock.
 	fresh := make(map[string]compiled, len(peers.Devices))
 	var res syncResult
@@ -227,6 +262,7 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.reserved = reserved
 	routesChanged := false
 	for id, fc := range fresh {
 		d, ok := r.devices[id]
@@ -251,6 +287,11 @@ func (r *registry) sync(peers api.EdgePeers, keys map[string]ed25519.PublicKey) 
 		d := r.devices[p.DeviceID]
 		if d == nil {
 			continue
+		}
+		if p.TunnelOffset != 0 && tunneladdr.Usable(p.TunnelOffset) {
+			d.cpOffset = p.TunnelOffset
+		} else {
+			d.cpOffset = 0
 		}
 		newRoutes := parseRoutes(p.Routes)
 		if !routesEqual(d.routes, newRoutes) {

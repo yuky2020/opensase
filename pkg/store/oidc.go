@@ -75,9 +75,9 @@ type OIDCPending struct {
 	ExpiresAt time.Time
 }
 
-// PutOIDCPending stores p after deleting expired sign-ins. It returns ErrCapacity when max
+// PutOIDCPending stores p after deleting expired sign-ins. It returns ErrCapacity when limit
 // sign-ins are still pending.
-func (s *Store) PutOIDCPending(ctx context.Context, p OIDCPending, now time.Time, max int) error {
+func (s *Store) PutOIDCPending(ctx context.Context, p OIDCPending, now time.Time, limit int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func (s *Store) PutOIDCPending(ctx context.Context, p OIDCPending, now time.Time
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM oidc_pending`).Scan(&n); err != nil {
 		return err
 	}
-	if n >= max {
+	if n >= limit {
 		return ErrCapacity
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO oidc_pending(state, tenant_id, verifier, nonce, expires_at) VALUES (?, ?, ?, ?, ?)`,

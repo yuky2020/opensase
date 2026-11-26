@@ -219,7 +219,7 @@ func newFixtureCfg(t *testing.T, mod func(*Config)) *fixture {
 		t.Fatal(err)
 	}
 	auth, _ := pki.OpenAuthority(dir)
-	if _, err := auth.TenantCA("acme"); err != nil {
+	if _, err := auth.TenantCA(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
 	sk, kid, _ := pki.LoadOrCreateSigningKey(filepath.Join(dir, pki.SnapshotKeyFile))
@@ -307,7 +307,7 @@ func (fx *fixture) deviceCert(tenant, id string) tls.Certificate {
 
 func (fx *fixture) deviceCertValid(tenant, id string, validity time.Duration) tls.Certificate {
 	fx.t.Helper()
-	ca, err := fx.auth.TenantCA(tenant)
+	ca, err := fx.auth.TenantCA(context.Background(), tenant)
 	if err != nil {
 		fx.t.Fatal(err)
 	}
@@ -776,5 +776,83 @@ func TestAddrAt(t *testing.T) {
 		if a4.String() != tc.v4 || a6.String() != tc.v6 || !TunnelPrefix4.Contains(a4) || !TunnelPrefix6.Contains(a6) {
 			t.Errorf("%d: %s %s", tc.off, a4, a6)
 		}
+	}
+}
+
+// TestSessionProbe covers issue #70: the probe answers 204 only for the device's live
+// session, so a client notices a lost session (Edge restart) without waiting for WireGuard.
+func TestSessionProbe(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	srv := fx.sessionServer()
+	cert := fx.deviceCert("acme", "d1")
+	c := fx.client(&cert)
+	wgKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	code, sr, _ := postSession(t, c, srv.URL, api.SessionRequest{WGPublicKey: base64.StdEncoding.EncodeToString(wgKey.PublicKey().Bytes())})
+	if code != 200 {
+		t.Fatalf("session: %d", code)
+	}
+	probe := func(cl *http.Client, id string) int {
+		t.Helper()
+		resp, err := cl.Get(srv.URL + "/v1/session/" + id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := probe(c, sr.SessionID); got != 204 {
+		t.Fatalf("live session: %d", got)
+	}
+	if got := probe(c, "0123"); got != 404 {
+		t.Fatalf("other session: %d", got)
+	}
+	fx.setPeer("d2", 2)
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	other := fx.deviceCert("acme", "d2")
+	if got := probe(fx.client(&other), sr.SessionID); got != 404 {
+		t.Fatalf("another device probing d1's session: %d", got)
+	}
+}
+
+// TestControlPlaneTunnelOffset covers issue #70: a new session uses the offset the Control
+// Plane assigned, so the device has the same tunnel addresses on every Edge, and a local
+// allocation never takes an offset reserved for another device.
+func TestControlPlaneTunnelOffset(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	fx.setPeer("d2", 1)
+	fx.cp.mu.Lock()
+	for i := range fx.cp.peers.Devices {
+		if fx.cp.peers.Devices[i].DeviceID == "d1" {
+			fx.cp.peers.Devices[i].TunnelOffset = 2 // the address d2 would get locally
+		}
+	}
+	fx.cp.mu.Unlock()
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	srv := fx.sessionServer()
+	session := func(id string) api.SessionResponse {
+		t.Helper()
+		cert := fx.deviceCert("acme", id)
+		k, _ := ecdh.X25519().GenerateKey(rand.Reader)
+		code, sr, _ := postSession(t, fx.client(&cert), srv.URL, api.SessionRequest{WGPublicKey: base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())})
+		if code != 200 {
+			t.Fatalf("session %s: %d", id, code)
+		}
+		return sr
+	}
+	// d2 (no offset from the Control Plane) comes first but must not take offset 2.
+	if sr := session("d2"); sr.TunnelIPv4 == "100.64.0.2/32" {
+		t.Fatal("local allocation took an offset reserved by the Control Plane")
+	}
+	if sr := session("d1"); sr.TunnelIPv4 != "100.64.0.2/32" || sr.TunnelIPv6 != "fd7a:5a5e::2/128" {
+		t.Fatalf("d1 did not get its Control Plane offset: %+v", sr)
 	}
 }

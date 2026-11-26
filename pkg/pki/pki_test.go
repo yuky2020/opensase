@@ -1,6 +1,7 @@
 package pki
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -219,7 +220,7 @@ func TestInitDirAndAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ca1, err := a.TenantCA("acme")
+	ca1, err := a.TenantCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +228,7 @@ func TestInitDirAndAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ca2, err := a2.TenantCA("acme")
+	ca2, err := a2.TenantCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}

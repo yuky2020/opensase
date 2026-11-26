@@ -49,7 +49,7 @@ func (s *Server) handleInspectionCA(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "inspection is off for this tenant")
 		return
 	}
-	chain, cert, err := s.cfg.Authority.SignInspectionCSR([]byte(req.CSR), req.TenantID, p.id.EdgeID, 0)
+	chain, cert, err := s.cfg.Authority.SignInspectionCSR(r.Context(), []byte(req.CSR), req.TenantID, p.id.EdgeID, 0)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid CSR")
 		return
@@ -70,7 +70,7 @@ func (s *Server) handleGetInspectionRoot(w http.ResponseWriter, r *http.Request)
 		s.internalErr(w, r, "tenant", err)
 		return
 	}
-	ca, err := s.cfg.Authority.InspectionCA(t)
+	ca, err := s.cfg.Authority.InspectionCA(r.Context(), t)
 	if err != nil {
 		s.internalErr(w, r, "inspection CA", err)
 		return

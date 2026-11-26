@@ -103,6 +103,7 @@
 // Edge endpoints (session-setup channel, ADR-0002), mTLS with device cert:
 //
 //	POST /v1/session                    SessionRequest -> SessionResponse
+//	GET  /v1/session/{sessionId}        204 if it is the device's live session here, else 404 (issue #70)
 //	The WireGuard PSK is derived by both sides with
 //	  tls.ConnectionState.ExportKeyingMaterial(pqsession.ExporterLabel, pqsession.Context(...), 32)
 package api
@@ -248,6 +249,10 @@ type EdgeDevice struct {
 	// only with that certificate, so a superseded or never-delivered one is refused (ST-01).
 	CertSerial string   `json:"certSerial"`
 	Routes     []string `json:"routes,omitempty"`
+	// TunnelOffset is the device's host offset in the tunnel prefixes (pkg/tunneladdr),
+	// assigned by the Control Plane so the device has the same tunnel addresses on every
+	// Edge (issue #70). 0: the Edge picks one (older Control Plane).
+	TunnelOffset uint32 `json:"tunnelOffset,omitempty"`
 }
 
 // DeviceRoutes is the body of GET/PUT /v1/admin/tenants/{tenant}/devices/{device}/routes (issue #21, slice B).

@@ -220,7 +220,7 @@ func newFakeCP(t *testing.T, serverCert string) (*fakeCP, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ca, err := auth.TenantCA("acme")
+	ca, err := auth.TenantCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}

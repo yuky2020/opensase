@@ -77,9 +77,9 @@ func (s *Server) handleConnectorEnroll(w http.ResponseWriter, r *http.Request) {
 	var certPEM []byte
 	var ca *pki.CA
 	errBadKey := errors.New("bad connector key")
-	c, err := s.cfg.Store.EnrollConnector(r.Context(), hash[:], s.now(), func(c store.Connector) (string, error) {
+	c, err := s.cfg.Store.EnrollConnector(r.Context(), hash[:], s.now(), func(c store.Connector) (string, error) { //nolint:contextcheck // runs synchronously inside the store transaction and uses r.Context()
 		var err error
-		if ca, err = s.cfg.Authority.TenantCA(c.TenantID); err != nil {
+		if ca, err = s.cfg.Authority.TenantCA(r.Context(), c.TenantID); err != nil {
 			return "", err
 		}
 		chain, leaf, err := ca.SignConnectorCSR([]byte(req.CSRPEM), c.TenantID, c.ID, pki.DeviceValidity)
@@ -130,7 +130,7 @@ func (s *Server) handleConnectorRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := p.connector
-	ca, err := s.cfg.Authority.TenantCA(c.TenantID)
+	ca, err := s.cfg.Authority.TenantCA(r.Context(), c.TenantID)
 	if err != nil {
 		s.internalErr(w, r, "tenant CA", err)
 		return

@@ -130,29 +130,29 @@ func TestAuthorityStoreReplicas(t *testing.T) {
 	if err := b.UseStore(ctx, st, kek); err != nil {
 		t.Fatal(err)
 	}
-	caA, err := a.TenantCA("acme")
+	caA, err := a.TenantCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	caB, err := b.TenantCA("acme")
+	caB, err := b.TenantCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !caA.Cert.Equal(caB.Cert) || !caA.Key.Equal(caB.Key) {
 		t.Fatal("replicas created different tenant CAs")
 	}
-	iA, err := a.InspectionCA("acme")
+	iA, err := a.InspectionCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	iB, err := b.InspectionCA("acme")
+	iB, err := b.InspectionCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !iA.Cert.Equal(iB.Cert) {
 		t.Fatal("replicas created different inspection CAs")
 	}
-	if _, err := a.TenantCA("beta"); err != nil {
+	if _, err := a.TenantCA(context.Background(), "beta"); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Refresh(ctx); err != nil {
@@ -170,7 +170,7 @@ func TestAuthorityStoreImport(t *testing.T) {
 	da, db := replicaDirs(t)
 	kek := bytes.Repeat([]byte{1}, 32)
 	a, _ := OpenAuthority(da)
-	fileCA, err := a.TenantCA("acme") // file-only mode
+	fileCA, err := a.TenantCA(context.Background(), "acme") // file-only mode
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestAuthorityStoreImport(t *testing.T) {
 	}
 	// Replica b had its own file CA for acme before it joined the store.
 	b, _ := OpenAuthority(db)
-	if _, err := b.TenantCA("acme"); err != nil {
+	if _, err := b.TenantCA(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
 	b2, _ := OpenAuthority(db)
@@ -201,7 +201,7 @@ func TestAuthorityStoreImport(t *testing.T) {
 
 func mustTenant(t *testing.T, a *Authority, id string) *CA {
 	t.Helper()
-	ca, err := a.TenantCA(id)
+	ca, err := a.TenantCA(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

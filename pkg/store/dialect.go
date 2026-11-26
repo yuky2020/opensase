@@ -38,17 +38,6 @@ func (d *dbh) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	return d.DB.QueryRowContext(ctx, d.q(query), args...)
 }
 
-// Query, QueryRow and Exec are used by tests only.
-func (d *dbh) Query(query string, args ...any) (*sql.Rows, error) {
-	return d.DB.Query(d.q(query), args...)
-}
-
-func (d *dbh) QueryRow(query string, args ...any) *sql.Row { return d.DB.QueryRow(d.q(query), args...) }
-
-func (d *dbh) Exec(query string, args ...any) (sql.Result, error) {
-	return d.DB.Exec(d.q(query), args...)
-}
-
 // BeginTx starts a transaction with the same guarantee on both engines: it holds the
 // database-wide write lock from the start, so read-check-write transactions never interleave
 // (ADR-0033). SQLite gets it from BEGIN IMMEDIATE (_txlock=immediate in the DSN); on

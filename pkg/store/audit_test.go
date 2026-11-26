@@ -64,14 +64,14 @@ func TestAuditChain(t *testing.T) {
 
 	tamper := func(name, q string, want int64, args ...any) {
 		t.Helper()
-		snap, anchor := snapshotAudit(t, s)
+		snap, anchor := snapshotAudit(ctx, t, s)
 		if _, err := s.db.ExecContext(ctx, q, args...); err != nil {
 			t.Fatal(err)
 		}
 		if v, _ := s.VerifyAudit(ctx); v.BadID != want {
 			t.Errorf("%s: bad id %d (%s), want %d", name, v.BadID, v.Reason, want)
 		}
-		restoreAudit(t, s, snap, anchor)
+		restoreAudit(ctx, t, s, snap, anchor)
 	}
 	tamper("changed actor", `UPDATE admin_audit SET actor = 'token:x' WHERE id = 4`, 4)
 	tamper("removed entry", `DELETE FROM admin_audit WHERE id = 4`, 5)
@@ -99,9 +99,9 @@ type auditRow struct {
 	prev, hash          []byte
 }
 
-func snapshotAudit(t *testing.T, s *Store) ([]auditRow, []byte) {
+func snapshotAudit(ctx context.Context, t *testing.T, s *Store) ([]auditRow, []byte) {
 	t.Helper()
-	rows, err := s.db.Query(`SELECT id, at, actor, tenant_id, method, path, status, prev_hash, hash FROM admin_audit ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, at, actor, tenant_id, method, path, status, prev_hash, hash FROM admin_audit ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,21 +113,21 @@ func snapshotAudit(t *testing.T, s *Store) ([]auditRow, []byte) {
 		out = append(out, r)
 	}
 	var anchor []byte
-	_ = s.db.QueryRow(`SELECT hash FROM audit_anchor WHERE id = 1`).Scan(&anchor)
+	_ = s.db.QueryRowContext(ctx, `SELECT hash FROM audit_anchor WHERE id = 1`).Scan(&anchor)
 	return out, anchor
 }
 
-func restoreAudit(t *testing.T, s *Store, snap []auditRow, anchor []byte) {
+func restoreAudit(ctx context.Context, t *testing.T, s *Store, snap []auditRow, anchor []byte) {
 	t.Helper()
-	if _, err := s.db.Exec(`DELETE FROM admin_audit`); err != nil {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM admin_audit`); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range snap {
-		if _, err := s.db.Exec(`INSERT INTO admin_audit(id, at, actor, tenant_id, method, path, status, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.at, r.actor, r.tenant, r.m, r.p, r.status, r.prev, r.hash); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO admin_audit(id, at, actor, tenant_id, method, path, status, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.at, r.actor, r.tenant, r.m, r.p, r.status, r.prev, r.hash); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.db.Exec(`UPDATE audit_anchor SET hash = ?`, anchor); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE audit_anchor SET hash = ?`, anchor); err != nil {
 		t.Fatal(err)
 	}
 }

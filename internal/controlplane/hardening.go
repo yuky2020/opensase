@@ -37,7 +37,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "renewal requires a newly generated key")
 		return
 	}
-	ca, err := s.cfg.Authority.TenantCA(p.device.TenantID)
+	ca, err := s.cfg.Authority.TenantCA(r.Context(), p.device.TenantID)
 	if err != nil {
 		s.internalErr(w, r, "tenant CA", err)
 		return

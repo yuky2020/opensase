@@ -55,8 +55,8 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	hash := sha256.Sum256([]byte(req.ProvisioningKey))
 	var certPEM, tenantCAPEM []byte
-	dev, err := s.cfg.Store.Enroll(r.Context(), hash[:], s.now(), func(e store.Enrollment) (store.Device, error) {
-		ca, err := s.cfg.Authority.TenantCA(e.TenantID)
+	dev, err := s.cfg.Store.Enroll(r.Context(), hash[:], s.now(), func(e store.Enrollment) (store.Device, error) { //nolint:contextcheck // runs synchronously inside the store transaction and uses r.Context()
+		ca, err := s.cfg.Authority.TenantCA(r.Context(), e.TenantID)
 		if err != nil {
 			return store.Device{}, err
 		}
@@ -423,11 +423,12 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out.Devices = append(out.Devices, api.EdgeDevice{
-			DeviceID:   a.Device.ID,
-			TenantID:   a.Device.TenantID,
-			Snapshot:   env,
-			CertSerial: a.Device.CertSerial,
-			Routes:     routeStrs,
+			DeviceID:     a.Device.ID,
+			TenantID:     a.Device.TenantID,
+			Snapshot:     env,
+			CertSerial:   a.Device.CertSerial,
+			Routes:       routeStrs,
+			TunnelOffset: a.Device.TunnelOffset,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -456,7 +457,7 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "create tenant", err)
 		return
 	}
-	if _, err := s.cfg.Authority.TenantCA(t.ID); err != nil {
+	if _, err := s.cfg.Authority.TenantCA(r.Context(), t.ID); err != nil {
 		s.internalErr(w, r, "tenant CA", err)
 		return
 	}

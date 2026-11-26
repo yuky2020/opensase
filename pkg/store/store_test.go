@@ -304,3 +304,49 @@ func TestUpdateTenantPolicyConditional(t *testing.T) {
 		t.Fatalf("version: %d", v)
 	}
 }
+
+// TestTunnelOffsets covers issue #70: every device gets a distinct, growing tunnel offset,
+// and devices from before migration 0015 get one at start.
+func TestTunnelOffsets(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "cp.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed(t, s)
+	h := sha256.Sum256([]byte("k"))
+	if err := s.CreateProvisioningKey(ctx, ProvisioningKey{Hash: h[:], TenantID: "acme", UserID: "u1", MaxUses: 3, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	var offs []uint32
+	for _, id := range []string{"a", "b"} {
+		d, err := s.Enroll(ctx, h[:], time.Now(), func(Enrollment) (Device, error) {
+			return Device{ID: id, Name: id, Platform: "linux", CertSerial: "1"}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := s.GetDevice(ctx, id)
+		if got.TunnelOffset != d.TunnelOffset {
+			t.Fatalf("stored %d returned %d", got.TunnelOffset, d.TunnelOffset)
+		}
+		offs = append(offs, d.TunnelOffset)
+	}
+	if offs[0] != 2 || offs[1] != 3 {
+		t.Fatalf("offsets %v", offs)
+	}
+	// A device without an offset (enrolled before the migration) gets the next one at start.
+	if _, err := s.db.ExecContext(ctx, `UPDATE devices SET tunnel_offset = 0 WHERE id = 'a'`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if a, _ := s.GetDevice(ctx, "a"); a.TunnelOffset != 4 {
+		t.Fatalf("backfilled offset %d", a.TunnelOffset)
+	}
+}

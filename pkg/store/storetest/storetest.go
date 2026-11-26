@@ -3,6 +3,7 @@
 package storetest
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -27,12 +28,12 @@ func PostgresDSN(t testing.TB) (string, bool) {
 	}
 	defer func() { _ = db.Close() }()
 	name := fmt.Sprintf("t%d", time.Now().UnixNano())
-	if _, err := db.Exec(`CREATE SCHEMA ` + name); err != nil {
+	if _, err := db.ExecContext(context.Background(), `CREATE SCHEMA `+name); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		if c, err := sql.Open("pgx", base); err == nil {
-			_, _ = c.Exec(`DROP SCHEMA ` + name + ` CASCADE`)
+			_, _ = c.ExecContext(context.Background(), `DROP SCHEMA `+name+` CASCADE`)
 			_ = c.Close()
 		}
 	})

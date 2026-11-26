@@ -221,7 +221,7 @@ func (a *Authority) loadTenant(t string) (*CA, error) {
 }
 
 // TenantCA returns the CA of tenantID, creating and persisting it on first use.
-func (a *Authority) TenantCA(tenantID string) (*CA, error) {
+func (a *Authority) TenantCA(ctx context.Context, tenantID string) (*CA, error) {
 	if !ValidID(tenantID) {
 		return nil, fmt.Errorf("pki: invalid tenant id %q", tenantID)
 	}
@@ -233,7 +233,7 @@ func (a *Authority) TenantCA(tenantID string) (*CA, error) {
 	var ca *CA
 	var err error
 	if a.store != nil {
-		ca, err = a.storedCA(context.Background(), tenantID, CAKindTenant, func() (*CA, error) { return a.Root.NewTenantCA(tenantID) })
+		ca, err = a.storedCA(ctx, tenantID, CAKindTenant, func() (*CA, error) { return a.Root.NewTenantCA(tenantID) })
 	} else {
 		ca, err = a.Root.NewTenantCA(tenantID)
 	}

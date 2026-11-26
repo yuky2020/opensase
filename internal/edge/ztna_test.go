@@ -54,7 +54,7 @@ func echoServer(t *testing.T) uint16 {
 
 func (fx *fixture) connectorCert(tenant, id string) tls.Certificate {
 	fx.t.Helper()
-	ca, err := fx.auth.TenantCA(tenant)
+	ca, err := fx.auth.TenantCA(context.Background(), tenant)
 	if err != nil {
 		fx.t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestBrokerConnectorAdmission(t *testing.T) {
 	z.cp.peers.Connectors = append(z.cp.peers.Connectors, api.EdgeConnector{ConnectorID: "c3", TenantID: "acme", Group: "default"})
 	z.cp.mu.Unlock()
 	_ = z.e.syncPeers(context.Background())
-	if _, err := z.auth.TenantCA("globex"); err != nil {
+	if _, err := z.auth.TenantCA(context.Background(), "globex"); err != nil {
 		t.Fatal(err)
 	}
 	_ = z.e.syncPeers(context.Background()) // reload the bundle with the globex CA

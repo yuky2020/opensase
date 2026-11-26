@@ -120,10 +120,10 @@ func newInspectFixtureH2(t *testing.T, web policy.WebPolicy, upH2 bool) *inspect
 	_ = fx.e.reg.allocateLocked(d)
 	fx.e.reg.mu.Unlock()
 	fx.cp.inspect = func(r api.InspectionCARequest) (api.InspectionCAResponse, error) {
-		chain, cert, err := fx.auth.SignInspectionCSR([]byte(r.CSR), r.TenantID, "edge-1", 0)
+		chain, cert, err := fx.auth.SignInspectionCSR(context.Background(), []byte(r.CSR), r.TenantID, "edge-1", 0)
 		return api.InspectionCAResponse{Chain: string(chain), ExpiresAt: cert.NotAfter}, err
 	}
-	ica, err := fx.auth.InspectionCA("acme")
+	ica, err := fx.auth.InspectionCA(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}

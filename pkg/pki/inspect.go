@@ -71,9 +71,9 @@ func (a *Authority) inspectPaths(t string) (string, string) {
 
 // InspectionCA returns the inspection root of tenantID, creating and persisting it on first
 // use.
-func (a *Authority) InspectionCA(tenantID string) (*CA, error) {
+func (a *Authority) InspectionCA(ctx context.Context, tenantID string) (*CA, error) {
 	// The tenant directory is created with (and identified by) the tenant CA.
-	if _, err := a.TenantCA(tenantID); err != nil {
+	if _, err := a.TenantCA(ctx, tenantID); err != nil {
 		return nil, err
 	}
 	a.mu.Lock()
@@ -85,7 +85,7 @@ func (a *Authority) InspectionCA(tenantID string) (*CA, error) {
 	var ca *CA
 	var err error
 	if a.store != nil {
-		if ca, err = a.storedCA(context.Background(), tenantID, CAKindInspection, func() (*CA, error) { return newInspectionRoot(tenantID) }); err != nil {
+		if ca, err = a.storedCA(ctx, tenantID, CAKindInspection, func() (*CA, error) { return newInspectionRoot(tenantID) }); err != nil {
 			return nil, err
 		}
 		if err := SaveCA(ca, c, k); err != nil {
@@ -116,11 +116,11 @@ func (a *Authority) InspectionCA(tenantID string) (*CA, error) {
 // SignInspectionCSR issues the inspection intermediate of edgeID for tenantID from the
 // Edge's CSR. The intermediate may sign only leaf server certificates (path length 0,
 // ServerAuth only). The returned PEM holds the intermediate followed by the root.
-func (a *Authority) SignInspectionCSR(csrPEM []byte, tenantID, edgeID string, validity time.Duration) ([]byte, *x509.Certificate, error) {
+func (a *Authority) SignInspectionCSR(ctx context.Context, csrPEM []byte, tenantID, edgeID string, validity time.Duration) ([]byte, *x509.Certificate, error) {
 	if !ValidID(tenantID) || !ValidID(edgeID) {
 		return nil, nil, errors.New("pki: invalid tenant or edge id")
 	}
-	root, err := a.InspectionCA(tenantID)
+	root, err := a.InspectionCA(ctx, tenantID)
 	if err != nil {
 		return nil, nil, err
 	}

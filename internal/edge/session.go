@@ -32,6 +32,7 @@ type sessionServer struct {
 func (s *sessionServer) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/session", s.handleSession)
+	mux.HandleFunc("GET /v1/session/{id}", s.handleSessionProbe)
 	return mux
 }
 
@@ -130,6 +131,34 @@ func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleSessionProbe answers 204 if the calling device's current session on this Edge is id,
+// 404 otherwise (issue #70). Clients probe it when the tunnel is idle: after an Edge restart
+// the session is gone and the client sets up a new one at once instead of waiting for the
+// WireGuard handshake to go stale.
+func (s *sessionServer) handleSessionProbe(w http.ResponseWriter, r *http.Request) {
+	e := s.e
+	if r.TLS == nil || pqsession.CheckPostQuantum(*r.TLS) != nil {
+		writeErr(w, http.StatusUpgradeRequired, "post-quantum TLS required")
+		return
+	}
+	id, err := pki.VerifyPeerChains(r.TLS.VerifiedChains, e.cfg.Root)
+	if err != nil || id.Kind != pki.PeerDevice {
+		writeErr(w, http.StatusForbidden, "device certificate required")
+		return
+	}
+	want := r.PathValue("id")
+	e.reg.mu.Lock()
+	d := e.reg.devices[id.DeviceID]
+	live := d != nil && d.tenantID == id.TenantID && d.hasPeer && want != "" && d.sessionID == want
+	e.reg.mu.Unlock()
+	w.Header().Set("Cache-Control", "no-store")
+	if !live {
+		writeErr(w, http.StatusNotFound, "no such session; start a new one with epoch 0")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // setupSession allocates the tunnel address, derives the PSK on this TLS connection and
 // installs or rotates the WireGuard peer. Serialized by the registry lock.
 //
@@ -160,6 +189,9 @@ func (e *Edge) setupSession(_ context.Context, d *device, cs tls.ConnectionState
 		return api.SessionResponse{}, http.StatusForbidden, errors.New("device certificate required")
 	}
 	notAfter := cs.VerifiedChains[0][0].NotAfter
+	if req.Epoch == 0 {
+		r.placeLocked(d)
+	}
 	if err := r.allocateLocked(d); err != nil {
 		return api.SessionResponse{}, http.StatusServiceUnavailable, err
 	}

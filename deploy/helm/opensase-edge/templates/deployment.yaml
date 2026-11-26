@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "edge.name" . }}
+  labels: {{- include "edge.labels" . | nindent 4 }}
+spec:
+  replicas: 1   # one Edge identity; run more Edges as more releases
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {{- include "edge.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "edge.selector" . | nindent 8 }}
+      annotations:
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 65532   # the Edge runs as 65532 after the entrypoint and writes its state
+        {{- if eq .Values.ipForward "sysctl" }}
+        sysctls:
+          - {name: net.ipv4.ip_forward, value: "1"}
+        {{- end }}
+      {{- if eq .Values.ipForward "initContainer" }}
+      initContainers:
+        - name: ip-forward
+          image: {{ .Values.initImage }}
+          command: ["sh", "-c", "sysctl -w net.ipv4.ip_forward=1 && sysctl -w net.ipv6.conf.all.forwarding=1 || true"]
+          securityContext:
+            privileged: true
+      {{- end }}
+      containers:
+        - name: edge
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:   # the entrypoint prepends the edge binary
+            - -control-url={{ .Values.controlURL }}
+            - -pki=/pki
+            - -wg-endpoint={{ .Values.wgEndpoint }}
+            - -state-dir=/var/lib/opensase-edge
+            - -ops-listen=:{{ .Values.ops.port }}
+            {{- with .Values.tenant }}
+            - -tenant={{ . }}
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - {name: EDGE_UID, value: "65532"}
+            - {name: EDGE_GID, value: "65532"}
+          ports:
+            - {name: wireguard, containerPort: 51820, protocol: UDP}
+            - {name: session, containerPort: 8443, protocol: TCP}
+            - {name: broker, containerPort: 8444, protocol: TCP}
+            - {name: ops, containerPort: {{ .Values.ops.port }}, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /healthz, port: ops}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: ops}
+            periodSeconds: 5
+          startupProbe:
+            httpGet: {path: /healthz, port: ops}
+            failureThreshold: 60
+            periodSeconds: 5
+          securityContext:
+            # Root only for the entrypoint (iptables, /dev/net/tun), then setpriv drops to
+            # EDGE_UID keeping NET_ADMIN and NET_BIND_SERVICE.
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+              add: [NET_ADMIN, NET_BIND_SERVICE, SETUID, SETGID, MKNOD]
+            seccompProfile: {type: RuntimeDefault}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: pki, mountPath: /pki, readOnly: true}
+            - {name: state, mountPath: /var/lib/opensase-edge}
+      volumes:
+        - name: pki
+          secret:
+            secretName: {{ .Values.pki.existingSecret }}
+            defaultMode: 0444
+        - name: state
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

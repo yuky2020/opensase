@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["controlURL", "pki", "adminToken", "database"],
+  "properties": {
+    "controlURL": {"type": "string", "pattern": "^https://"},
+    "pki": {"type": "object", "required": ["existingSecret"], "properties": {"existingSecret": {"type": "string", "minLength": 1}}},
+    "adminToken": {"type": "object", "required": ["existingSecret", "key"], "properties": {"existingSecret": {"type": "string", "minLength": 1}, "key": {"type": "string"}}},
+    "database": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["sqlite", "postgres"]},
+        "postgres": {"type": "object", "properties": {"existingSecret": {"type": "string"}, "key": {"type": "string"}}}
+      }
+    },
+    "replicas": {"type": "integer", "minimum": 1},
+    "service": {"type": "object", "properties": {"type": {"enum": ["LoadBalancer", "NodePort", "ClusterIP"]}, "port": {"type": "integer"}}}
+  }
+}

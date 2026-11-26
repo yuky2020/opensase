@@ -240,15 +240,22 @@ func (a *Authority) TenantCA(ctx context.Context, tenantID string) (*CA, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(a.dir, TenantsDir, tenantID), 0o700); err != nil {
-		return nil, fmt.Errorf("pki: mkdir tenant: %w", err)
-	}
-	c, k := a.tenantPaths(tenantID)
-	if err := SaveCA(ca, c, k); err != nil {
+	if err := a.saveTenantFiles(tenantID, ca); err != nil && a.store == nil {
 		return nil, err
 	}
 	a.tenants[tenantID] = ca
 	return ca, nil
+}
+
+// saveTenantFiles writes the tenant CA into the PKI directory. With a CAStore the files are
+// only a readable copy, so a read-only directory (a Kubernetes Secret) is fine and the error
+// is ignored by the caller.
+func (a *Authority) saveTenantFiles(tenantID string, ca *CA) error {
+	if err := os.MkdirAll(filepath.Join(a.dir, TenantsDir, tenantID), 0o700); err != nil {
+		return fmt.Errorf("pki: mkdir tenant: %w", err)
+	}
+	c, k := a.tenantPaths(tenantID)
+	return SaveCA(ca, c, k)
 }
 
 // BundlePEM returns root CA followed by every tenant CA, in PEM form.

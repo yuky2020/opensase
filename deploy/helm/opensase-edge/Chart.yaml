@@ -1,0 +1,10 @@
+apiVersion: v2
+name: opensase-edge
+description: OpenSASE Edge (post-quantum WireGuard termination, policy enforcement, DNS, ZTNA broker)
+type: application
+version: 0.3.0
+appVersion: "0.3.0"
+kubeVersion: ">=1.33.0-0"
+home: https://yuky2020.github.io/opensase/
+sources:
+  - https://github.com/yuky2020/opensase

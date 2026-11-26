@@ -1,0 +1,17 @@
+{{- if eq .Values.database.type "sqlite" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "cp.name" . }}-data
+  labels: {{- include "cp.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep   # never delete the database with the release
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.database.sqlite.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.database.sqlite.size }}
+{{- end }}

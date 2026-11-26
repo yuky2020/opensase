@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["controlURL", "wgEndpoint", "pki"],
+  "properties": {
+    "controlURL": {"type": "string", "pattern": "^https://"},
+    "wgEndpoint": {"type": "string", "minLength": 3},
+    "pki": {"type": "object", "required": ["existingSecret"], "properties": {"existingSecret": {"type": "string", "minLength": 1}}},
+    "ipForward": {"enum": ["initContainer", "sysctl", "none"]},
+    "service": {"type": "object", "properties": {"type": {"enum": ["LoadBalancer", "NodePort"]}}}
+  }
+}

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}
+  labels: {{- include "cp.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if ne .Values.service.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- end }}
+  selector: {{- include "cp.selector" . | nindent 4 }}
+  ports:
+    - {name: https, port: {{ .Values.service.port }}, targetPort: https, protocol: TCP}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-ops
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "cp.selector" . | nindent 4 }}
+  ports:
+    - {name: ops, port: {{ .Values.ops.port }}, targetPort: ops, protocol: TCP}

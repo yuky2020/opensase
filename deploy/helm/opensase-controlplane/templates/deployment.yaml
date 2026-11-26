@@ -1,0 +1,104 @@
+{{- if and (eq .Values.database.type "postgres") (not .Values.database.postgres.existingSecret) }}
+{{- fail "database.postgres.existingSecret is required with database.type=postgres" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ include "cp.replicas" . }}
+  strategy:
+    {{- if eq .Values.database.type "sqlite" }}
+    type: Recreate   # one writer on the volume
+    {{- else }}
+    type: RollingUpdate
+    {{- end }}
+  selector:
+    matchLabels: {{- include "cp.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.selector" . | nindent 8 }}
+      annotations:
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: controlplane
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -listen=:9443
+            - -pki=/pki
+            - -control-url={{ .Values.controlURL }}
+            - -ops-listen=:{{ .Values.ops.port }}
+            {{- if eq .Values.database.type "sqlite" }}
+            - -db=/data/controlplane.db
+            {{- if .Values.backups.dir }}
+            - -backup-dir={{ .Values.backups.dir }}
+            - -backup-every={{ .Values.backups.every }}
+            - -backup-keep={{ .Values.backups.keep }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.categoriesURL }}
+            - -categories-url={{ .Values.categoriesURL }}
+            - -categories-file=/data/categories.tar.gz
+            {{- end }}
+          env:
+            - name: OPENSASE_ADMIN_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.adminToken.existingSecret }}, key: {{ .Values.adminToken.key }}}}
+            {{- if eq .Values.database.type "postgres" }}
+            - name: OPENSASE_DB
+              valueFrom: {secretKeyRef: {name: {{ .Values.database.postgres.existingSecret }}, key: {{ .Values.database.postgres.key }}}}
+            {{- end }}
+          ports:
+            - {name: https, containerPort: 9443, protocol: TCP}
+            - {name: ops, containerPort: {{ .Values.ops.port }}, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /healthz, port: ops}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: ops}
+            periodSeconds: 5
+          startupProbe:
+            httpGet: {path: /healthz, port: ops}
+            failureThreshold: 60
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: pki, mountPath: /pki, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: pki
+          secret:
+            secretName: {{ .Values.pki.existingSecret }}
+            defaultMode: 0400
+        - name: tmp
+          emptyDir: {}
+        - name: data
+          {{- if eq .Values.database.type "sqlite" }}
+          persistentVolumeClaim:
+            claimName: {{ include "cp.name" . }}-data
+          {{- else }}
+          emptyDir: {}  # category cache only; the database is PostgreSQL
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

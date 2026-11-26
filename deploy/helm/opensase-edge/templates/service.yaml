@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "edge.name" . }}
+  labels: {{- include "edge.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  selector: {{- include "edge.selector" . | nindent 4 }}
+  ports:
+    - {name: wireguard, port: {{ .Values.service.wgPort }}, targetPort: wireguard, protocol: UDP}
+    - {name: session, port: {{ .Values.service.sessionPort }}, targetPort: session, protocol: TCP}
+    - {name: broker, port: {{ .Values.service.brokerPort }}, targetPort: broker, protocol: TCP}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "edge.name" . }}-ops
+  labels: {{- include "edge.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "edge.selector" . | nindent 4 }}
+  ports:
+    - {name: ops, port: {{ .Values.ops.port }}, targetPort: ops, protocol: TCP}

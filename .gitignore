@@ -21,6 +21,7 @@ local.properties
 /docs/code-of-conduct.md
 /docs/security-policy.md
 /docs/containers.md
+/docs/kubernetes.md
 /docs/security/test-suite.md
 /docs/security/threat-model.md
 /docs/security/security-tester-agent.md

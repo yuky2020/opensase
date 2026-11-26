@@ -323,3 +323,82 @@ jobs:
         env:
           OPENSASE_ADMIN_TOKEN: build-only
         run: docker compose --profile e2e --profile av build
+
+  helm:
+    name: Helm charts (kind)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Lint and render the charts
+        run: |
+          for c in deploy/helm/opensase-controlplane deploy/helm/opensase-edge; do
+            helm lint "$c"
+            helm template t "$c" >/dev/null
+          done
+          helm template t deploy/helm/opensase-controlplane --set database.type=postgres --set database.postgres.existingSecret=pg | grep -q 'type: RollingUpdate'
+          ! helm template t deploy/helm/opensase-controlplane --set database.type=postgres 2>/dev/null
+
+      - name: Create a kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: opensase
+
+      - name: Build and load the images
+        run: |
+          mkdir -p clients/admin/build/web
+          echo '<!doctype html><title>portal placeholder</title>' > clients/admin/build/web/index.html
+          docker build -q -t opensase-controlplane:ci -f deploy/release/Dockerfile.controlplane .
+          docker build -q -t opensase-edge:ci -f deploy/release/Dockerfile.edge .
+          kind load docker-image opensase-controlplane:ci opensase-edge:ci --name opensase
+
+      - name: PKI and Secrets
+        run: |
+          CP=cp-controlplane.opensase.svc
+          EDGE=edge1-edge.opensase-edge.svc
+          go run ./cmd/opensasectl pki init -dir pki -cp-san "$CP,localhost,127.0.0.1" -edge-san "$EDGE" \
+            -session-url "https://$EDGE:8443" -wg-endpoint "$EDGE:51820" -broker-addr "$EDGE:8444"
+          kubectl create namespace opensase
+          kubectl label namespace opensase pod-security.kubernetes.io/enforce=restricted
+          kubectl -n opensase create secret generic opensase-pki \
+            --from-file=pki/root.crt --from-file=pki/root.key --from-file=pki/controlplane.crt \
+            --from-file=pki/controlplane.key --from-file=pki/snapshot.key --from-file=pki/ca-kek.key \
+            --from-file=pki/edges.json
+          echo "TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$GITHUB_ENV"
+
+      - name: Install the Control Plane
+        run: |
+          kubectl -n opensase create secret generic opensase-admin-token --from-literal=token="$TOKEN"
+          helm install cp deploy/helm/opensase-controlplane -n opensase \
+            --set image.repository=opensase-controlplane --set image.tag=ci --set image.pullPolicy=Never \
+            --set controlURL=https://cp-controlplane.opensase.svc:9443 --set service.type=ClusterIP \
+            --set categoriesURL= --set database.sqlite.size=200Mi
+          kubectl -n opensase rollout status deploy/cp-controlplane --timeout=180s
+
+      - name: Register the Edge and install it
+        run: |
+          kubectl -n opensase port-forward svc/cp-controlplane 9443:9443 >/dev/null 2>&1 &
+          sleep 3
+          OPENSASE_ADMIN_TOKEN="$TOKEN" go run ./cmd/opensasectl -url https://localhost:9443 -ca pki/root.crt edge add -id edge-1
+          kubectl create namespace opensase-edge
+          kubectl label namespace opensase-edge pod-security.kubernetes.io/enforce=privileged
+          kubectl -n opensase-edge create secret generic opensase-edge-1-pki --from-file=pki/edge/
+          helm install edge1 deploy/helm/opensase-edge -n opensase-edge \
+            --set image.repository=opensase-edge --set image.tag=ci --set image.pullPolicy=Never \
+            --set controlURL=https://cp-controlplane.opensase.svc:9443 \
+            --set wgEndpoint=edge1-edge.opensase-edge.svc:51820 --set service.type=NodePort
+          kubectl -n opensase-edge rollout status deploy/edge1-edge --timeout=180s
+
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl -n opensase logs deploy/cp-controlplane --tail=100 || true
+          kubectl -n opensase-edge logs deploy/edge1-edge --all-containers --tail=100 || true
+          kubectl -n opensase-edge describe pod -l app.kubernetes.io/name=opensase-edge | tail -40 || true

@@ -1,0 +1,61 @@
+# Image of the Control Plane (with the admin portal).
+image:
+  repository: ghcr.io/yuky2020/opensase-controlplane
+  tag: ""          # default: the chart appVersion
+  pullPolicy: IfNotPresent
+
+# URL devices use to reach the Control Plane (must match a SAN of the Control Plane
+# certificate in the PKI Secret).
+controlURL: https://controlplane.example.com:9443
+
+# Secrets made before installing (see the chart README):
+#   pki:        root.crt, root.key, controlplane.crt, controlplane.key, snapshot.key,
+#               ca-kek.key, edges.json
+#   adminToken: key "token"
+pki:
+  existingSecret: opensase-pki
+adminToken:
+  existingSecret: opensase-admin-token
+  key: token
+
+# Database (ADR-0033). sqlite: one replica on a persistent volume. postgres: several
+# replicas; the URL comes from a Secret key (it holds the password).
+database:
+  type: sqlite          # sqlite | postgres
+  sqlite:
+    size: 2Gi
+    storageClassName: ""
+  postgres:
+    existingSecret: ""  # Secret with the postgres:// URL
+    key: url
+
+# Replicas: only with database.type=postgres; sqlite always runs one.
+replicas: 2
+
+# Web categories (ADR-0022): downloaded into the data volume; "" turns them off.
+categoriesURL: https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz
+
+# Scheduled SQLite backups into the data volume (issue #67); "" turns them off.
+backups:
+  dir: /data/backups
+  every: 24h
+  keep: 7
+
+service:
+  type: LoadBalancer
+  port: 9443
+  externalTrafficPolicy: Local
+  annotations: {}
+
+# /metrics, /healthz, /readyz (issue #73). Probes use it; keep the port cluster-internal.
+ops:
+  port: 9090
+
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {memory: 1Gi}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

@@ -1,0 +1,48 @@
+# One release is one Edge identity with one public address (decision #51). Install the
+# chart once per Edge, each with its own PKI Secret.
+image:
+  repository: ghcr.io/yuky2020/opensase-edge
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Control Plane URL (must match a SAN of the Control Plane certificate).
+controlURL: https://controlplane.example.com:9443
+# Public WireGuard endpoint and session URL host given to clients (from pki init).
+wgEndpoint: edge1.example.com:51820
+
+# Secret with the Edge PKI (the pki/edge directory of `opensasectl pki init`):
+# root.crt, edge.crt, edge.key, edge-wg.key.
+pki:
+  existingSecret: opensase-edge-1-pki
+
+# Private Edge: serve only this tenant (must match `opensasectl edge add -tenant`).
+tenant: ""
+
+# Extra flags for the edge binary.
+extraArgs: []
+
+# The Edge forwards tunnel traffic: net.ipv4.ip_forward must be 1 in the pod network
+# namespace. initContainer: a privileged init container sets it. sysctl: the pod sets it
+# (the kubelet must allow the unsafe sysctl). none: you set it yourself.
+ipForward: initContainer   # initContainer | sysctl | none
+initImage: busybox:1.37
+
+service:
+  type: LoadBalancer        # LoadBalancer | NodePort
+  externalTrafficPolicy: Local
+  annotations: {}
+  wgPort: 51820
+  sessionPort: 8443
+  brokerPort: 8444
+
+ops:
+  port: 9091
+
+resources:
+  requests: {cpu: 200m, memory: 256Mi}
+  limits: {memory: 1Gi}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

@@ -88,9 +88,7 @@ func (a *Authority) InspectionCA(ctx context.Context, tenantID string) (*CA, err
 		if ca, err = a.storedCA(ctx, tenantID, CAKindInspection, func() (*CA, error) { return newInspectionRoot(tenantID) }); err != nil {
 			return nil, err
 		}
-		if err := SaveCA(ca, c, k); err != nil {
-			return nil, err
-		}
+		_ = SaveCA(ca, c, k) // only a copy with a store; the directory may be read-only
 	} else {
 		ca, err = LoadCA(c, k)
 		switch {

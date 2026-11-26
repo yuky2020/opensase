@@ -25,6 +25,18 @@ EDGE_GID="${EDGE_GID:-1000}"
 
 log() { echo "edge-entrypoint: $*" >&2; }
 
+# Kubernetes has no device mapping: create the TUN device node if the runtime did not
+# provide one (needs CAP_MKNOD; the device cgroup of common runtimes allows 10:200).
+if [ ! -c /dev/net/tun ]; then
+  mkdir -p /dev/net
+  if mknod /dev/net/tun c 10 200 2>/dev/null; then
+    chmod 0666 /dev/net/tun
+    log "created /dev/net/tun"
+  else
+    log "no /dev/net/tun and mknod failed: map the device or grant CAP_MKNOD"
+  fi
+fi
+
 # chain IPT NAME: create or flush a custom chain.
 chain() { "$1" -N "$2" 2>/dev/null || "$1" -F "$2"; }
 # hook IPT PARENT ARGS...: jump from a built-in chain once.

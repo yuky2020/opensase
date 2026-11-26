@@ -67,6 +67,11 @@ const (
 	defaultProbeTimeout  = 4 * time.Second
 	defaultFailbackAfter = 5 * time.Minute
 	probeFailures        = 2
+	// probeRetry is the delay before re-probing after a failed probe, and sessionTick the
+	// longest sleep of the session loop: together they keep detection of a dead Edge within
+	// the 30 s failover target (issue #70) without probing a healthy idle Edge more often.
+	probeRetry  = 2 * time.Second
+	sessionTick = 5 * time.Second
 
 	defaultExperienceInterval     = 60 * time.Second
 	defaultExperienceProbeTimeout = 2 * time.Second

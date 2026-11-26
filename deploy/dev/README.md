@@ -154,6 +154,20 @@ CONTROL_HOST=10.0.2.2 EDGE_HOST=10.0.2.2 ./bootstrap.sh
 
 This ensures `edges.json`, the Edge `-wg-endpoint`, and the pinned control URL use the emulator host alias (`10.0.2.2`). The server certificates generated during PKI setup always include `10.0.2.2`.
 
+## Failover test
+
+The dev stack includes an end-to-end failover and fail-back test across two Edges (`edge-1` and `edge-2`) validating client resilience (issue #70):
+
+```sh
+./failover-test.sh
+```
+
+What `failover-test.sh` tests:
+- Two-Edge topology (`docker-compose.failover.yml`): bootstraps the dev stack with two Edge services (`edge` with id `edge-1` at priority 1, and `edge2` with id `edge-2` at priority 2), each with dedicated state and PKI certificates.
+- Initial connectivity: connects the client to preferred `edge-1` and verifies traffic flows through the WireGuard tunnel.
+- Failover: stops `edge-1` (`docker compose stop edge`). The client detects the failure via idle session probing and fails over to `edge-2` within 30 seconds with traffic working and tunnel IP unchanged.
+- Fail-back: starts `edge-1` (`docker compose start edge`). Once `failbackAfter` (5 minutes) elapses, the client automatically restores the tunnel to `edge-1` within `failbackAfter` + 60 seconds with traffic flowing.
+
 ## Reset
 
 To stop containers, remove volumes, and delete generated credentials and databases:

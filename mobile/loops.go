@@ -383,9 +383,13 @@ func (e *Engine) sessionLoop(rs *runState) {
 	reset := false // the next attempt is a new session, not a rotation
 	avoid := ""    // Edge to try last on the next new session (it stopped answering)
 	pr := prober{lastRx: time.Now()}
-	tick := min(e.livenessInterval, e.probeInterval)
+	tick := min(e.livenessInterval, e.probeInterval, sessionTick)
 	for {
-		if !sleep(rs.ctx, max(0, min(time.Until(next), tick))) {
+		wait := tick
+		if pr.failures > 0 {
+			wait = min(wait, probeRetry)
+		}
+		if !sleep(rs.ctx, max(0, min(time.Until(next), wait))) {
 			return
 		}
 		now := time.Now()
@@ -454,7 +458,11 @@ func (e *Engine) probe(rs *runState, p *prober, rx uint64, now time.Time) (why s
 		p.rx, p.lastRx, p.failures = rx, now, 0
 		return "", false
 	}
-	if now.Sub(p.lastRx) < e.probeIdle || now.Sub(p.lastSent) < e.probeInterval {
+	interval := e.probeInterval
+	if p.failures > 0 {
+		interval = min(interval, probeRetry)
+	}
+	if now.Sub(p.lastRx) < e.probeIdle || now.Sub(p.lastSent) < interval {
 		return "", false
 	}
 	p.lastSent = now

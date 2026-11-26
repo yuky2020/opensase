@@ -136,3 +136,42 @@ jobs:
         if: ${{ failure() }}
         working-directory: deploy/dev
         run: docker compose logs --tail 200
+
+  failover:
+    name: Edge failover and fail-back
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install test tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils netcat-openbsd jq
+          openssl version
+          curl --version | head -1
+
+      - name: Prepare offline inputs
+        run: |
+          scripts/ci-categories-fixture.sh
+          # The Control Plane serves the portal from this directory; the portal is built and
+          # tested in the CI workflow, a placeholder page is enough here.
+          mkdir -p clients/admin/build/web
+          printf '<!doctype html><title>OpenSASE admin</title>\n' >clients/admin/build/web/index.html
+          # Keep the fixture: no download of the real category list.
+          printf 'CATEGORIES_URL=\n' >>deploy/dev/.env
+
+      - name: Run failover test
+        run: |
+          chmod +x deploy/dev/failover-test.sh
+          cd deploy/dev && ./failover-test.sh
+
+      - name: Dump compose logs on failure
+        if: ${{ failure() }}
+        working-directory: deploy/dev
+        run: docker compose -f docker-compose.yml -f docker-compose.failover.yml --profile e2e logs --tail 200

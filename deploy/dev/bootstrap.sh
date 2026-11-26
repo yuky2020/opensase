@@ -14,6 +14,7 @@ TENANT="${TENANT:-acme}"
 USER_ID="${USER_ID:-user-1}"
 USER_EMAIL="${USER_EMAIL:-user@acme.example}"
 EDGE_HOST="${EDGE_HOST:-edge}"
+EDGE2_HOST="${EDGE2_HOST:-edge2}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 
@@ -21,8 +22,8 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 # provisioning.key holds the key alone for the client container (compose secret).
 touch .env provisioning.key connector.key
 chmod 600 .env provisioning.key connector.key
-mkdir -p connector-state edge-state
-chmod 700 connector-state edge-state
+mkdir -p connector-state edge-state edge2-state
+chmod 700 connector-state edge-state edge2-state
 if ! grep -q '^OPENSASE_ADMIN_TOKEN=' .env; then
   log "generating admin token"
   printf 'OPENSASE_ADMIN_TOKEN=%s\n' "$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')" >>.env
@@ -34,16 +35,25 @@ set_env() { # set_env KEY VALUE
   chmod 600 .env
 }
 set_env EDGE_HOST "$EDGE_HOST"
+set_env EDGE2_HOST "$EDGE2_HOST"
 set_env CONTROL_HOST "${CONTROL_HOST:-controlplane}"
 set_env OPENSASE_UID "$(id -u)"
 set_env OPENSASE_GID "$(id -g)"
 [ -n "${UPSTREAM_DNS:-}" ] && set_env UPSTREAM_DNS "$UPSTREAM_DNS"
 
+HAS_EDGE2=0
+case "${COMPOSE_FILE:-}" in
+  *failover*) HAS_EDGE2=1 ;;
+esac
+if [ "${EDGE2:-0}" = "1" ]; then
+  HAS_EDGE2=1
+fi
+
 mkdir -p pki data
 chmod 700 data # every tenant's policies and flows (ST-09)
 if [ "${OPENSASE_SKIP_BUILD:-0}" != "1" ]; then
   log "building images"
-  docker compose build controlplane edge connector
+  docker compose build controlplane edge connector # edge2 reuses the edge image
 fi
 
 ctl() { docker compose run --rm --no-deps -T ctl "$@"; }
@@ -79,8 +89,45 @@ if [ -f pki/edges.json ] && ! grep -q '"brokerAddr"' pki/edges.json; then
   docker compose ps -q controlplane | grep -q . && docker compose restart controlplane >/dev/null
 fi
 
-log "starting controlplane and edge"
-docker compose up -d controlplane edge
+if [ "$HAS_EDGE2" = "1" ]; then
+  if [ ! -f pki/edge2/edge.crt ] || ! grep -q '"edge-2"' pki/edges.json; then
+    log "generating PKI for edge-2 (reachable at $EDGE2_HOST)"
+    DEV_SANS="localhost,127.0.0.1,::1,10.0.2.2"
+    rm -rf pki/edge2-init
+    mkdir -p pki/edge2-init
+    cp pki/root.crt pki/root.key pki/edge2-init/
+    ctl pki init -dir /pki/edge2-init -edge-id edge-2 \
+      -session-url "https://$EDGE2_HOST:8443" \
+      -wg-endpoint "$EDGE2_HOST:51820" \
+      -broker-addr "${BROKER2_HOST:-edge2}:8444" \
+      -edge-san "edge2,$DEV_SANS,$EDGE2_HOST"
+    if [ ! -f pki/edge2/edge.crt ]; then
+      rm -rf pki/edge2
+      mv pki/edge2-init/edge pki/edge2
+    fi
+    if command -v jq >/dev/null 2>&1; then
+      jq -s '.[0][0] * {priority: 1} as $e1 | .[1][0] * {priority: 2} as $e2 | [$e1, $e2]' \
+        pki/edges.json pki/edge2-init/edges.json >pki/edges.json.tmp
+      mv pki/edges.json.tmp pki/edges.json
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -c '
+import json
+with open("pki/edges.json") as f: e1 = json.load(f)[0]
+with open("pki/edge2-init/edges.json") as f: e2 = json.load(f)[0]
+e1["priority"] = 1
+e2["priority"] = 2
+with open("pki/edges.json", "w") as f: json.dump([e1, e2], f, indent=2)
+'
+    fi
+    rm -rf pki/edge2-init
+    docker compose ps -q controlplane | grep -q . && docker compose restart controlplane >/dev/null
+  fi
+fi
+
+SERVICES="controlplane edge"
+[ "$HAS_EDGE2" = "1" ] && SERVICES="$SERVICES edge2"
+log "starting $SERVICES"
+docker compose up -d $SERVICES
 
 log "waiting for the Control Plane (PQ TLS handshake)"
 i=0
@@ -94,6 +141,10 @@ ctl pq-check
 log "registering edge-1, creating tenant $TENANT, user $USER_ID and a provisioning key"
 OUT="$(ctl bootstrap -tenant "$TENANT" -user-id "$USER_ID" -email "$USER_EMAIL" -max-uses 10 \
   -control-url "https://${CONTROL_HOST:-controlplane}:9443")"
+if [ "$HAS_EDGE2" = "1" ]; then
+  log "registering edge-2"
+  ctl edge add -id edge-2
+fi
 KEY="$(echo "$OUT" | sed -n 's/^PROVISIONING_KEY=//p')"
 set_env OPENSASE_PROVISIONING_KEY "$KEY"
 (umask 077 && printf '%s\n' "$KEY" >provisioning.key.tmp && mv provisioning.key.tmp provisioning.key)
@@ -129,6 +180,13 @@ cat >&2 <<EOF
 
   Control Plane  https://localhost:9443   (CA: deploy/dev/pki/root.crt)
   Edge           https://localhost:8443 , udp/51820, Connector broker tcp/8444
+EOF
+if [ "$HAS_EDGE2" = "1" ]; then
+  cat >&2 <<EOF
+  Edge 2         https://localhost:8445 , udp/51821, Connector broker tcp/8446
+EOF
+fi
+cat >&2 <<EOF
   ZTNA           http://intranet.acme.internal/ via connector (dc1) -> intranet (corp)
   Provisioning key for $USER_ID, pinned control URL (#sha256= of the root CA) and the
   single-string enroll URI (for a QR code) are in deploy/dev/.env:

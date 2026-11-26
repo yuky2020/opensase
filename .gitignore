@@ -33,3 +33,13 @@ local.properties
 
 # threat-model skill working state
 /.threat-model-state/
+
+# Binaries built at the repository root with go build ./cmd/<name>
+/connector
+/controlplane
+/edge
+/ocrd
+/opensase
+/opensase-client
+/opensasectl
+/opensased

@@ -856,3 +856,41 @@ func TestControlPlaneTunnelOffset(t *testing.T) {
 		t.Fatalf("d1 did not get its Control Plane offset: %+v", sr)
 	}
 }
+
+// TestEdgeOps covers issue #73: readiness follows the first peer sync, and /metrics exposes
+// the Edge series.
+func TestEdgeOps(t *testing.T) {
+	fx := newFixture(t)
+	srv := httptest.NewServer(fx.e.opsHandler())
+	defer srv.Close()
+	get := func(path string) (int, string) {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, _ := get("/readyz"); code != 503 {
+		t.Fatalf("ready before the first sync: %d", code)
+	}
+	fx.setPeer("d1", 1)
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := get("/readyz"); code != 200 {
+		t.Fatalf("readyz after sync: %d", code)
+	}
+	fx.e.flows.add(api.FlowRecord{Decision: policy.Decision{Action: policy.ActionBlock, Layer: policy.LayerTenant}})
+	code, body := get("/metrics")
+	if code != 200 {
+		t.Fatalf("metrics %d", code)
+	}
+	for _, want := range []string{"opensase_edge_devices 1\n", "opensase_edge_sessions 0\n", `opensase_edge_blocks_total{layer="tenant"} 1`, "opensase_edge_peer_sync_age_seconds "} {
+		if !strings.Contains(body, want) {
+			t.Errorf("metrics lack %q", want)
+		}
+	}
+}

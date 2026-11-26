@@ -50,6 +50,7 @@ func normalize(name string) string {
 // ServeDNS implements dns.Handler.
 func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	defer w.Close()
+	rs.e.obs.dnsQueries.Inc()
 	client := remoteAddr(w.RemoteAddr())
 	d := rs.e.reg.byTunnelIP(client)
 	var c *policy.Compiled
@@ -179,13 +180,14 @@ func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled
 	} else {
 		m.SetRcode(req, dns.RcodeNameError)
 	}
-	_ = w.WriteMsg(m)
+	// Record before answering, so the record exists once the client has its answer.
 	now := time.Now()
 	rs.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: d.id,
 		Flow:     policy.Flow{Protocol: "udp", SrcIP: client.String(), DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
 		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: "dns", Log: true},
 	})
+	_ = w.WriteMsg(m)
 }
 
 // serveDNS runs UDP and TCP listeners on addr until ctx is done.

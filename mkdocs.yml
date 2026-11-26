@@ -72,6 +72,8 @@ nav:
       - Verify a download: verify.md
   - Release quality bar: release-quality-bar.md
   - Manual test checklist: testing/manual-checklist.md
+  - Operations:
+      - Monitoring: operations/monitoring.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

@@ -316,6 +316,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 			return json.Marshal(env)
 		})
 		if err != nil {
+			s.obs.compileFail.Inc()
 			return nil, fmt.Errorf("compile snapshot for device %s: %w", d.ID, err)
 		}
 		out[d.ID] = rec

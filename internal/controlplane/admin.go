@@ -318,9 +318,11 @@ func (s *Server) logAuditHead(ctx context.Context) {
 		return
 	}
 	if v.BadID != 0 {
+		s.auditOK.Store(0)
 		s.log.Error("audit chain broken", "entry", v.BadID, "reason", v.Reason)
 		return
 	}
+	s.auditOK.Store(1)
 	s.log.Info("audit chain head", "entry", v.HeadID, "hash", hex.EncodeToString(v.Head), "entries", v.Entries)
 }
 

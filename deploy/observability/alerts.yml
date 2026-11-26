@@ -1,0 +1,60 @@
+# Example Prometheus alert rules for OpenSASE (issue #73). Scrape the Control Plane's and each
+# Edge's -ops-listen address; adjust the thresholds to your deployment.
+groups:
+  - name: opensase
+    rules:
+      - alert: OpenSASEEdgeNotReporting
+        expr: opensase_edge_peer_sync_age_seconds > 300 or opensase_edge_peer_sync_age_seconds < 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Edge {{ $labels.instance }} has not synced with the Control Plane for 5 minutes"
+      - alert: OpenSASEEdgeDown
+        expr: up{job="opensase-edge"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Edge {{ $labels.instance }} is not answering"
+      - alert: OpenSASEControlPlaneDown
+        expr: up{job="opensase-controlplane"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Control Plane {{ $labels.instance }} is not answering"
+      - alert: OpenSASECertificateExpiring
+        expr: opensase_cp_certificate_expiry_seconds < 14 * 86400 or opensase_edge_certificate_expiry_seconds < 14 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "Certificate {{ $labels.cert }} on {{ $labels.instance }} expires in under 14 days"
+      - alert: OpenSASECategoryListStale
+        expr: opensase_cp_category_list_age_seconds > 3 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "The web category list is older than 3 days"
+      - alert: OpenSASESnapshotFailures
+        expr: increase(opensase_cp_snapshot_failures_total[15m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Policy snapshots failed to compile or sign"
+      - alert: OpenSASEAuditChainBroken
+        expr: opensase_cp_audit_chain_ok == 0
+        labels: {severity: critical}
+        annotations:
+          summary: "The admin audit hash chain does not verify (ADR-0028)"
+      - alert: OpenSASEEnrolmentFailures
+        expr: increase(opensase_cp_enroll_failures_total[10m]) > 20
+        labels: {severity: warning}
+        annotations:
+          summary: "Many failed enrolments in 10 minutes (wrong or guessed provisioning keys?)"
+      - alert: OpenSASEFlowBacklog
+        expr: opensase_edge_flow_backlog > 10000
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Edge {{ $labels.instance }} cannot upload flow records"
+      - alert: OpenSASENoLeader
+        expr: sum(opensase_cp_leader) == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "No Control Plane replica runs the singleton jobs (ADR-0033)"

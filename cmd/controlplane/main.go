@@ -4,11 +4,13 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -45,6 +47,7 @@ func run() error {
 	backupDir := flag.String("backup-dir", "", "write scheduled SQLite backups (database and PKI archive) to this directory (issue #67); empty: none")
 	backupEvery := flag.Duration("backup-every", 24*time.Hour, "interval between scheduled backups")
 	backupKeep := flag.Int("backup-keep", 7, "scheduled backups to keep")
+	opsListen := flag.String("ops-listen", "", "serve /metrics, /healthz and /readyz on this plain-HTTP address (issue #73), e.g. 127.0.0.1:9090; keep it reachable only by monitoring")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	if *catURL != "" && *catFile == "" {
@@ -129,9 +132,23 @@ func run() error {
 		AdminToken: token, Edges: edges, ControlURL: *controlURL, Logger: log,
 		MaxConns: *maxConns, FlowRetention: *retention, FlowRate: *flowRate, PortalDir: *portalDir, CategoriesFile: *catFile, CategoriesURL: *catURL,
 		BackupDir: *backupDir, BackupEvery: *backupEvery, BackupKeep: *backupKeep, PKIDir: *pkiDir,
+		ServerCertNotAfter: certNotAfter(cert),
 	})
 	if err != nil {
 		return err
+	}
+	if *opsListen != "" {
+		ops := &http.Server{Addr: *opsListen, Handler: srv.OpsHandler(), ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			if err := ops.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("ops listener stopped", "addr", *opsListen, "err", err)
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			_ = ops.Close()
+		}()
+		log.Info("ops endpoints", "addr", *opsListen)
 	}
 	log.Info("starting", "snapshotKey", keyID, "edges", len(edges), "portal", *portalDir != "")
 	return srv.Run(ctx, *listen, cert)
@@ -142,4 +159,18 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func certNotAfter(c tls.Certificate) time.Time {
+	if c.Leaf != nil {
+		return c.Leaf.NotAfter
+	}
+	if len(c.Certificate) == 0 {
+		return time.Time{}
+	}
+	leaf, err := x509.ParseCertificate(c.Certificate[0])
+	if err != nil {
+		return time.Time{}
+	}
+	return leaf.NotAfter
 }

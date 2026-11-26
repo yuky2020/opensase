@@ -151,6 +151,10 @@ func (s *Store) ReportEdgeSessions(ctx context.Context, edgeID string, deviceIDs
 				return err
 			}
 		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO edge_reports(edge_id, reported_at) VALUES (?, ?)
+			ON CONFLICT(edge_id) DO UPDATE SET reported_at = excluded.reported_at`, edgeID, now.Unix()); err != nil {
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM edge_sessions WHERE edge_id = ? AND updated_at < ?`, edgeID, now.Add(-keep).Unix())
 		return err
 	}))
@@ -174,4 +178,53 @@ func (s *Store) DeleteFlowsBefore(ctx context.Context, t time.Time) (int64, erro
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// EdgeSessionCounts returns, per Edge, the devices it reported a live session for since
+// since (issue #73).
+func (s *Store) EdgeSessionCounts(ctx context.Context, since time.Time) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT edge_id, COUNT(*) FROM edge_sessions WHERE updated_at >= ? GROUP BY edge_id`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
+// CountActiveDevices returns the number of non-revoked devices (issue #73).
+func (s *Store) CountActiveDevices(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE revoked = 0`).Scan(&n)
+	return n, err
+}
+
+// Ping checks that the database answers (readiness, issue #73).
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
+// EdgesReportingSince returns the Edges that reported their sessions since since. An Edge
+// with no live session still reports, so it counts too (issue #73).
+func (s *Store) EdgesReportingSince(ctx context.Context, since time.Time) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT edge_id FROM edge_reports WHERE reported_at >= ?`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }

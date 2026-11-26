@@ -37,6 +37,7 @@ type Config struct {
 	Cert         tls.Certificate   // edge certificate (server for sessions, client for the Control Plane)
 	WGPrivateKey []byte            // 32-byte Curve25519 key
 	ListenAddr   string            // session server, default ":8443"
+	OpsListen    string            // /metrics, /healthz, /readyz over plain HTTP (issue #73); "" off
 	WGPort       int               // default 51820
 	WGEndpoint   string            // host:port returned to clients, default "edge:51820"
 	TUNName      string            // default "wg0"
@@ -166,6 +167,10 @@ type Edge struct {
 	unknown  *negCache     // device IDs absent from a fresh peer feed (security review #7)
 	stateSum [32]byte      // hash of the state last written to StateDir (guarded by syncMu)
 	reportCh chan struct{} // wakes the session reporter
+
+	obs        *edgeObserver // metrics (issue #73)
+	lastSyncOK atomic.Int64  // unix nanoseconds of the last successful peer sync
+	ready      atomic.Bool   // a peer feed or the cached state is installed
 }
 
 // On-demand peer sync limits (security review #7).
@@ -196,6 +201,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		origDst:  originalDst,
 		kroutes:  newKernelRoutes("", cfg.Logger),
 	}
+	e.initMetrics()
 	if cfg.InspectListen != listenOff {
 		e.insp = newInspector(cp, cfg.InspectRoots)
 		e.insp.onIssued = e.saveInspection
@@ -252,6 +258,7 @@ func (e *Edge) run(ctx context.Context) error {
 		if first && e.cfg.StateDir != "" {
 			saved, lerr := e.loadState()
 			if lerr == nil {
+				e.ready.Store(true)
 				e.log.Warn("control plane unreachable; enforcing cached state", "savedAt", saved, "err", err)
 				break
 			}
@@ -339,6 +346,7 @@ func (e *Edge) run(ctx context.Context) error {
 			}
 		}()
 	}
+	go e.serveOps(ctx)
 	go e.peerLoop(ctx)
 	go e.sweepLoop(ctx)
 	go e.flowLoop(ctx)
@@ -540,6 +548,8 @@ func (e *Edge) syncPeers(ctx context.Context) error {
 		e.syncKernelRoutes(ctx)
 		e.routesChanged = false
 	}
+	e.lastSyncOK.Store(time.Now().UnixNano())
+	e.ready.Store(true)
 	return nil
 }
 
@@ -611,6 +621,7 @@ func (e *Edge) peerLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			if err := e.syncPeers(ctx); err != nil && ctx.Err() == nil {
+				e.obs.syncFails.Inc()
 				e.log.Warn("peer sync failed; enforcing last known snapshots", "err", err)
 			}
 		}

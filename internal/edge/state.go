@@ -162,7 +162,8 @@ func (s *snoop) sweep(now time.Time, alive func(netip.Addr) bool) {
 type flowLog struct {
 	mu    sync.Mutex
 	recs  []api.FlowRecord
-	local *localFlowLog // optional local JSONL copy (Config.FlowLogPath, ADR-0014)
+	local *localFlowLog               // optional local JSONL copy (Config.FlowLogPath, ADR-0014)
+	onAdd func(recs []api.FlowRecord) // metrics (issue #73); may be nil
 }
 
 const (
@@ -171,6 +172,9 @@ const (
 )
 
 func (l *flowLog) add(recs ...api.FlowRecord) {
+	if l.onAdd != nil {
+		l.onAdd(recs)
+	}
 	l.local.add(recs)
 	l.mu.Lock()
 	defer l.mu.Unlock()

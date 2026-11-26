@@ -48,6 +48,7 @@ func run() error {
 	tenant := flag.String("tenant", "", "Private Edge: serve only this tenant (must match the edge registration, opensasectl edge add -tenant)")
 	stateDir := flag.String("state-dir", "", "cache the last good Control Plane state here, so the Edge starts and keeps enforcing while the Control Plane is unreachable")
 	flowLog := flag.String("flow-log", "", "also append every flow record to this local JSONL file (rotated to FILE.1 at 64 MiB)")
+	opsListen := flag.String("ops-listen", "", "serve /metrics, /healthz and /readyz on this plain-HTTP address (issue #73), e.g. 127.0.0.1:9091; keep it reachable only by monitoring")
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	var deny []netip.Prefix
@@ -91,7 +92,7 @@ func run() error {
 	defer stop()
 	return edge.Run(ctx, edge.Config{
 		ControlURL: *control, Root: roots[0], Cert: cert, WGPrivateKey: wgPriv,
-		ListenAddr: *listen, WGPort: *wgPort, WGEndpoint: *wgEndpoint, TUNName: *tunName,
+		ListenAddr: *listen, OpsListen: *opsListen, WGPort: *wgPort, WGEndpoint: *wgEndpoint, TUNName: *tunName,
 		MTU: *mtu, Upstream: *upstream, RotateAfter: *rotate, Logger: log,
 		DenyCIDRs: deny, AllowPrivate: *allowPrivate, AllowDoH: *allowDoH,
 		ZTNAListen: *ztnaListen, BrokerListen: *brokerListen, InspectListen: *inspectListen, ClamdAddr: *clamdAddr, ICAPURL: *icapURL, OCRURL: *ocrURL,

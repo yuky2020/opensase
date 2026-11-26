@@ -92,6 +92,7 @@ func (s *Server) handleConnectorEnroll(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, store.ErrKeyInvalid):
+		s.obs.enrollFails.Inc()
 		s.log.WarnContext(r.Context(), "connector enrollment rejected: provisioning key invalid")
 		writeErr(w, http.StatusForbidden, "provisioning key invalid, expired or used up")
 		return

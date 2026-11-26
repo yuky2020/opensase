@@ -57,6 +57,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(rec, r)
+		s.countRequest(rec.code)
 		lvl := slog.LevelInfo
 		if rec.code >= 500 {
 			lvl = slog.LevelError

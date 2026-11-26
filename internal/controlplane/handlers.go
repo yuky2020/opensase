@@ -69,6 +69,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		return store.Device{ID: id, Name: req.DeviceName, Platform: req.Platform, CertSerial: leaf.SerialNumber.String()}, nil
 	})
 	if errors.Is(err, store.ErrKeyInvalid) {
+		s.obs.enrollFails.Inc()
 		s.log.WarnContext(r.Context(), "enrollment rejected: provisioning key invalid")
 		writeErr(w, http.StatusForbidden, "provisioning key invalid, expired or used up")
 		return

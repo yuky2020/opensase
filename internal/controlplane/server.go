@@ -80,13 +80,14 @@ type Config struct {
 	// Scheduled backups (issue #67, SQLite only): every BackupEvery (default 24h) the leader
 	// writes the database and an archive of PKIDir to BackupDir, keeping BackupKeep (default
 	// 7) of each. Empty BackupDir: no scheduled backups.
-	BackupDir   string
-	BackupEvery time.Duration
-	BackupKeep  int
-	PKIDir      string
-	OIDCClient  *http.Client     // optional; default timeout 10s (issue #17)
-	Logger      *slog.Logger     // default slog.Default()
-	Now         func() time.Time // default time.Now
+	BackupDir          string
+	BackupEvery        time.Duration
+	BackupKeep         int
+	PKIDir             string
+	ServerCertNotAfter time.Time        // expiry of the serving certificate, for metrics (issue #73)
+	OIDCClient         *http.Client     // optional; default timeout 10s (issue #17)
+	Logger             *slog.Logger     // default slog.Default()
+	Now                func() time.Time // default time.Now
 }
 
 // Server is the Control Plane. Create it with New.
@@ -107,6 +108,9 @@ type Server struct {
 	enrollLimit *rateLimiter // failed enroll attempts per source IP (ST-05)
 
 	cats atomic.Pointer[catState] // web category list (ADR-0022)
+
+	obs     *observer    // metrics (issue #73)
+	auditOK atomic.Int32 // last audit chain check: 1 ok, 0 broken, -1 not run yet
 
 	oidcMu        sync.Mutex
 	oidcProviders map[string]*oidcProviderEntry // key: tenant ID
@@ -166,6 +170,8 @@ func New(cfg Config) (*Server, error) {
 	s.flowLimit = newRateLimiter(cfg.FlowRate, time.Minute, cfg.Now)
 	s.enrollLimit = newRateLimiter(cfg.EnrollRate, time.Minute, cfg.Now)
 	s.pool.Store(cfg.Authority.ClientCAPool())
+	s.auditOK.Store(-1)
+	s.initMetrics()
 	return s, nil
 }
 
@@ -242,6 +248,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/edges/{e}/revoke", s.handleRevokeEdge)
 			r.Get("/audit", s.handleListAudit)
 			r.Get("/audit/verify", s.handleVerifyAudit)
+			r.Get("/status", s.handleAdminStatus)
 		})
 		r.Route("/tenants/{t}", func(r chi.Router) {
 			r.Use(requireTenantScope, requireTenantRole)

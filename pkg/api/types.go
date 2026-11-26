@@ -68,6 +68,7 @@
 //	GET  /v1/admin/tenants/{t}/audit?limit=   -> []AuditEntry (admin writes on that tenant, newest first)
 //	GET  /v1/admin/audit?limit=&tenant=       -> []AuditEntry (super-admin: every entry, or one tenant)
 //	GET  /v1/admin/audit/verify[?id=N&hash=H] -> AuditVerification (super-admin; hash chain check, ADR-0028)
+//	GET  /v1/admin/status                     -> AdminStatus (super-admin; deployment health, issue #73)
 //	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
 //	PUT  /v1/admin/tenants/{t}/dlp-datasets/{name}  DLPDatasetRequest -> DLPDataset (ADR-0029; only hashes are kept)
@@ -570,4 +571,32 @@ type TenantOIDC struct {
 	HasSecret    bool              `json:"hasSecret,omitempty"`
 	GroupRoles   map[string]string `json:"groupRoles"`
 	RedirectURL  string            `json:"redirectUrl,omitempty"`
+}
+
+// AdminStatus is the reply to GET /v1/admin/status (super-admin): the health of the
+// deployment for the portal status page (issue #73).
+type AdminStatus struct {
+	Edges              []EdgeStatus `json:"edges"`
+	DevicesEnrolled    int          `json:"devicesEnrolled"`
+	DevicesOnline      int          `json:"devicesOnline"` // live sessions reported by the Edges
+	ConnectorsTotal    int          `json:"connectorsTotal"`
+	ConnectorsOnline   int          `json:"connectorsOnline"` // broker connection reported in the last 5 minutes
+	Certificates       []CertExpiry `json:"certificates"`
+	AuditChain         string       `json:"auditChain"`             // "ok", "broken" or "unknown" (not checked yet)
+	Leader             bool         `json:"leader"`                 // this replica runs the singleton jobs
+	CategoryListAgeSec int64        `json:"categoryListAgeSeconds"` // -1 if no list is loaded
+}
+
+// EdgeStatus is one Edge in AdminStatus.
+type EdgeStatus struct {
+	ID        string `json:"id"`
+	Region    string `json:"region"`
+	Sessions  int    `json:"sessions"`
+	Reporting bool   `json:"reporting"` // reported its sessions in the last 5 minutes
+}
+
+// CertExpiry is one certificate in AdminStatus.
+type CertExpiry struct {
+	Name     string    `json:"name"`
+	NotAfter time.Time `json:"notAfter"`
 }

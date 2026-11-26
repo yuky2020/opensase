@@ -30,7 +30,7 @@ func main() {
 
 func run() error {
 	listen := flag.String("listen", ":9443", "HTTPS listen address")
-	dbPath := flag.String("db", "controlplane.db", "SQLite database path")
+	dbPath := flag.String("db", envOr("OPENSASE_DB", "controlplane.db"), "SQLite database path, or a postgres:// URL for several replicas (ADR-0033); default $OPENSASE_DB, so a password stays off the command line")
 	pkiDir := flag.String("pki", "pki", "PKI directory (see opensasectl pki init)")
 	kekFile := flag.String("ca-kek-file", "", "file with the 32-byte key that seals tenant CA keys in the database (default <pki>/ca-kek.key, created if missing); every Control Plane replica must use the same key")
 	edgesFile := flag.String("edges", "", "JSON file with []api.EdgeInfo returned at enrollment (default <pki>/edges.json if present)")
@@ -44,8 +44,12 @@ func run() error {
 	debug := flag.Bool("debug", false, "debug logging")
 	flag.Parse()
 	if *catURL != "" && *catFile == "" {
-		// Downloads need a cache: next to the database by default.
-		*catFile = filepath.Join(filepath.Dir(*dbPath), "categories.tar.gz")
+		// Downloads need a cache: next to the SQLite database by default, or in the working
+		// directory with PostgreSQL (each replica keeps its own copy).
+		*catFile = "categories.tar.gz"
+		if !store.IsPostgres(*dbPath) {
+			*catFile = filepath.Join(filepath.Dir(*dbPath), "categories.tar.gz")
+		}
 	}
 
 	lvl := slog.LevelInfo
@@ -126,4 +130,11 @@ func run() error {
 	}
 	log.Info("starting", "snapshotKey", keyID, "edges", len(edges), "portal", *portalDir != "")
 	return srv.Run(ctx, *listen, cert)
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

@@ -149,7 +149,7 @@ func (s *Server) handleCreateEdge(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "create edge", err)
 		return
 	}
-	s.notify.notify(notifyEdges)
+	s.wake(r.Context(), notifyEdges)
 	s.log.InfoContext(r.Context(), "edge registered", "edge", e.ID, "tenant", e.TenantID)
 	writeJSON(w, http.StatusCreated, AdminEdge{ID: e.ID, TenantID: e.TenantID})
 }
@@ -178,7 +178,7 @@ func (s *Server) handleRevokeEdge(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "revoke edge", err)
 		return
 	}
-	s.notify.notify(notifyEdges)
+	s.wake(r.Context(), notifyEdges)
 	s.log.InfoContext(r.Context(), "edge revoked", "edge", id)
 	w.WriteHeader(http.StatusNoContent)
 }

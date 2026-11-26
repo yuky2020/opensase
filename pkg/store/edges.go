@@ -25,7 +25,7 @@ func (s *Store) RenewDeviceCert(ctx context.Context, deviceID, presented, newSer
 
 // renewCert implements RenewDeviceCert and RenewConnectorCert. table is a constant.
 func (s *Store) renewCert(ctx context.Context, table, id, presented, newSerial string) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *txh) error {
 		var cur, prev string
 		var revoked bool
 		err := tx.QueryRowContext(ctx, `SELECT cert_serial, prev_cert_serial, revoked FROM `+table+` WHERE id = ?`, id).Scan(&cur, &prev, &revoked)
@@ -122,7 +122,7 @@ func (s *Store) ListEdges(ctx context.Context) ([]Edge, error) {
 // RevokeEdge revokes an edge and forgets its sessions. Revocation is permanent: the ID
 // cannot be registered again.
 func (s *Store) RevokeEdge(ctx context.Context, id string) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *txh) error {
 		res, err := tx.ExecContext(ctx, `UPDATE edges SET revoked = 1 WHERE id = ?`, id)
 		if err := affected(res, err); err != nil {
 			return err
@@ -136,7 +136,7 @@ func (s *Store) RevokeEdge(ctx context.Context, id string) error {
 // device IDs, and for a Private Edge devices of other tenants, are ignored. Rows older than now-keep (devices the edge no longer reports) are
 // deleted for this edge.
 func (s *Store) ReportEdgeSessions(ctx context.Context, edgeID string, deviceIDs []string, now time.Time, keep time.Duration) error {
-	return mapErr(s.tx(ctx, func(tx *sql.Tx) error {
+	return mapErr(s.tx(ctx, func(tx *txh) error {
 		// A Private Edge (edges.tenant_id set) records only devices of its tenant (ADR-0014).
 		st, err := tx.PrepareContext(ctx, `INSERT INTO edge_sessions(edge_id, device_id, updated_at)
 			SELECT e.id, d.id, ? FROM devices d JOIN edges e ON e.id = ?

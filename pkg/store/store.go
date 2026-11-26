@@ -13,14 +13,16 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yuky2020/opensase/pkg/api"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver
+	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
+	_ "modernc.org/sqlite"             // registers the "sqlite" driver
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/*.sql migrations/postgres/*.sql
 var migrations embed.FS
 
 var (
@@ -34,36 +36,66 @@ var (
 
 // Store wraps the SQLite database. It is safe for concurrent use.
 type Store struct {
-	db      *sql.DB
-	auditMu sync.Mutex // serialises audit appends so the hash chain never forks
+	db      *dbh
+	leader  atomic.Bool // PostgreSQL: this replica holds the leader lock (ADR-0033)
+	auditMu sync.Mutex  // serialises audit appends so the hash chain never forks
 }
 
-// Open opens (creating if needed) the database at path and applies migrations.
-// path may be ":memory:" for tests.
-func Open(ctx context.Context, path string) (*Store, error) {
+// Open opens the database and applies migrations. dsn is a SQLite file path (created if
+// needed), ":memory:" for tests, or a PostgreSQL URL (postgres://… or postgresql://…) for
+// several Control Plane replicas (ADR-0033).
+func Open(ctx context.Context, dsn string) (*Store, error) {
+	if IsPostgres(dsn) {
+		return openPostgres(ctx, dsn)
+	}
+	path := dsn
 	if path != ":memory:" {
 		if err := restrictDBFiles(path); err != nil {
 			return nil, err
 		}
 	}
-	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
 	// SQLite allows one writer; a single connection also keeps ":memory:" databases shared.
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	if err := s.migrate(ctx); err != nil {
+	return finishOpen(ctx, &Store{db: &dbh{DB: db}})
+}
+
+// IsPostgres reports whether dsn selects the PostgreSQL backend.
+func IsPostgres(dsn string) bool {
+	return strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")
+}
+
+func openPostgres(ctx context.Context, dsn string) (*Store, error) {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: open: %w", err)
+	}
+	db.SetMaxOpenConns(20)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
+		return nil, fmt.Errorf("store: connect to PostgreSQL: %w", err)
+	}
+	return finishOpen(ctx, &Store{db: &dbh{DB: db, pg: true}})
+}
+
+func finishOpen(ctx context.Context, s *Store) (*Store, error) {
+	if err := s.migrate(ctx); err != nil {
+		_ = s.db.Close()
 		return nil, err
 	}
 	if err := s.chainLegacyAudit(ctx); err != nil {
-		_ = db.Close()
+		_ = s.db.Close()
 		return nil, err
 	}
 	return s, nil
 }
+
+// Postgres reports whether the store runs on PostgreSQL.
+func (s *Store) Postgres() bool { return s.db.pg }
 
 // restrictDBFiles creates the database file 0600 (SQLite gives the -wal and -shm files the
 // mode of the main file) and tightens existing files: the store holds every tenant's
@@ -88,42 +120,46 @@ func restrictDBFiles(path string) error {
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) migrate(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
-		return fmt.Errorf("store: migrations table: %w", err)
+	pattern := "migrations/*.sql"
+	if s.db.pg {
+		pattern = "migrations/postgres/*.sql"
 	}
-	names, err := fs.Glob(migrations, "migrations/*.sql")
+	names, err := fs.Glob(migrations, pattern)
 	if err != nil {
 		return err
 	}
 	sort.Strings(names)
-	for _, n := range names {
-		var x int
-		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM schema_migrations WHERE name = ?`, n).Scan(&x)
-		if err == nil {
-			continue
+	return s.tx(ctx, func(tx *txh) error {
+		// One replica migrates; the others wait for the write lock (BeginTx), then find
+		// nothing to do.
+		if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at BIGINT NOT NULL)`); err != nil {
+			return fmt.Errorf("store: migrations table: %w", err)
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("store: check migration %s: %w", n, err)
-		}
-		body, err := migrations.ReadFile(n)
-		if err != nil {
-			return err
-		}
-		err = s.tx(ctx, func(tx *sql.Tx) error {
-			if _, err := tx.ExecContext(ctx, string(body)); err != nil {
+		for _, n := range names {
+			var x int
+			err := tx.QueryRowContext(ctx, `SELECT 1 FROM schema_migrations WHERE name = ?`, n).Scan(&x)
+			if err == nil {
+				continue
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("store: check migration %s: %w", n, err)
+			}
+			body, err := migrations.ReadFile(n)
+			if err != nil {
 				return err
 			}
-			_, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(name, applied_at) VALUES (?, ?)`, n, time.Now().Unix())
-			return err
-		})
-		if err != nil {
-			return fmt.Errorf("store: apply migration %s: %w", n, err)
+			if _, err := tx.Tx.ExecContext(ctx, string(body)); err != nil {
+				return fmt.Errorf("store: apply migration %s: %w", n, err)
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(name, applied_at) VALUES (?, ?)`, n, time.Now().Unix()); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
-func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {
+func (s *Store) tx(ctx context.Context, fn func(*txh) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -141,9 +177,9 @@ func mapErr(err error) error {
 		return nil
 	case errors.Is(err, sql.ErrNoRows):
 		return ErrNotFound
-	case strings.Contains(err.Error(), "UNIQUE constraint failed"), strings.Contains(err.Error(), "PRIMARY KEY constraint failed"):
+	case isUniqueViolation(err), strings.Contains(err.Error(), "PRIMARY KEY constraint failed"):
 		return ErrConflict
-	case strings.Contains(err.Error(), "FOREIGN KEY constraint failed"):
+	case strings.Contains(err.Error(), "FOREIGN KEY constraint failed"), pgCode(err) == "23503":
 		return ErrNotFound
 	}
 	return err
@@ -292,7 +328,7 @@ type Device struct {
 // tenant and user). If mkDevice fails, the key use is not consumed.
 func (s *Store) Enroll(ctx context.Context, hash []byte, now time.Time, mkDevice func(Enrollment) (Device, error)) (Device, error) {
 	var d Device
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.tx(ctx, func(tx *txh) error {
 		var e Enrollment
 		err := tx.QueryRowContext(ctx, `UPDATE provisioning_keys SET uses = uses + 1
 			WHERE key_hash = ? AND uses < max_uses AND expires_at > ? RETURNING tenant_id, user_id`, hash, now.Unix()).
@@ -426,7 +462,7 @@ func (s *Store) UpdateTenantPolicy(ctx context.Context, tenantID string, update 
 		return api.TenantPolicy{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO tenant_policy(tenant_id, policy, updated_at, version) VALUES (?, ?, ?, 1)
-		ON CONFLICT(tenant_id) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at, version = version + 1`,
+		ON CONFLICT(tenant_id) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at, version = tenant_policy.version + 1`,
 		tenantID, string(b), time.Now().Unix()); err != nil {
 		return api.TenantPolicy{}, mapErr(err)
 	}
@@ -483,7 +519,7 @@ type SnapshotRecord struct {
 // compile and sign the snapshot), and stores the result, all in one transaction.
 func (s *Store) SaveSnapshot(ctx context.Context, deviceID string, issued, expires time.Time, build func(version uint64) ([]byte, error)) (SnapshotRecord, error) {
 	rec := SnapshotRecord{DeviceID: deviceID, IssuedAt: issued, ExpiresAt: expires}
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.tx(ctx, func(tx *txh) error {
 		var v int64
 		if err := tx.QueryRowContext(ctx, `INSERT INTO snapshot_versions(device_id, issued_at, expires_at) VALUES (?, ?, ?) RETURNING version`,
 			deviceID, issued.Unix(), expires.Unix()).Scan(&v); err != nil {
@@ -558,7 +594,7 @@ func (s *Store) InsertFlows(ctx context.Context, tenantID string, recs []api.Flo
 	if len(recs) == 0 {
 		return nil
 	}
-	return mapErr(s.tx(ctx, func(tx *sql.Tx) error {
+	return mapErr(s.tx(ctx, func(tx *txh) error {
 		st, err := tx.PrepareContext(ctx, `INSERT INTO flows(tenant_id, device_id, where_, start, record) VALUES (?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err

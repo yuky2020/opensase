@@ -96,12 +96,8 @@ func (s *Store) addAudit(ctx context.Context, e *AuditEntry) error {
 	if err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO admin_audit(at, actor, tenant_id, method, path, status, prev_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		e.At.Unix(), e.Actor, e.TenantID, e.Method, e.Path, e.Status, prev)
-	if err != nil {
-		return err
-	}
-	if e.ID, err = res.LastInsertId(); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO admin_audit(at, actor, tenant_id, method, path, status, prev_hash) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		e.At.Unix(), e.Actor, e.TenantID, e.Method, e.Path, e.Status, prev).Scan(&e.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE admin_audit SET hash = ? WHERE id = ?`, auditHash(prev, *e), e.ID); err != nil {
@@ -113,7 +109,7 @@ func (s *Store) addAudit(ctx context.Context, e *AuditEntry) error {
 // isUniqueViolation reports whether err is a unique constraint violation (SQLite text; the
 // PostgreSQL backend matches its error code 23505).
 func isUniqueViolation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+	return err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || pgCode(err) == "23505")
 }
 
 // chainLegacyAudit hashes the entries written before the chain existed (migration 0008),

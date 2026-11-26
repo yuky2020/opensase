@@ -366,7 +366,7 @@ func (s *Server) handleRevokeConnector(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "revoke connector", err)
 		return
 	}
-	s.notify.notify(notifyConnector(id))
+	s.wake(r.Context(), notifyConnector(id))
 	s.log.InfoContext(r.Context(), "connector revoked", "tenant", t, "connector", id)
 	w.WriteHeader(http.StatusNoContent)
 }

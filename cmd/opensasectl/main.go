@@ -62,6 +62,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/pki"
 	"github.com/yuky2020/opensase/pkg/pqsession"
+	"github.com/yuky2020/opensase/pkg/store"
 )
 
 type globals struct {
@@ -150,6 +151,8 @@ commands:
   categories [-json]                      (web category list loaded by the Control Plane, ADR-0022)
   inspection-ca -tenant ID [-o FILE]      (web inspection root to install on devices, ADR-0018)
   pq-check [-edge-id ID]
+  store migrate -from FILE.db [-to URL]   (copy a stopped SQLite Control Plane to PostgreSQL, ADR-0033;
+                                           URL defaults to $OPENSASE_DB so the password stays off the command line)
 
 global flags:
 `)
@@ -159,7 +162,7 @@ global flags:
 
 func dispatch(ctx context.Context, g *globals, args []string) error {
 	cmd, rest := args[0], args[1:]
-	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app" || cmd == "admin-token" || cmd == "device-routes") && len(rest) > 0 {
+	if (cmd == "pki" || cmd == "policy" || cmd == "edge" || cmd == "connector" || cmd == "app" || cmd == "admin-token" || cmd == "device-routes" || cmd == "store") && len(rest) > 0 {
 		cmd, rest = cmd+" "+rest[0], rest[1:]
 	}
 	switch cmd {
@@ -229,6 +232,8 @@ func dispatch(ctx context.Context, g *globals, args []string) error {
 		return inspectionCA(ctx, g, rest)
 	case "pq-check":
 		return pqCheck(ctx, g, rest)
+	case "store migrate":
+		return storeMigrate(ctx, rest)
 	}
 	return fmt.Errorf("unknown command %q (run without arguments for help)", cmd)
 }
@@ -1238,4 +1243,39 @@ func parseGroupRoles(groups []string) (map[string]string, error) {
 		groupRoles[item[:idx]] = role
 	}
 	return groupRoles, nil
+}
+
+// storeMigrate copies a SQLite Control Plane database into an empty PostgreSQL database
+// (ADR-0033). It works on the database files directly, not through the API: stop the
+// Control Plane first.
+func storeMigrate(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("store migrate", flag.ExitOnError)
+	from := fs.String("from", "", "SQLite database of the stopped Control Plane")
+	to := fs.String("to", os.Getenv("OPENSASE_DB"), "PostgreSQL URL (default $OPENSASE_DB)")
+	_ = fs.Parse(args)
+	if *from == "" || !store.IsPostgres(*to) {
+		return errors.New("store migrate needs -from FILE.db and a postgres:// URL in -to or $OPENSASE_DB")
+	}
+	if _, err := os.Stat(*from); err != nil {
+		return err
+	}
+	src, err := store.Open(ctx, *from)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	dst, err := store.Open(ctx, *to)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dst.Close() }()
+	counts, err := src.CopyTo(ctx, dst)
+	if err != nil {
+		return err
+	}
+	for _, c := range counts {
+		fmt.Printf("%-28s %d\n", c.Table, c.Rows)
+	}
+	fmt.Println("copied; row counts and the audit chain verified. Start the Control Plane with -db set to the PostgreSQL URL.")
+	return nil
 }

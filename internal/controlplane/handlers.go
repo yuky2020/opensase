@@ -590,7 +590,7 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", policyETag(tp))
 	s.invalidateDecide(t)
-	s.notify.notify(notifyTenant(t)) // connector configs (ADR-0013)
+	s.wake(r.Context(), notifyTenant(t)) // connector configs (ADR-0013)
 	devs, err := s.cfg.Store.ListDevices(r.Context(), store.DeviceFilter{TenantID: t})
 	if err != nil {
 		s.internalErr(w, r, "list devices", err)
@@ -717,7 +717,7 @@ func (s *Server) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, r, "revoke", err)
 		return
 	}
-	s.notify.notify(d)
+	s.wake(r.Context(), d)
 	s.log.InfoContext(r.Context(), "device revoked", "tenant", t, "device", d)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -11,16 +12,33 @@ import (
 
 	"github.com/yuky2020/opensase/pkg/api"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/store/storetest"
 )
 
+// open returns an empty store. With OPENSASE_TEST_POSTGRES set to a PostgreSQL URL, every
+// test runs on PostgreSQL in its own schema (ADR-0033); otherwise on a SQLite file.
 func open(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "cp.db"))
+	dsn := filepath.Join(t.TempDir(), "cp.db")
+	if pg := os.Getenv("OPENSASE_TEST_POSTGRES"); pg != "" {
+		dsn = testSchema(t, pg)
+	}
+	s, err := Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+// testSchema returns a URL for a fresh PostgreSQL schema.
+func testSchema(t *testing.T, _ string) string {
+	t.Helper()
+	dsn, ok := storetest.PostgresDSN(t)
+	if !ok {
+		t.Skip("OPENSASE_TEST_POSTGRES not set")
+	}
+	return dsn
 }
 
 func seed(t *testing.T, s *Store) {

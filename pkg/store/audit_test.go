@@ -62,10 +62,10 @@ func TestAuditChain(t *testing.T) {
 		t.Fatal("published hash of entry 3 changed")
 	}
 
-	tamper := func(name, q string, want int64) {
+	tamper := func(name, q string, want int64, args ...any) {
 		t.Helper()
 		snap, anchor := snapshotAudit(t, s)
-		if _, err := s.db.ExecContext(ctx, q); err != nil {
+		if _, err := s.db.ExecContext(ctx, q, args...); err != nil {
 			t.Fatal(err)
 		}
 		if v, _ := s.VerifyAudit(ctx); v.BadID != want {
@@ -76,7 +76,7 @@ func TestAuditChain(t *testing.T) {
 	tamper("changed actor", `UPDATE admin_audit SET actor = 'token:x' WHERE id = 4`, 4)
 	tamper("removed entry", `DELETE FROM admin_audit WHERE id = 4`, 5)
 	tamper("forged entry", `INSERT INTO admin_audit(id, at, actor, tenant_id, method, path, status, prev_hash, hash) SELECT 7, at, actor, tenant_id, method, path, status, hash, hash FROM admin_audit WHERE id = 6`, 7)
-	tamper("rewritten anchor", `UPDATE audit_anchor SET hash = zeroblob(32)`, 3)
+	tamper("rewritten anchor", `UPDATE audit_anchor SET hash = ?`, 3, make([]byte, 32))
 	if v, _ := s.VerifyAudit(ctx); v.BadID != 0 {
 		t.Fatalf("restore: %+v", v)
 	}

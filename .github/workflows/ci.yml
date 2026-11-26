@@ -8,6 +8,18 @@ jobs:
   go:
     name: Go
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -22,6 +34,11 @@ jobs:
 
       - name: Run tests
         run: go test -race ./...
+
+      - name: Run store tests on PostgreSQL (ADR-0033)
+        env:
+          OPENSASE_TEST_POSTGRES: postgres://postgres:test@localhost:5432/postgres?sslmode=disable
+        run: go test -race ./pkg/store/... ./internal/controlplane/...
 
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1

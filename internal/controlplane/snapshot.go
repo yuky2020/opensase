@@ -319,7 +319,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 			return nil, fmt.Errorf("compile snapshot for device %s: %w", d.ID, err)
 		}
 		out[d.ID] = rec
-		s.notify.notify(d.ID)
+		s.wake(ctx, d.ID)
 	}
 	s.log.InfoContext(ctx, "snapshots compiled", "tenant", tenantID, "devices", len(devs))
 	return out, nil
@@ -364,6 +364,25 @@ func (n *notifier) wait(deviceID string) <-chan struct{} {
 		n.ch[deviceID] = c
 	}
 	return c
+}
+
+// notifyAll wakes every waiter, after cross-replica wake-ups may have been lost.
+func (n *notifier) notifyAll() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for k, c := range n.ch {
+		close(c)
+		delete(n.ch, k)
+	}
+}
+
+// wake wakes the long-pollers waiting for key on this replica and, through the store, on the
+// other Control Plane replicas (ADR-0033).
+func (s *Server) wake(ctx context.Context, key string) {
+	s.notify.notify(key)
+	if err := s.cfg.Store.Publish(context.WithoutCancel(ctx), key); err != nil {
+		s.log.WarnContext(ctx, "wake-up not published to the other replicas", "err", err)
+	}
 }
 
 func (n *notifier) notify(deviceID string) {
@@ -416,6 +435,7 @@ func (cc *compiledCache) get(rec store.SnapshotRecord) (*policy.Compiled, error)
 
 // decideEntry is the compiled cloud-only decision data of a tenant.
 type decideEntry struct {
+	version uint64           // tenant policy version it was built from (ADR-0033)
 	domains *policy.Compiled // EvaluateDNS over DecideBlockDomains
 	cidrs   []netip.Prefix
 	def     policy.Action
@@ -473,11 +493,17 @@ func (e *decideEntry) cloudDecide(f policy.Flow) policy.Decision {
 }
 
 func (s *Server) decideFor(ctx context.Context, tenantID string) (*decideEntry, error) {
-	// The lock is held across the store read so that invalidateDecide, which runs after a
-	// policy write, cannot be overtaken by a compute that read the old policy.
+	// The entry records the policy version it was built from, so a policy written through
+	// another Control Plane replica is picked up on the next call (ADR-0033). The lock is
+	// held across the store reads so that invalidateDecide cannot be overtaken by a compute
+	// that read the old policy.
 	s.decideMu.Lock()
 	defer s.decideMu.Unlock()
-	if e, ok := s.decide[tenantID]; ok {
+	v, err := s.cfg.Store.TenantPolicyVersion(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if e, ok := s.decide[tenantID]; ok && e.version == v {
 		return e, nil
 	}
 	tp, err := s.tenantPolicy(ctx, tenantID)
@@ -488,6 +514,7 @@ func (s *Server) decideFor(ctx context.Context, tenantID string) (*decideEntry, 
 	if err != nil {
 		return nil, err
 	}
+	e.version = v
 	s.decide[tenantID] = e
 	return e, nil
 }

@@ -315,6 +315,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 	}
 	go s.maintain(ctx)
 	go s.refreshCAs(ctx)
+	go s.cfg.Store.KeepLeadership(ctx, func(leader bool) { s.log.Info("leadership changed", "leader", leader) })
+	go s.cfg.Store.Subscribe(ctx, s.notify.notify, s.notify.notifyAll)
 	go s.categoriesLoop(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ServeTLS(netutil.LimitListener(ln, s.cfg.MaxConns), "", "") }()
@@ -357,21 +359,9 @@ func (s *Server) maintain(ctx context.Context) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
-		if err := s.refreshExpiring(ctx); err != nil && ctx.Err() == nil {
-			s.log.Warn("snapshot refresh failed", "err", err)
+		if s.cfg.Store.IsLeader() {
+			s.singletonJobs(ctx)
 		}
-		if err := s.cfg.Store.PruneSnapshots(ctx, 5); err != nil && ctx.Err() == nil {
-			s.log.Warn("snapshot prune failed", "err", err)
-		}
-		if n, err := s.cfg.Store.DeleteFlowsBefore(ctx, s.now().Add(-s.cfg.FlowRetention)); err != nil && ctx.Err() == nil {
-			s.log.Warn("flow retention failed", "err", err)
-		} else if n > 0 {
-			s.log.Info("old flow records deleted", "count", n, "retention", s.cfg.FlowRetention)
-		}
-		if _, err := s.cfg.Store.DeleteAuditBefore(ctx, s.now().Add(-s.cfg.AuditRetention)); err != nil && ctx.Err() == nil {
-			s.log.Warn("audit retention failed", "err", err)
-		}
-		s.logAuditHead(ctx)
 		s.flowLimit.prune()
 		s.enrollLimit.prune()
 		select {
@@ -380,6 +370,25 @@ func (s *Server) maintain(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+// singletonJobs run on one Control Plane replica, the leader (ADR-0033).
+func (s *Server) singletonJobs(ctx context.Context) {
+	if err := s.refreshExpiring(ctx); err != nil && ctx.Err() == nil {
+		s.log.Warn("snapshot refresh failed", "err", err)
+	}
+	if err := s.cfg.Store.PruneSnapshots(ctx, 5); err != nil && ctx.Err() == nil {
+		s.log.Warn("snapshot prune failed", "err", err)
+	}
+	if n, err := s.cfg.Store.DeleteFlowsBefore(ctx, s.now().Add(-s.cfg.FlowRetention)); err != nil && ctx.Err() == nil {
+		s.log.Warn("flow retention failed", "err", err)
+	} else if n > 0 {
+		s.log.Info("old flow records deleted", "count", n, "retention", s.cfg.FlowRetention)
+	}
+	if _, err := s.cfg.Store.DeleteAuditBefore(ctx, s.now().Add(-s.cfg.AuditRetention)); err != nil && ctx.Err() == nil {
+		s.log.Warn("audit retention failed", "err", err)
+	}
+	s.logAuditHead(ctx)
 }
 
 func (s *Server) signingKeys() []api.SigningKey {

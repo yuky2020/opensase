@@ -48,7 +48,7 @@ func (s *Store) CreateConnector(ctx context.Context, c Connector, keyHash []byte
 		return Connector{}, errors.New("store: provisioning key hash must be 32 bytes")
 	}
 	now := time.Now()
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.tx(ctx, func(tx *txh) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO connectors(id, tenant_id, name, grp, created_at) VALUES (?, ?, ?, ?, ?)`,
 			c.ID, c.TenantID, c.Name, c.Group, now.Unix()); err != nil {
 			return err
@@ -102,7 +102,7 @@ func (s *Store) ListConnectors(ctx context.Context, f ConnectorFilter) ([]Connec
 // RevokeConnector revokes a connector of a tenant and deletes its unused provisioning keys.
 // Revocation is permanent.
 func (s *Store) RevokeConnector(ctx context.Context, tenantID, id string) error {
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *txh) error {
 		res, err := tx.ExecContext(ctx, `UPDATE connectors SET revoked = 1 WHERE tenant_id = ? AND id = ?`, tenantID, id)
 		if err := affected(res, err); err != nil {
 			return err
@@ -119,7 +119,7 @@ func (s *Store) RevokeConnector(ctx context.Context, tenantID, id string) error 
 // not consumed.
 func (s *Store) EnrollConnector(ctx context.Context, hash []byte, now time.Time, sign func(Connector) (serial string, err error)) (Connector, error) {
 	var c Connector
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.tx(ctx, func(tx *txh) error {
 		var id string
 		err := tx.QueryRowContext(ctx, `UPDATE connector_provisioning_keys SET used = 1
 			WHERE key_hash = ? AND used = 0 AND expires_at > ? RETURNING connector_id`, hash, now.Unix()).Scan(&id)
@@ -167,7 +167,7 @@ func (s *Store) TouchConnectors(ctx context.Context, tenantID string, ids []stri
 	if len(ids) == 0 {
 		return nil
 	}
-	return mapErr(s.tx(ctx, func(tx *sql.Tx) error {
+	return mapErr(s.tx(ctx, func(tx *txh) error {
 		st, err := tx.PrepareContext(ctx, `UPDATE connectors SET last_seen = ? WHERE id = ? AND revoked = 0 AND (? = '' OR tenant_id = ?)`)
 		if err != nil {
 			return err
@@ -188,7 +188,7 @@ func (s *Store) TouchConnectors(ctx context.Context, tenantID string, ids []stri
 // and stays put while it does not change.
 func (s *Store) ConnectorConfigVersion(ctx context.Context, id string, hash []byte) (uint64, error) {
 	var v int64
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.tx(ctx, func(tx *txh) error {
 		var old []byte
 		if err := tx.QueryRowContext(ctx, `SELECT config_version, config_hash FROM connectors WHERE id = ?`, id).Scan(&v, &old); err != nil {
 			return err

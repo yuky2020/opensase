@@ -46,12 +46,36 @@ The Control Plane provides centralized configuration management, identity synchr
 - Secure credential management preventing persistent storage of plaintext IdP secrets or administrative tokens.
 
 ## Failure modes & HA
-- **PostgreSQL outage**: Control Plane switches to read-only mode; data plane nodes continue processing traffic uninterrupted on cached Policy Snapshots.
-- **Control Plane process crash or network partition**: Stateless replicas auto-recover under Kubernetes; data plane nodes back off and reconnect without dropping user traffic.
-- **Intermediate CA private key compromise**: Revocation of compromised intermediate CA, rotation of tenant trust root, and forced re-enrollment across all affected tenant nodes.
-- **Internal event bus (NATS JetStream) failure**: Fall back to direct database polling or delayed distribution until message broker cluster quorum recovers.
-- **IdP directory synchronization outage**: Cached user and group attributes remain valid; local authentication falls back to emergency break-glass administrator credentials.
-- **Node mass reconnection storm**: Reconnection throttling, jittered backoff, and state-of-the-world snapshot caching prevent database and CPU exhaustion.
+
+The Control Plane runs on one of two databases (ADR-0033):
+
+| | SQLite (default) | PostgreSQL |
+|---|---|---|
+| Replicas | one | several, behind one address |
+| Select with | `-db /data/controlplane.db` | `OPENSASE_DB=postgres://…` (or `-db`) |
+| Fits | Compose, the quick start, one-node installs | Kubernetes with several replicas |
+
+With PostgreSQL every replica mounts the same PKI directory, including `ca-kek.key`, the key
+that seals tenant CA keys in the database (`-ca-kek-file`). Replicas coordinate through the
+database:
+
+- every write transaction holds a database-wide lock, as on SQLite;
+- one replica is the leader and runs retention, snapshot re-signing and audit head logging;
+  another takes over within about 15 seconds if it stops;
+- long-poll wake-ups reach the other replicas through `NOTIFY`;
+- a tenant created on one replica is trusted by the others within 30 seconds.
+
+Moving an existing install: stop the Control Plane, then run
+`OPENSASE_DB=postgres://… opensasectl store migrate -from controlplane.db`. The command
+copies every table and checks the row counts and the audit chain.
+
+Failure modes:
+
+- **Database outage**: devices, Edges and Connectors keep working on their cached signed
+  Policy Snapshots; enrolment, policy changes and flow uploads fail until it returns.
+- **A replica stops** (PostgreSQL): the others keep serving; leadership moves within about
+  15 seconds.
+- **Tenant CA key compromise**: revoke the affected devices, rotate the tenant CA, re-enrol.
 
 ## MVP scope vs later
 ### MVP

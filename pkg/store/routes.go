@@ -78,7 +78,7 @@ func (s *Store) SetDeviceRoutes(ctx context.Context, tenantID, deviceID string, 
 		return err
 	}
 
-	return s.tx(ctx, func(tx *sql.Tx) error {
+	return s.tx(ctx, func(tx *txh) error {
 		var rowTenant string
 		err := tx.QueryRowContext(ctx, `SELECT tenant_id FROM devices WHERE id = ?`, deviceID).Scan(&rowTenant)
 		if errors.Is(err, sql.ErrNoRows) {

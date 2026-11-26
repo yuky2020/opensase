@@ -52,6 +52,13 @@ func newEnvCfg(t *testing.T, mod func(*Config)) *env {
 	if err := pki.InitDir(dir, pki.InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	return newEnvAt(t, dir, filepath.Join(dir, "cp.db"), mod)
+}
+
+// newEnvAt starts a Control Plane on an existing PKI directory and database, so two calls
+// with the same arguments behave as two replicas (ADR-0033).
+func newEnvAt(t *testing.T, dir, dsn string, mod func(*Config)) *env {
+	t.Helper()
 	auth, err := pki.OpenAuthority(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -60,11 +67,18 @@ func newEnvCfg(t *testing.T, mod func(*Config)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := store.Open(context.Background(), filepath.Join(dir, "cp.db"))
+	st, err := store.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	kek, err := pki.LoadOrCreateKEK(filepath.Join(dir, pki.CAKeyEncryptionKeyFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.UseStore(context.Background(), st, kek); err != nil {
+		t.Fatal(err)
+	}
 	cfg := Config{
 		Store: st, Authority: auth, SigningKey: sk, SigningKeyID: kid, AdminToken: testToken,
 		Edges:  []api.EdgeInfo{{ID: "edge-1", SessionURL: "https://edge:8443", WGEndpoint: "edge:51820"}},

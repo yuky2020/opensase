@@ -146,6 +146,12 @@ abstract class AppLocalizations {
   /// **'Edges'**
   String get navEdges;
 
+  /// No description provided for @navStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get navStatus;
+
   /// No description provided for @navActivity.
   ///
   /// In en, this message translates to:

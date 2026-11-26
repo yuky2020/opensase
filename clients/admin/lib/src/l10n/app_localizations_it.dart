@@ -37,6 +37,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get navEdges => 'Edge';
 
   @override
+  String get navStatus => 'Stato';
+
+  @override
   String get navActivity => 'Attività';
 
   @override

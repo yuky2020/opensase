@@ -9,6 +9,7 @@
   "navConnectors": "Connectors",
   "navDevices": "Devices",
   "navEdges": "Edges",
+  "navStatus": "Status",
   "navActivity": "Activity",
   "navSettings": "Settings",
   "actionSave": "Save",

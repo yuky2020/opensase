@@ -925,6 +925,106 @@ class AuditVerification {
   );
 }
 
+/// api.AdminStatus (GET /v1/admin/status, issue #73).
+class AdminStatus {
+  AdminStatus({
+    List<EdgeStatus>? edges,
+    this.devicesEnrolled = 0,
+    this.devicesOnline = 0,
+    this.connectorsTotal = 0,
+    this.connectorsOnline = 0,
+    List<CertExpiry>? certificates,
+    this.auditChain = '',
+    this.leader = false,
+    this.categoryListAgeSec = -1,
+  }) : edges = edges ?? [],
+       certificates = certificates ?? [];
+
+  List<EdgeStatus> edges;
+  int devicesEnrolled;
+  int devicesOnline;
+  int connectorsTotal;
+  int connectorsOnline;
+  List<CertExpiry> certificates;
+  String auditChain;
+  bool leader;
+  int categoryListAgeSec;
+
+  factory AdminStatus.fromJson(Json j) => AdminStatus(
+    edges: objList(j, 'edges', EdgeStatus.fromJson),
+    devicesEnrolled: integer(j, 'devicesEnrolled'),
+    devicesOnline: integer(j, 'devicesOnline'),
+    connectorsTotal: integer(j, 'connectorsTotal'),
+    connectorsOnline: integer(j, 'connectorsOnline'),
+    certificates: objList(j, 'certificates', CertExpiry.fromJson),
+    auditChain: str(j, 'auditChain'),
+    leader: boolean(j, 'leader'),
+    categoryListAgeSec: integer(j, 'categoryListAgeSeconds'),
+  );
+
+  Json toJson() => {
+    'edges': [for (final e in edges) e.toJson()],
+    'devicesEnrolled': devicesEnrolled,
+    'devicesOnline': devicesOnline,
+    'connectorsTotal': connectorsTotal,
+    'connectorsOnline': connectorsOnline,
+    'certificates': [for (final c in certificates) c.toJson()],
+    'auditChain': auditChain,
+    'leader': leader,
+    'categoryListAgeSeconds': categoryListAgeSec,
+  };
+}
+
+/// api.EdgeStatus
+class EdgeStatus {
+  EdgeStatus({
+    required this.id,
+    this.region = '',
+    this.sessions = 0,
+    this.reporting = false,
+  });
+
+  String id;
+  String region;
+  int sessions;
+  bool reporting;
+
+  factory EdgeStatus.fromJson(Json j) => EdgeStatus(
+    id: str(j, 'id'),
+    region: str(j, 'region'),
+    sessions: integer(j, 'sessions'),
+    reporting: boolean(j, 'reporting'),
+  );
+
+  Json toJson() => {
+    'id': id,
+    'region': region,
+    'sessions': sessions,
+    'reporting': reporting,
+  };
+}
+
+/// api.CertExpiry
+class CertExpiry {
+  CertExpiry({
+    required this.name,
+    this.notAfter,
+  });
+
+  String name;
+  DateTime? notAfter;
+
+  factory CertExpiry.fromJson(Json j) => CertExpiry(
+    name: str(j, 'name'),
+    notAfter: time(j, 'notAfter'),
+  );
+
+  Json toJson() => {
+    'name': name,
+    'notAfter': goTime(notAfter),
+  };
+}
+
 /// api.TenantOIDC: OpenID Connect sign-in for tenant admins (issue #17, slice C, ADR-0031).
 class TenantOidc {
   TenantOidc({

@@ -198,6 +198,10 @@ class AdminApi {
   Future<AuditVerification> verifyAudit() async =>
       AuditVerification.fromJson(obj(await _send('GET', '/v1/admin/audit/verify'), 'verification'));
 
+  /// The deployment health for the status page (super-admin only, issue #73).
+  Future<AdminStatus> status() async =>
+      AdminStatus.fromJson(obj(await _send('GET', '/v1/admin/status'), 'status'));
+
   Future<List<AuditEntry>> listAudit(String tenant, {int limit = 500}) async => _list(
     await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/audit', query: {'limit': '$limit'}),
     AuditEntry.fromJson,

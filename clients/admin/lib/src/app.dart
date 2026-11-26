@@ -21,6 +21,7 @@ import 'ui/admin_tokens_screen.dart';
 import 'ui/sso_screen.dart';
 import 'ui/oidc_signin_screen.dart';
 import 'ui/audit_screen.dart';
+import 'ui/status_screen.dart';
 import 'ui/tenants_screen.dart';
 import 'ui/theme.dart';
 import 'ui/users_screen.dart';
@@ -116,6 +117,14 @@ final _dests = <_Dest>[
     Icons.cell_tower,
     (c) => c.l10n.navEdges,
     EdgesScreen.new,
+    superOnly: true,
+  ),
+  _Dest(
+    '/status',
+    Icons.monitor_heart_outlined,
+    Icons.monitor_heart,
+    (c) => c.l10n.navStatus,
+    StatusScreen.new,
     superOnly: true,
   ),
   _Dest(

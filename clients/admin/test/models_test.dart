@@ -248,5 +248,24 @@ void main() {
       final outWithSecret = o.toJson(clientSecret: 'my-secret');
       expect(outWithSecret['clientSecret'], 'my-secret');
     });
+
+    roundTrip(
+      'AdminStatus',
+      '{"edges":[{"id":"edge-1","region":"eu-central-1","sessions":42,"reporting":true}],"devicesEnrolled":100,"devicesOnline":42,"connectorsTotal":5,"connectorsOnline":4,"certificates":[{"name":"root","notAfter":"2036-11-20T10:00:00Z"}],"auditChain":"ok","leader":true,"categoryListAgeSeconds":3600}',
+      AdminStatus.fromJson,
+      (v) => v.toJson(),
+    );
+    roundTrip(
+      'EdgeStatus',
+      '{"id":"edge-1","region":"eu-west-1","sessions":10,"reporting":true}',
+      EdgeStatus.fromJson,
+      (v) => v.toJson(),
+    );
+    roundTrip(
+      'CertExpiry',
+      '{"name":"controlplane","notAfter":"2026-11-25T10:00:00Z"}',
+      CertExpiry.fromJson,
+      (v) => v.toJson(),
+    );
   });
 }

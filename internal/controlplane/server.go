@@ -202,6 +202,7 @@ func (s *Server) Handler() http.Handler {
 		r.Use(s.requireDevice)
 		r.Get("/v1/snapshot", s.handleSnapshot) // sets its own deadline (wait + 10s)
 		r.Get("/v1/self/rules", s.handleGetSelfRules)
+		r.Get("/v1/edges", s.handleDeviceEdges)
 		r.Put("/v1/self/rules", s.handleSelfRules)
 	})
 	// The superseded certificate of the last renewal is accepted here only (lost response).

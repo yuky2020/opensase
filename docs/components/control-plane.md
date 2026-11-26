@@ -69,6 +69,15 @@ Moving an existing install: stop the Control Plane, then run
 `OPENSASE_DB=postgres://… opensasectl store migrate -from controlplane.db`. The command
 copies every table and checks the row counts and the audit chain.
 
+Several Edges (issues #70, #71): list every Edge in `edges.json` (one object per Edge, as
+`opensasectl pki init` writes it) and optionally give it a `"priority"` (lower first,
+default 0). Devices fetch the list from `GET /v1/edges` every hour, so an Edge added later
+reaches enrolled devices. Among Edges of equal priority a client prefers the one with the
+lowest connect time, which is usually the nearest region. Each device keeps the same tunnel
+addresses on every Edge, so moving between Edges needs no reconnect: when its Edge stops
+answering, the client moves to the next one within about 30 seconds, and it returns to the
+first one after 5 minutes of stable service there.
+
 Backups (SQLite, issue #67):
 
 - `-backup-dir DIR` writes `controlplane-<time>.db` (an online `VACUUM INTO` copy) and

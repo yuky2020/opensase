@@ -27,6 +27,7 @@
 //	PUT  /v1/self/rules                 UserRules -> policy.Envelope (new snapshot) ; 403 if tenant disallows user rules (mTLS)
 //	POST /v1/decide                     DecideRequest -> DecideResponse (mTLS device cert, or edge cert with ?device=<id>, evaluated in edge mode)
 //	POST /v1/flows                      FlowBatch -> 202 (mTLS device or edge cert; with an edge cert the tenant comes from each record's DeviceID)
+//	GET  /v1/edges                      -> DeviceEdges; for devices, mTLS (issue #71)
 //	GET  /v1/edge/peers                 -> EdgePeers; for Edges, mTLS with edge cert (a Private Edge gets only its tenant)
 //	POST /v1/edge/sessions              EdgeSessions -> 204 (edge cert; devices with a live session on that edge, sent every 10s)
 //	GET  /v1/edge/categories?names=a,b  -> binary category data (pkg/categories wire format); ETag, 304; 503 if no list is loaded
@@ -142,6 +143,16 @@ type EdgeInfo struct {
 	WGEndpoint  string `json:"wgEndpoint"`           // host:51820
 	WGPublicKey string `json:"wgPublicKey"`          // base64
 	BrokerAddr  string `json:"brokerAddr,omitempty"` // host:8444, where Connectors dial (ADR-0013)
+	// Priority orders Edges for devices (issue #71): lower first, default 0. Among Edges of
+	// equal priority the client prefers the one with the lowest measured latency, which
+	// also picks the nearest region.
+	Priority int `json:"priority,omitempty"`
+}
+
+// DeviceEdges is the reply to GET /v1/edges: the Edges a device may use, ordered by
+// priority (issue #71). Clients refresh it, so Edges added after enrolment are used too.
+type DeviceEdges struct {
+	Edges []EdgeInfo `json:"edges"`
 }
 
 // SigningKey is a public key that verifies policy snapshot signatures.

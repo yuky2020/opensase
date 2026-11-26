@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -146,10 +147,11 @@ type fakeCloud struct {
 	rotationMode     string                       // "", "409", "lost"
 	extraKeys        []api.SigningKey             // served by /v1/pki/ca in addition to k1
 
-	edge2     *httptest.Server // second Edge (issue #70), listed after edge-1
-	down      map[string]bool  // Edge ID -> answers 503 to everything
-	forgotten map[string]bool  // Edge ID -> probes answer 404 (restarted, session lost)
-	lastEdge  string           // Edge of the last epoch-0 session
+	edge2     *httptest.Server      // second Edge (issue #70), listed after edge-1
+	down      map[string]bool       // Edge ID -> answers 503 to everything
+	forgotten map[string]bool       // Edge ID -> probes answer 404 (restarted, session lost)
+	lastEdge  string                // Edge of the last epoch-0 session
+	edgesFn   func() []api.EdgeInfo // GET /v1/edges (issue #71); nil: the enrolment list
 }
 
 const (
@@ -182,11 +184,29 @@ func newFakeCloud(t *testing.T) *fakeCloud {
 	}))
 	cpMux.HandleFunc("POST /v1/renew", fc.requireCert(fc.renew))
 	cpMux.HandleFunc("GET /v1/pki/ca", fc.requireCert(fc.pkiCA))
+	cpMux.HandleFunc("GET /v1/edges", fc.requireCert(func(w http.ResponseWriter, r *http.Request) {
+		fc.mu.Lock()
+		fn := fc.edgesFn
+		fc.mu.Unlock()
+		edges := fc.edgeInfos()
+		if fn != nil {
+			edges = fn()
+		}
+		json.NewEncoder(w).Encode(api.DeviceEdges{Edges: edges})
+	}))
 	fc.cp = startTLS(t, fc.pki, cpMux, true, pki.ControlPlaneURI())
 	fc.down, fc.forgotten = map[string]bool{}, map[string]bool{}
 	fc.edge = startTLS(t, fc.pki, fc.edgeMux("edge-1"), true, pki.EdgeURI("edge-1"))
 	fc.edge2 = startTLS(t, fc.pki, fc.edgeMux("edge-2"), true, pki.EdgeURI("edge-2"))
 	return fc
+}
+
+// edgeInfos lists both fake Edges, edge-1 first.
+func (fc *fakeCloud) edgeInfos() []api.EdgeInfo {
+	return []api.EdgeInfo{
+		{ID: "edge-1", Region: "test", SessionURL: fc.edge.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
+		{ID: "edge-2", Region: "test", SessionURL: fc.edge2.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
+	}
 }
 
 // edgeMux serves one fake Edge: session setup and the session probe (issue #70).
@@ -327,12 +347,9 @@ func (fc *fakeCloud) enroll(w http.ResponseWriter, r *http.Request) {
 		TenantID: testTenant, UserID: "u1", DeviceID: testDevice,
 		CertificatePEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		CAPEM:          fc.pki.caPEM,
-		Edges: []api.EdgeInfo{
-			{ID: "edge-1", Region: "test", SessionURL: fc.edge.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
-			{ID: "edge-2", Region: "test", SessionURL: fc.edge2.URL, WGEndpoint: "127.0.0.1:1", WGPublicKey: base64.StdEncoding.EncodeToString(edgeWGPub(fc.t))},
-		},
-		SnapshotKeys: []api.SigningKey{{KeyID: testKeyID, Algorithm: policy.AlgEd25519, PublicKey: fc.signKey.Public().(ed25519.PublicKey)}},
-		ControlURL:   fc.cp.URL,
+		Edges:          fc.edgeInfos(),
+		SnapshotKeys:   []api.SigningKey{{KeyID: testKeyID, Algorithm: policy.AlgEd25519, PublicKey: fc.signKey.Public().(ed25519.PublicKey)}},
+		ControlURL:     fc.cp.URL,
 	})
 }
 
@@ -827,4 +844,51 @@ func TestEdgeFailover(t *testing.T) {
 	fc.down["edge-1"] = false
 	fc.mu.Unlock()
 	waitUntil(t, "failback to edge-1", func() bool { return edge() == "edge-1" })
+}
+
+// TestEdgeListRefresh covers issue #71: the client takes the Control Plane's refreshed list,
+// orders it by priority, persists it and uses it for the next sessions.
+func TestEdgeListRefresh(t *testing.T) {
+	fc := newFakeCloud(t)
+	e, _ := newTestEngine(t, fc)
+	if err := e.Enroll(fc.cp.URL, "pk-good", "pixel"); err != nil {
+		t.Fatal(err)
+	}
+	fc.mu.Lock()
+	fc.edgesFn = func() []api.EdgeInfo {
+		l := fc.edgeInfos()
+		l[0].Priority = 5 // edge-1 becomes the backup
+		return l
+	}
+	fc.mu.Unlock()
+	id := e.en.Load()
+	if err := e.refreshEdges(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if l := id.edgeList(); len(l) != 2 || l[0].ID != "edge-2" {
+		t.Fatalf("order %+v", l)
+	}
+	// Persisted: a new engine on the same state starts with edge-2.
+	e2, err := NewEngine(e.stateDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := e2.en.Load().edgeList(); l[0].ID != "edge-2" {
+		t.Fatalf("persisted order %+v", l)
+	}
+	ct := tuntest.NewChannelTUN()
+	if err := e.StartDevice(ct.TUN(), "wifi"); err != nil {
+		t.Fatal(err)
+	}
+	defer e.Stop()
+	var st statusJSON
+	_ = json.Unmarshal([]byte(e.Status()), &st)
+	if st.Edge != "edge-2" {
+		t.Fatalf("session on %s, want edge-2", st.Edge)
+	}
+	// An unreachable Edge sorts after reachable ones of the same priority.
+	got := e.orderEdges(context.Background(), []api.EdgeInfo{{ID: "dead", SessionURL: "https://127.0.0.1:1"}, {ID: "live", SessionURL: fc.edge.URL}})
+	if got[0].ID != "live" {
+		t.Fatalf("unreachable first: %+v", got)
+	}
 }

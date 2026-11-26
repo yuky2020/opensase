@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -178,6 +179,8 @@ func (s *Server) edgesFor(ctx context.Context, tenantID string, broker bool) ([]
 			out = append(out, e)
 		}
 	}
+	// Lower priority first; the file order breaks ties (issue #71).
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority < out[j].Priority })
 	return out, nil
 }
 

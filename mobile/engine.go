@@ -114,9 +114,10 @@ type Engine struct {
 // prove spiffe://opensase/controlplane; tr is swapped when the certificate is renewed.
 type identity struct {
 	*enrollment
-	cp   *http.Client
-	tr   *swapTransport
-	keys atomic.Pointer[map[string]ed25519.PublicKey] // snapshot keys; refreshed from /v1/pki/ca
+	cp    *http.Client
+	tr    *swapTransport
+	keys  atomic.Pointer[map[string]ed25519.PublicKey] // snapshot keys; refreshed from /v1/pki/ca
+	edges atomic.Pointer[[]api.EdgeInfo]               // refreshed, ordered Edge list (issue #71); nil: resp.Edges
 }
 
 // NewEngine opens (or creates) stateDir and loads any previous enrollment and snapshot.
@@ -184,6 +185,7 @@ func (e *Engine) setIdentity(en *enrollment) {
 	id := &identity{enrollment: en, cp: &http.Client{Transport: tr}, tr: tr}
 	keys := snapshotKeys(en.resp.SnapshotKeys)
 	id.keys.Store(&keys)
+	e.loadEdges(id)
 	e.en.Store(id)
 }
 
@@ -394,9 +396,10 @@ func (e *Engine) TunnelConfig() (string, error) {
 // newSession tries each Edge in order. avoid (an Edge ID, or "") is tried last: it is the
 // Edge that just stopped answering (issue #70).
 func (e *Engine) newSession(ctx context.Context, id *identity, avoid string) (*session, error) {
-	edges := make([]api.EdgeInfo, 0, len(id.resp.Edges))
+	list := id.edgeList()
+	edges := make([]api.EdgeInfo, 0, len(list))
 	var last []api.EdgeInfo
-	for _, ed := range id.resp.Edges {
+	for _, ed := range list {
 		if ed.ID == avoid {
 			last = append(last, ed)
 			continue
@@ -555,7 +558,8 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	e.lastFW.Store(rs.fw)
 	e.lastDNS.Store(rs.dns)
 
-	rs.wg.Add(5)
+	rs.wg.Add(6)
+	go e.edgesLoop(rs)
 	go e.snapshotLoop(rs)
 	go e.flowLoop(rs)
 	go e.sessionLoop(rs)
@@ -875,7 +879,7 @@ func (e *Engine) BypassHosts() []string {
 	if u, err := url.Parse(id.resp.ControlURL); err == nil {
 		add(u.Hostname())
 	}
-	for _, ed := range id.resp.Edges {
+	for _, ed := range id.edgeList() {
 		if u, err := url.Parse(ed.SessionURL); err == nil {
 			add(u.Hostname())
 		}

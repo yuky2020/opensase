@@ -97,6 +97,10 @@ func saveEnrollment(dir string, key *ecdsa.PrivateKey, resp *api.EnrollResponse)
 		return err
 	}
 	// A bundle left over from a previous identity would shadow the new key pair.
+	// Neither may the Edge list refreshed for a previous identity (issue #71).
+	if err := os.Remove(filepath.Join(dir, fileEdges)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := os.Remove(filepath.Join(dir, fileDeviceBundle)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -170,7 +174,7 @@ func saveRenewedCert(dir string, key *ecdsa.PrivateKey, chain [][]byte) error {
 
 func removeState(dir string) error {
 	var errs []error
-	for _, n := range []string{fileEnrollment, fileDeviceBundle, fileDeviceCert, fileDeviceKey, fileSnapshot, fileUserRules} {
+	for _, n := range []string{fileEnrollment, fileDeviceBundle, fileDeviceCert, fileDeviceKey, fileSnapshot, fileUserRules, fileEdges} {
 		if err := os.Remove(filepath.Join(dir, n)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}

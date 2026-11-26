@@ -434,6 +434,17 @@ func (s *Server) handleEdgePeers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleDeviceEdges returns the Edges the calling device may use (issue #71).
+func (s *Server) handleDeviceEdges(w http.ResponseWriter, r *http.Request) {
+	p, _ := peerFrom(r.Context())
+	edges, err := s.edgesFor(r.Context(), p.device.TenantID, false)
+	if err != nil {
+		s.internalErr(w, r, "edges", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.DeviceEdges{Edges: edges})
+}
+
 // --- admin endpoints ---
 
 func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {

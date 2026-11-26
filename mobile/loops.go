@@ -427,7 +427,7 @@ func (rs *runState) closeProbeLocked() {
 // failbackDue reports whether the client runs on a backup Edge and has been stable there for
 // failbackAfter, so it should try the preferred (first) Edge again.
 func (e *Engine) failbackDue(rs *runState, now time.Time) bool {
-	edges := rs.id.resp.Edges
+	edges := rs.id.edgeList()
 	if len(edges) < 2 {
 		return false
 	}
@@ -444,7 +444,7 @@ func (e *Engine) failbackDue(rs *runState, now time.Time) bool {
 func (e *Engine) failback(rs *runState) error {
 	ctx, cancel := context.WithTimeout(rs.ctx, 20*time.Second)
 	defer cancel()
-	next, err := e.setupSession(ctx, rs.id.enrollment, rs.id.resp.Edges[0], nil)
+	next, err := e.setupSession(ctx, rs.id.enrollment, rs.id.edgeList()[0], nil)
 	if err != nil {
 		return err
 	}

@@ -50,6 +50,8 @@ gomobile bind -target=android/arm64,android/amd64 -androidapi 29 -javapkg eu.ope
 | `Engine` | `recentFlows(long limit): String` | Returns JSON array of recent flow records. |
 | `Engine` | `appStats(): String` | Returns JSON array of per-app traffic and flow statistics. |
 | `Engine` | `status(): String` | Returns engine runtime status JSON. |
+| `Engine` | `setPosture(String postureJson)` | Sets host-collected `api.Posture` JSON; throws `Exception`. |
+| `Engine` | `postureFailing(): String` | Returns JSON array of failed posture checks from active snapshot, or `"[]"`. |
 | `Platform` | `long connectionOwnerUID(long protocol, String srcIp, long srcPort, String dstIp, long dstPort)` | Callback returning Linux UID for connection tuple, or -1. |
 | `Platform` | `String packagesForUID(long uid)` | Callback returning comma-separated package names for UID. |
 | `Platform` | `boolean protect(long fd)` | Callback to bypass VPN routing via `VpnService.protect(fd)`. |
@@ -158,6 +160,19 @@ The `payload` parameter is always a JSON document:
 
 ## Digital experience samples
 While a tunnel session is connected, the client collects a digital experience sample every 60 seconds (issue #76). Each measurement performs a sequential burst of 5 session probes (with a 2-second timeout per probe) to the current Edge session endpoint to compute round-trip time (`RTTms`, the median of answered probes in milliseconds, or 0 if none answered) and probe packet loss percentage (`LossPct`). It also includes DNS resolution latency (`DNSms`, the median duration of forwarded DNS queries answered through the tunnel resolver since the last sample, or 0 if empty) and the active network type (`Network`). Samples are queued in the client (up to 60 buffered samples, dropping the oldest on overflow) and sent to the Control Plane in `batch.Probes` with the next flow batch upload (`POST /v1/flows`), including when there are no flow records to send. Successfully uploaded samples are cleared from the queue, while errors retain them for retry.
+
+## Device posture (SetPosture and the reporting loop)
+The client core supports device posture reporting (ADR-0035):
+- **Signal collection:** The host application collects device posture signals (`api.Posture`) using platform APIs and provides them to the core via `setPosture(postureJson)`. Call it before `enroll()` and `start()`, as well as whenever any signal changes.
+- **Validation and enrichment:** The core validates that the payload is valid JSON and that string fields (`os`, `osVersion`, `clientVersion`) do not exceed 64 bytes. If `clientVersion` is unset, the core populates it from build information or `"dev"`. `collectedAt` is automatically set to the current UTC timestamp.
+- **Storage and change detection:** The posture is stored under a mutex. If the incoming posture differs from the previously stored posture (ignoring `collectedAt`), the core signals the posture reporting loop.
+- **Enrolment:** `enroll()` includes the currently stored posture (if set) in `EnrollRequest.Posture` sent to `POST /v1/enroll`.
+- **Reporting loop:** When the tunnel starts, a background posture loop runs alongside the other loops:
+  - Reports with `POST /v1/posture` using device mutual TLS (the same HTTP client and format as `/v1/flows`).
+  - Reports at start, periodically every 15 minutes, and within 5 seconds after a change signal.
+  - Skips reporting if no posture has been set.
+  - On error, logs a warning and retries at the next tick.
+- **Failing checks:** `postureFailing()` returns the JSON array of failed check names from the active snapshot (`"[]"` if compliant or not enrolled). `status()` also includes `postureFailing` next to the snapshot fields when failing checks exist.
 
 ## State directory
 All files are mode 0600 and written atomically:

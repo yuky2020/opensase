@@ -39,6 +39,12 @@ type Platform interface {
 //	    FilteringTUN, DNS interceptor, snapshot long-poll, flow log upload, PSK rotation.
 //	func (e *Engine) Stop()
 //	func (e *Engine) SetNetworkType(networkType string)     // "wifi","cellular","roaming","ethernet","unknown"
+//	func (e *Engine) SetPosture(postureJSON string) error
+//	    JSON api.Posture collected by the host (ADR-0035); clientVersion and collectedAt are
+//	    filled by the core. Call it before Enroll and Start and whenever a signal changes. The
+//	    core sends it with enrolment, with POST /v1/posture at connect, every 15 minutes and
+//	    after a change.
+//	func (e *Engine) PostureFailing() string                // JSON []string from the current snapshot
 //
 //	func (e *Engine) TunnelConfig() (string, error)
 //	    JSON {"ipv4":"100.64.0.7/32","ipv6":"fd7a:5a5e::7/128","dns":["100.64.0.1"],"mtu":1280}

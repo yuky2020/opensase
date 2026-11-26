@@ -100,6 +100,9 @@ type Engine struct {
 
 	renewMu sync.Mutex // serialises certificate renewals
 
+	postureMu sync.RWMutex
+	posture   *api.Posture
+
 	// Options for tests and the headless Linux client.
 	flowInterval           time.Duration
 	pollWait               int // seconds
@@ -113,6 +116,8 @@ type Engine struct {
 	failbackAfter          time.Duration
 	experienceInterval     time.Duration
 	experienceProbeTimeout time.Duration
+	postureInterval        time.Duration
+	postureDelay           time.Duration
 }
 
 // identity is the enrolled device plus its Control Plane client. Every cp connection must
@@ -153,6 +158,8 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 		failbackAfter:          defaultFailbackAfter,
 		experienceInterval:     defaultExperienceInterval,
 		experienceProbeTimeout: defaultExperienceProbeTimeout,
+		postureInterval:        defaultPostureInterval,
+		postureDelay:           defaultPostureDelay,
 	}
 	if platform != nil {
 		e.protect = platform.Protect
@@ -246,6 +253,7 @@ func (e *Engine) Enroll(controlURL, provisioningKey, deviceName string) error {
 		DeviceName:      deviceName,
 		Platform:        platformName(),
 		CSRPEM:          string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})),
+		Posture:         e.getPosture(),
 	}
 	client := &http.Client{Transport: pqTransport(tlsCfg, e.protect, e.hosts, false), Timeout: 30 * time.Second}
 	defer client.CloseIdleConnections()
@@ -465,6 +473,8 @@ type runState struct {
 
 	expMu          sync.Mutex
 	pendingSamples []api.ExperienceSample
+
+	postureNotify chan struct{}
 }
 
 const (
@@ -549,7 +559,15 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	}
 
 	now := time.Now()
-	rs := &runState{ctx: ctx, cancel: cancel, id: id, sess: sess, started: now, sessSince: now}
+	rs := &runState{
+		ctx:           ctx,
+		cancel:        cancel,
+		id:            id,
+		sess:          sess,
+		started:       now,
+		sessSince:     now,
+		postureNotify: make(chan struct{}, 1),
+	}
 	rs.dns = dnsfilter.New(dnsfilter.Config{})
 	var dnsServers []netip.Addr
 	for _, s := range sess.resp.DNSServers {
@@ -605,7 +623,7 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	e.lastFW.Store(rs.fw)
 	e.lastDNS.Store(rs.dns)
 
-	rs.wg.Add(7)
+	rs.wg.Add(8)
 	go e.edgesLoop(rs)
 	go e.snapshotLoop(rs)
 	go e.flowLoop(rs)
@@ -613,6 +631,7 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	go e.statsLoop(rs)
 	go e.renewLoop(rs)
 	go e.experienceLoop(rs)
+	go e.postureLoop(rs)
 	e.setState(StateConnected, "")
 	e.log.Info("tunnel started", "edge", sess.edge.ID, "network", string(*e.network.Load()))
 	return nil
@@ -652,6 +671,20 @@ func (e *Engine) Snapshot() string {
 	e.snapMu.RLock()
 	defer e.snapMu.RUnlock()
 	return string(e.snapPayload)
+}
+
+// PostureFailing returns the JSON of the current snapshot's PostureFailing ("[]" when none or no snapshot).
+func (e *Engine) PostureFailing() string {
+	e.snapMu.RLock()
+	defer e.snapMu.RUnlock()
+	if e.snap == nil || len(e.snap.PostureFailing) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(e.snap.PostureFailing)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 // SetUserRules replaces the user's policy layer (api.UserRules JSON) via PUT /v1/self/rules.
@@ -796,21 +829,22 @@ func (e *Engine) AppStats() string {
 
 // statusJSON is the Status result.
 type statusJSON struct {
-	State           string `json:"state"`
-	Error           string `json:"error,omitempty"`
-	Enrolled        bool   `json:"enrolled"`
-	DeviceID        string `json:"deviceId,omitempty"`
-	Edge            string `json:"edge,omitempty"`
-	Network         string `json:"network"`
-	SnapshotVersion uint64 `json:"snapshotVersion"`
-	Stale           bool   `json:"stale"`
-	PQ              bool   `json:"pq"`
-	Kex             string `json:"kex,omitempty"`
-	Epoch           uint64 `json:"epoch"`
-	LastHandshake   int64  `json:"lastHandshake,omitempty"` // unix seconds
-	CertExpiresAt   string `json:"certExpiresAt,omitempty"` // device certificate NotAfter, RFC 3339 UTC
-	TxBytes         uint64 `json:"txBytes"`
-	RxBytes         uint64 `json:"rxBytes"`
+	State           string   `json:"state"`
+	Error           string   `json:"error,omitempty"`
+	Enrolled        bool     `json:"enrolled"`
+	DeviceID        string   `json:"deviceId,omitempty"`
+	Edge            string   `json:"edge,omitempty"`
+	Network         string   `json:"network"`
+	SnapshotVersion uint64   `json:"snapshotVersion"`
+	Stale           bool     `json:"stale"`
+	PostureFailing  []string `json:"postureFailing,omitempty"`
+	PQ              bool     `json:"pq"`
+	Kex             string   `json:"kex,omitempty"`
+	Epoch           uint64   `json:"epoch"`
+	LastHandshake   int64    `json:"lastHandshake,omitempty"` // unix seconds
+	CertExpiresAt   string   `json:"certExpiresAt,omitempty"` // device certificate NotAfter, RFC 3339 UTC
+	TxBytes         uint64   `json:"txBytes"`
+	RxBytes         uint64   `json:"rxBytes"`
 }
 
 // Status returns the engine status JSON. "pq" is true and "kex" is set only when the live
@@ -832,6 +866,9 @@ func (e *Engine) Status() string {
 	if e.snap != nil {
 		st.SnapshotVersion = e.snap.Version
 		st.Stale = e.snap.Stale(time.Now())
+		if len(e.snap.PostureFailing) > 0 {
+			st.PostureFailing = e.snap.PostureFailing
+		}
 	}
 	e.snapMu.RUnlock()
 	if rs := e.running.Load(); rs != nil {

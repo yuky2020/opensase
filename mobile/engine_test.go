@@ -140,6 +140,9 @@ type fakeCloud struct {
 	rotate   int
 	userPuts int
 
+	postures      []api.Posture
+	lastEnrollReq *api.EnrollRequest
+
 	certFrom, certTo time.Duration // device cert validity relative to issue time
 	renewals         int
 	renewFail        int                          // fail this many renew calls with 500
@@ -180,6 +183,7 @@ func newFakeCloud(t *testing.T) *fakeCloud {
 	cpMux.HandleFunc("POST /v1/enroll", fc.enroll)
 	cpMux.HandleFunc("GET /v1/snapshot", fc.requireCert(fc.snapshot))
 	cpMux.HandleFunc("POST /v1/flows", fc.requireCert(fc.postFlows))
+	cpMux.HandleFunc("POST /v1/posture", fc.requireCert(fc.postPosture))
 	cpMux.HandleFunc("PUT /v1/self/rules", fc.requireCert(fc.putRules))
 	cpMux.HandleFunc("POST /v1/decide", fc.requireCert(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(api.DecideResponse{Decision: policy.Decision{Action: policy.ActionAllow}, TTL: 60})
@@ -338,6 +342,10 @@ func (fc *fakeCloud) enroll(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad key", http.StatusForbidden)
 		return
 	}
+	fc.mu.Lock()
+	reqCopy := req
+	fc.lastEnrollReq = &reqCopy
+	fc.mu.Unlock()
 	blk, _ := pem.Decode([]byte(req.CSRPEM))
 	csr, err := x509.ParseCertificateRequest(blk.Bytes)
 	if err != nil || csr.CheckSignature() != nil {
@@ -411,6 +419,18 @@ func (fc *fakeCloud) postFlows(w http.ResponseWriter, r *http.Request) {
 	fc.probes = append(fc.probes, b.Probes...)
 	fc.mu.Unlock()
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (fc *fakeCloud) postPosture(w http.ResponseWriter, r *http.Request) {
+	var p api.Posture
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	fc.mu.Lock()
+	fc.postures = append(fc.postures, p)
+	fc.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (fc *fakeCloud) putRules(w http.ResponseWriter, r *http.Request) {

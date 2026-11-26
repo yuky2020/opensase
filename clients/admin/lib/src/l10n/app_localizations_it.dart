@@ -1058,4 +1058,152 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get no => 'No';
+
+  @override
+  String get navDns => 'DNS';
+
+  @override
+  String get dnsTitle => 'DNS';
+
+  @override
+  String get dnsSubtitle => 'Gestisci le impostazioni del resolver, la zona DNS interna e le blocklist di domini.';
+
+  @override
+  String get dnsResolver => 'Resolver';
+
+  @override
+  String get dnsBlockResponse => 'Risposta di blocco';
+
+  @override
+  String get dnsBlockResponseNxdomain => 'NXDOMAIN';
+
+  @override
+  String get dnsBlockResponseZero => '0.0.0.0 / ::';
+
+  @override
+  String get dnsRedirectQueries => 'Reindirizza le query DNS al resolver Edge';
+
+  @override
+  String get dnsRedirectQueriesHelp =>
+      'Risponde alle query DNS in chiaro inviate ad altri resolver con questa policy invece di bloccarle.';
+
+  @override
+  String get dnsLogQueries => 'Registra le query consentite';
+
+  @override
+  String get dnsLogQueriesHelp => 'Registra le query DNS consentite come record di flusso.';
+
+  @override
+  String get dnsInternalZone => 'Zona interna';
+
+  @override
+  String get dnsZoneName => 'Nome della zona interna';
+
+  @override
+  String get dnsZoneHelp => 'I dispositivi ricevono nomi del tipo <device>.<user>.<zone>.';
+
+  @override
+  String get dnsRecords => 'Record';
+
+  @override
+  String get dnsRecordName => 'Nome';
+
+  @override
+  String get dnsRecordType => 'Tipo';
+
+  @override
+  String get dnsRecordValue => 'Valore';
+
+  @override
+  String get dnsRecordTtl => 'TTL (secondi)';
+
+  @override
+  String get dnsAddRecord => 'Aggiungi record';
+
+  @override
+  String get dnsEditRecord => 'Modifica record';
+
+  @override
+  String get dnsForwarders => 'Inoltri';
+
+  @override
+  String get dnsForwarderZone => 'Zona';
+
+  @override
+  String get dnsForwarderServers => 'Server (separati da virgola)';
+
+  @override
+  String get dnsAddForwarder => 'Aggiungi inoltro';
+
+  @override
+  String get dnsEditForwarder => 'Modifica inoltro';
+
+  @override
+  String get dnsSecurityBlocklists => 'Blocklist di sicurezza';
+
+  @override
+  String get dnsBuiltinLists => 'Blocklist integrate';
+
+  @override
+  String get dnsBuiltinEmpty => 'Nessuna blocklist integrata disponibile';
+
+  @override
+  String get dnsCustomLists => 'Blocklist personalizzate';
+
+  @override
+  String get dnsCustomListId => 'ID';
+
+  @override
+  String get dnsCustomListTitle => 'Titolo';
+
+  @override
+  String get dnsCustomListUrl => 'URL (https://)';
+
+  @override
+  String get dnsAddCustomList => 'Aggiungi blocklist personalizzata';
+
+  @override
+  String get dnsEditCustomList => 'Modifica blocklist personalizzata';
+
+  @override
+  String get dnsDomainOverrides => 'Override dei domini';
+
+  @override
+  String get dnsAllowDomains => 'Domini consentiti';
+
+  @override
+  String get dnsBlockDomains => 'Domini bloccati';
+
+  @override
+  String get dnsAddDomain => 'Aggiungi dominio';
+
+  @override
+  String get dnsDomainHint => 'example.com o *.example.com';
+
+  @override
+  String get dnsErrorNameRequired => 'Il nome è obbligatorio';
+
+  @override
+  String get dnsErrorValueRequired => 'Il valore è obbligatorio';
+
+  @override
+  String get dnsErrorInvalidIpv4 => 'Deve essere un indirizzo IPv4 valido';
+
+  @override
+  String get dnsErrorInvalidIpv6 => 'Deve essere un indirizzo IPv6 valido';
+
+  @override
+  String get dnsErrorInvalidTtl => 'Il TTL deve essere 0 o compreso tra 1 e 86400';
+
+  @override
+  String get dnsErrorZoneRequired => 'La zona è obbligatoria';
+
+  @override
+  String get dnsErrorInvalidServers => 'Ciascun server deve essere un IP o IP:porta';
+
+  @override
+  String get dnsErrorInvalidListId => 'L\'ID deve contenere solo lettere minuscole, numeri e trattini';
+
+  @override
+  String get dnsErrorInvalidHttpsUrl => 'Deve essere un URL https:// valido';
 }

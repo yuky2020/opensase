@@ -105,10 +105,7 @@ void main() {
     await t.pumpWidget(
       ProviderScope(
         retry: (_, _) => null,
-        overrides: [
-          ...overridesFor(cp),
-          browserNavProvider.overrideWithValue((url) => navigatedUrl = url),
-        ],
+        overrides: [...overridesFor(cp), browserNavProvider.overrideWithValue((url) => navigatedUrl = url)],
         child: const AdminApp(),
       ),
     );

@@ -387,8 +387,7 @@ void main() {
   });
 
   testWidgets('Single sign-on screen renders not configured state and allows configuration', (t) async {
-    final cp = FakeControlPlane()
-      ..json('GET /v1/admin/tenants/acme/oidc', {'error': 'not configured'}, status: 404);
+    final cp = FakeControlPlane()..json('GET /v1/admin/tenants/acme/oidc', {'error': 'not configured'}, status: 404);
 
     await _pump(t, cp, const SsoScreen());
     expect(find.text('Single sign-on is not configured for this tenant.'), findsOneWidget);
@@ -401,10 +400,7 @@ void main() {
         'issuer': 'https://idp.example.com',
         'clientId': 'client-xyz',
         'hasSecret': true,
-        'groupRoles': {
-          'domain-admins': 'admin',
-          'auditors': 'viewer',
-        },
+        'groupRoles': {'domain-admins': 'admin', 'auditors': 'viewer'},
         'redirectUrl': 'https://cp.test:9443/v1/auth/oidc/callback',
       });
     cp.routes['DELETE /v1/admin/tenants/acme/oidc'] = (_) => http204();

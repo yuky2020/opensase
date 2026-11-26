@@ -81,6 +81,7 @@ final statusProvider = FutureProvider<AdminStatus>((ref) => ref.watch(apiProvide
 
 final saasCatalogProvider = FutureProvider<List<SaasApp>>((ref) => ref.watch(apiProvider).saasCatalog());
 final categoriesProvider = FutureProvider<CategoryCatalog>((ref) => ref.watch(apiProvider).categories());
+final blocklistsProvider = FutureProvider<List<BuiltinBlocklist>>((ref) => ref.watch(apiProvider).blocklists());
 
 final adminTokensProvider = FutureProvider.family<List<AdminToken>, String>(
   (ref, t) => ref.watch(apiProvider).listAdminTokens(t),

@@ -12,6 +12,7 @@ import 'ui/infra_screens.dart';
 import 'ui/login_screen.dart';
 import 'ui/overview_screen.dart';
 import 'ui/policy_screen.dart';
+import 'ui/dns_screen.dart';
 import 'ui/private_apps_screen.dart';
 import 'ui/categories_screen.dart';
 import 'ui/saas_screen.dart';
@@ -53,6 +54,7 @@ final _dests = <_Dest>[
   _Dest('/tenants', Icons.domain_outlined, Icons.domain, (c) => c.l10n.navTenants, TenantsScreen.new),
   _Dest('/users', Icons.people_outline, Icons.people, (c) => c.l10n.navUsers, UsersScreen.new, perTenant: true),
   _Dest('/policy', Icons.rule_outlined, Icons.rule, (c) => c.l10n.navPolicy, PolicyScreen.new, perTenant: true),
+  _Dest('/dns', Icons.dns_outlined, Icons.dns, (c) => c.l10n.navDns, DnsScreen.new, perTenant: true),
   _Dest(
     '/private-apps',
     Icons.lock_outline,
@@ -102,14 +104,7 @@ final _dests = <_Dest>[
     AdminTokensScreen.new,
     perTenant: true,
   ),
-  _Dest(
-    '/sso',
-    Icons.badge_outlined,
-    Icons.badge,
-    (c) => c.l10n.navSso,
-    SsoScreen.new,
-    perTenant: true,
-  ),
+  _Dest('/sso', Icons.badge_outlined, Icons.badge, (c) => c.l10n.navSso, SsoScreen.new, perTenant: true),
   _Dest('/audit', Icons.history_outlined, Icons.history, (c) => c.l10n.navAudit, AuditScreen.new, perTenant: true),
   _Dest(
     '/edges',

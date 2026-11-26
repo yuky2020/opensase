@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opensase_admin/src/api/admin_models.dart';
+import 'package:opensase_admin/src/api/policy_models.dart';
 import 'package:opensase_admin/src/api/json.dart';
 
 /// Sample JSON written by hand from the Go struct tags in pkg/api/types.go and
@@ -36,7 +37,16 @@ const tenantPolicyJson = '''
     "blockResponse": "nxdomain",
     "blocklists": [{"id": "ads", "name": "Ads", "category": "ads", "domains": ["ads.example.com"]}],
     "allowDomains": ["good.example.com"],
-    "blockDomains": ["bad.example.com"]
+    "blockDomains": ["bad.example.com"],
+    "redirectQueries": true,
+    "zone": "corp.internal",
+    "records": [
+      {"name": "nas.corp.internal", "type": "A", "value": "10.0.0.5", "ttl": 300}
+    ],
+    "forwarders": [
+      {"zone": "corp.internal", "servers": ["10.0.0.1", "10.0.0.2:53"]}
+    ],
+    "logQueries": true
   },
   "privateApps": [
     {
@@ -65,6 +75,10 @@ const tenantPolicyJson = '''
   },
   "categories": ["adult", "gambling"],
   "safeSearch": true,
+  "customLists": [
+    {"id": "corp-bad", "title": "Corporate blocklist", "url": "https://lists.example.com/hosts.txt"}
+  ],
+  "builtinLists": ["malware"],
   "decideBlockDomains": ["*.casino.example"],
   "decideBlockCidrs": ["203.0.113.0/24"],
   "decideDefault": "allow"
@@ -169,6 +183,30 @@ void main() {
     AdminConnectorCreated.fromJson,
     (v) => v.toJson(),
   );
+  roundTrip(
+    'DnsRecord',
+    '{"name":"nas.corp.internal","type":"A","value":"10.0.0.5","ttl":300}',
+    DnsRecord.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'DnsForwarder',
+    '{"zone":"corp.internal","servers":["10.0.0.1","10.0.0.2:53"]}',
+    DnsForwarder.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'CustomList',
+    '{"id":"corp-bad","title":"Corporate blocklist","url":"https://lists.example.com/hosts.txt"}',
+    CustomList.fromJson,
+    (v) => v.toJson(),
+  );
+  roundTrip(
+    'BuiltinBlocklist',
+    '{"id":"malware","title":"Malware distribution sites","url":"https://example.com/malware.txt","licence":"CC0"}',
+    BuiltinBlocklist.fromJson,
+    (v) => v.toJson(),
+  );
 
   group('Go encoding details', () {
     test('omitempty fields are dropped and nil slices accepted', () {
@@ -182,6 +220,13 @@ void main() {
       expect(j.containsKey('decideBlockDomains'), isFalse);
       expect(j['decideDefault'], '');
       expect((j['dns'] as Json).containsKey('allowDomains'), isFalse);
+      expect((j['dns'] as Json).containsKey('redirectQueries'), isFalse);
+      expect((j['dns'] as Json).containsKey('zone'), isFalse);
+      expect((j['dns'] as Json).containsKey('records'), isFalse);
+      expect((j['dns'] as Json).containsKey('forwarders'), isFalse);
+      expect((j['dns'] as Json).containsKey('logQueries'), isFalse);
+      expect(j.containsKey('customLists'), isFalse);
+      expect(j.containsKey('builtinLists'), isFalse);
       expect(j['rules'], isEmpty);
     });
 

@@ -145,10 +145,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         controller: _oidcTenant,
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: InputDecoration(
-                          labelText: l.loginOidcTenant,
-                          border: const OutlineInputBorder(),
-                        ),
+                        decoration: InputDecoration(labelText: l.loginOidcTenant, border: const OutlineInputBorder()),
                         onSubmitted: (_) => _submitOidc(),
                       ),
                       if (_oidcError != null) ...[

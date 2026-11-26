@@ -199,8 +199,7 @@ class AdminApi {
       AuditVerification.fromJson(obj(await _send('GET', '/v1/admin/audit/verify'), 'verification'));
 
   /// The deployment health for the status page (super-admin only, issue #73).
-  Future<AdminStatus> status() async =>
-      AdminStatus.fromJson(obj(await _send('GET', '/v1/admin/status'), 'status'));
+  Future<AdminStatus> status() async => AdminStatus.fromJson(obj(await _send('GET', '/v1/admin/status'), 'status'));
 
   Future<List<AuditEntry>> listAudit(String tenant, {int limit = 500}) async => _list(
     await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/audit', query: {'limit': '$limit'}),
@@ -213,6 +212,10 @@ class AdminApi {
   /// The web category list loaded by the Control Plane (ADR-0022).
   Future<CategoryCatalog> categories() async =>
       CategoryCatalog.fromJson(obj(await _send('GET', '/v1/admin/categories'), 'categories'));
+
+  /// The built-in blocklists (issue #63).
+  Future<List<BuiltinBlocklist>> blocklists() async =>
+      _list(await _send('GET', '/v1/admin/blocklists'), BuiltinBlocklist.fromJson);
 
   // --- edges ---
 
@@ -261,6 +264,5 @@ class AdminApi {
     return TenantOidc.fromJson(obj(v, 'oidc'));
   }
 
-  Future<void> deleteTenantOidc(String tenant) async =>
-      _send('DELETE', '/v1/admin/tenants/${_seg(tenant)}/oidc');
+  Future<void> deleteTenantOidc(String tenant) async => _send('DELETE', '/v1/admin/tenants/${_seg(tenant)}/oidc');
 }

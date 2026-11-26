@@ -150,9 +150,8 @@ class SsoScreen extends ConsumerWidget {
                             const SizedBox(height: 4),
                             Text(
                               l.ssoRedirectUrlHelp,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 8),
                             Container(
@@ -195,12 +194,7 @@ class SsoScreen extends ConsumerWidget {
                       ],
                       rows: [
                         for (final grp in sortedGroups)
-                          DataRow(
-                            cells: [
-                              DataCell(SelectableText(grp)),
-                              DataCell(Text(data.groupRoles[grp] ?? '')),
-                            ],
-                          ),
+                          DataRow(cells: [DataCell(SelectableText(grp)), DataCell(Text(data.groupRoles[grp] ?? ''))]),
                       ],
                     ),
                   ],
@@ -248,10 +242,12 @@ class _SsoEditDialogState extends ConsumerState<_SsoEditDialog> {
     if (widget.existing != null && widget.existing!.groupRoles.isNotEmpty) {
       final sorted = widget.existing!.groupRoles.keys.toList()..sort();
       for (final g in sorted) {
-        _rows.add(_GroupRoleRow(
-          group: TextEditingController(text: g),
-          role: widget.existing!.groupRoles[g] ?? 'viewer',
-        ));
+        _rows.add(
+          _GroupRoleRow(
+            group: TextEditingController(text: g),
+            role: widget.existing!.groupRoles[g] ?? 'viewer',
+          ),
+        );
       }
     } else {
       _rows.add(_GroupRoleRow(group: TextEditingController(), role: 'admin'));
@@ -305,17 +301,9 @@ class _SsoEditDialogState extends ConsumerState<_SsoEditDialog> {
 
     setState(() => _busy = true);
     try {
-      final oidc = TenantOidc(
-        issuer: _issuer.text.trim(),
-        clientId: _clientId.text.trim(),
-        groupRoles: groupRoles,
-      );
+      final oidc = TenantOidc(issuer: _issuer.text.trim(), clientId: _clientId.text.trim(), groupRoles: groupRoles);
       final secret = _clientSecret.text.trim();
-      await ref.read(apiProvider).putTenantOidc(
-        widget.tenant,
-        oidc,
-        clientSecret: secret.isEmpty ? null : secret,
-      );
+      await ref.read(apiProvider).putTenantOidc(widget.tenant, oidc, clientSecret: secret.isEmpty ? null : secret);
       if (mounted) {
         showSnack(context, l.ssoSaved);
         ref.invalidate(tenantOidcProvider(widget.tenant));
@@ -354,8 +342,7 @@ class _SsoEditDialogState extends ConsumerState<_SsoEditDialog> {
                     final s = v?.trim() ?? '';
                     if (s.isEmpty) return l.fieldRequired;
                     final u = Uri.tryParse(s);
-                    final local = u != null &&
-                        (u.host == 'localhost' || u.host == '127.0.0.1' || u.host == '::1');
+                    final local = u != null && (u.host == 'localhost' || u.host == '127.0.0.1' || u.host == '::1');
                     if (u == null || (u.scheme != 'https' && (u.scheme != 'http' || !local))) {
                       return l.ssoErrorIssuer;
                     }
@@ -366,10 +353,7 @@ class _SsoEditDialogState extends ConsumerState<_SsoEditDialog> {
                 TextFormField(
                   key: const Key('sso_field_client_id'),
                   controller: _clientId,
-                  decoration: InputDecoration(
-                    labelText: l.ssoClientId,
-                    border: const OutlineInputBorder(),
-                  ),
+                  decoration: InputDecoration(labelText: l.ssoClientId, border: const OutlineInputBorder()),
                   validator: (v) => (v?.trim().isEmpty ?? true) ? l.ssoErrorClientId : null,
                 ),
                 const SizedBox(height: 12),

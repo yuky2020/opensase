@@ -2035,6 +2035,56 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No'**
   String get no;
+
+  String get navDns;
+  String get dnsTitle;
+  String get dnsSubtitle;
+  String get dnsResolver;
+  String get dnsBlockResponse;
+  String get dnsBlockResponseNxdomain;
+  String get dnsBlockResponseZero;
+  String get dnsRedirectQueries;
+  String get dnsRedirectQueriesHelp;
+  String get dnsLogQueries;
+  String get dnsLogQueriesHelp;
+  String get dnsInternalZone;
+  String get dnsZoneName;
+  String get dnsZoneHelp;
+  String get dnsRecords;
+  String get dnsRecordName;
+  String get dnsRecordType;
+  String get dnsRecordValue;
+  String get dnsRecordTtl;
+  String get dnsAddRecord;
+  String get dnsEditRecord;
+  String get dnsForwarders;
+  String get dnsForwarderZone;
+  String get dnsForwarderServers;
+  String get dnsAddForwarder;
+  String get dnsEditForwarder;
+  String get dnsSecurityBlocklists;
+  String get dnsBuiltinLists;
+  String get dnsBuiltinEmpty;
+  String get dnsCustomLists;
+  String get dnsCustomListId;
+  String get dnsCustomListTitle;
+  String get dnsCustomListUrl;
+  String get dnsAddCustomList;
+  String get dnsEditCustomList;
+  String get dnsDomainOverrides;
+  String get dnsAllowDomains;
+  String get dnsBlockDomains;
+  String get dnsAddDomain;
+  String get dnsDomainHint;
+  String get dnsErrorNameRequired;
+  String get dnsErrorValueRequired;
+  String get dnsErrorInvalidIpv4;
+  String get dnsErrorInvalidIpv6;
+  String get dnsErrorInvalidTtl;
+  String get dnsErrorZoneRequired;
+  String get dnsErrorInvalidServers;
+  String get dnsErrorInvalidListId;
+  String get dnsErrorInvalidHttpsUrl;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

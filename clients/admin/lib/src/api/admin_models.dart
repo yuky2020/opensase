@@ -100,6 +100,46 @@ class TenantPrivateApp extends PrivateApp {
   TenantPrivateApp copy() => TenantPrivateApp.fromJson(toJson());
 }
 
+/// api.CustomList: domain blocklist downloaded from URL (issue #63).
+class CustomList {
+  CustomList({required this.id, this.title = '', required this.url});
+
+  /// [a-z0-9-], unique in the tenant.
+  String id;
+
+  /// Display name.
+  String title;
+
+  /// https URL.
+  String url;
+
+  factory CustomList.fromJson(Json j) => CustomList(id: str(j, 'id'), title: str(j, 'title'), url: str(j, 'url'));
+
+  Json toJson() {
+    final j = <String, dynamic>{'id': id};
+    putOmit(j, 'title', title);
+    j['url'] = url;
+    return j;
+  }
+
+  CustomList copy() => CustomList(id: id, title: title, url: url);
+}
+
+/// api.BuiltinBlocklist (GET /v1/admin/blocklists, issue #63).
+class BuiltinBlocklist {
+  BuiltinBlocklist({required this.id, required this.title, required this.url, required this.licence});
+
+  String id;
+  String title;
+  String url;
+  String licence;
+
+  factory BuiltinBlocklist.fromJson(Json j) =>
+      BuiltinBlocklist(id: str(j, 'id'), title: str(j, 'title'), url: str(j, 'url'), licence: str(j, 'licence'));
+
+  Json toJson() => {'id': id, 'title': title, 'url': url, 'licence': licence};
+}
+
 /// api.TenantPolicy: the tenant layer.
 class TenantPolicy {
   TenantPolicy({
@@ -117,6 +157,8 @@ class TenantPolicy {
     WebPolicy? web,
     List<String>? categories,
     this.safeSearch = false,
+    List<CustomList>? customLists,
+    List<String>? builtinLists,
   }) : saas = saas ?? SaasPolicy(),
        categories = categories ?? [],
        web = web ?? WebPolicy(),
@@ -125,7 +167,9 @@ class TenantPolicy {
        dns = dns ?? DnsPolicy(),
        privateApps = privateApps ?? [],
        decideBlockDomains = decideBlockDomains ?? [],
-       decideBlockCidrs = decideBlockCidrs ?? [];
+       decideBlockCidrs = decideBlockCidrs ?? [],
+       customLists = customLists ?? [],
+       builtinLists = builtinLists ?? [];
 
   String defaultAction;
   bool allowUserRules;
@@ -154,6 +198,12 @@ class TenantPolicy {
   /// Force safe search and restricted video modes (ADR-0025).
   bool safeSearch;
 
+  /// Domain blocklists downloaded by the Control Plane from URL (issue #63).
+  List<CustomList> customLists;
+
+  /// Built-in lists enabled by ID from the built-in catalog (issue #63).
+  List<String> builtinLists;
+
   /// The ETag the policy was read at; sent as If-Match when saving. Not part of the JSON.
   String etag = '';
 
@@ -174,6 +224,8 @@ class TenantPolicy {
       web: WebPolicy.fromJson(objOrEmpty(j, 'web')),
       categories: strList(j, 'categories'),
       safeSearch: boolean(j, 'safeSearch'),
+      customLists: objList(j, 'customLists', CustomList.fromJson),
+      builtinLists: strList(j, 'builtinLists'),
     );
   }
 
@@ -194,6 +246,8 @@ class TenantPolicy {
     if (!web.isEmpty) j['web'] = web.toJson();
     putOmit(j, 'categories', categories);
     if (safeSearch) j['safeSearch'] = true;
+    putOmit(j, 'customLists', [for (final l in customLists) l.toJson()]);
+    putOmit(j, 'builtinLists', builtinLists);
     return j;
   }
 
@@ -630,7 +684,8 @@ class WebPolicy {
   /// Malware scanning (ADR-0020).
   MalwarePolicy malware;
 
-  bool get isEmpty => !inspect && !blockEch && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty && malware.isEmpty;
+  bool get isEmpty =>
+      !inspect && !blockEch && bypass.isEmpty && rules.isEmpty && headers.isEmpty && dlp.isEmpty && malware.isEmpty;
 
   factory WebPolicy.fromJson(Json j) => WebPolicy(
     inspect: boolean(j, 'inspect'),
@@ -977,12 +1032,7 @@ class AdminStatus {
 
 /// api.EdgeStatus
 class EdgeStatus {
-  EdgeStatus({
-    required this.id,
-    this.region = '',
-    this.sessions = 0,
-    this.reporting = false,
-  });
+  EdgeStatus({required this.id, this.region = '', this.sessions = 0, this.reporting = false});
 
   String id;
   String region;
@@ -996,33 +1046,19 @@ class EdgeStatus {
     reporting: boolean(j, 'reporting'),
   );
 
-  Json toJson() => {
-    'id': id,
-    'region': region,
-    'sessions': sessions,
-    'reporting': reporting,
-  };
+  Json toJson() => {'id': id, 'region': region, 'sessions': sessions, 'reporting': reporting};
 }
 
 /// api.CertExpiry
 class CertExpiry {
-  CertExpiry({
-    required this.name,
-    this.notAfter,
-  });
+  CertExpiry({required this.name, this.notAfter});
 
   String name;
   DateTime? notAfter;
 
-  factory CertExpiry.fromJson(Json j) => CertExpiry(
-    name: str(j, 'name'),
-    notAfter: time(j, 'notAfter'),
-  );
+  factory CertExpiry.fromJson(Json j) => CertExpiry(name: str(j, 'name'), notAfter: time(j, 'notAfter'));
 
-  Json toJson() => {
-    'name': name,
-    'notAfter': goTime(notAfter),
-  };
+  Json toJson() => {'name': name, 'notAfter': goTime(notAfter)};
 }
 
 /// api.TenantOIDC: OpenID Connect sign-in for tenant admins (issue #17, slice C, ADR-0031).
@@ -1059,11 +1095,7 @@ class TenantOidc {
   }
 
   Json toJson({String? clientSecret}) {
-    final j = <String, dynamic>{
-      'issuer': issuer,
-      'clientId': clientId,
-      'groupRoles': groupRoles,
-    };
+    final j = <String, dynamic>{'issuer': issuer, 'clientId': clientId, 'groupRoles': groupRoles};
     if (clientSecret != null && clientSecret.isNotEmpty) {
       j['clientSecret'] = clientSecret;
     }

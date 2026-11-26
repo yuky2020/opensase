@@ -175,27 +175,81 @@ class Blocklist {
   Json toJson() => {'id': id, 'name': name, 'category': category, 'domains': domains};
 }
 
+class DnsRecord {
+  DnsRecord({required this.name, required this.type, required this.value, this.ttl = 0});
+
+  String name;
+
+  /// A, AAAA, CNAME, TXT
+  String type;
+  String value;
+
+  /// Seconds, default 300 (0 in JSON when omitted), at most 86400.
+  int ttl;
+
+  factory DnsRecord.fromJson(Json j) =>
+      DnsRecord(name: str(j, 'name'), type: str(j, 'type'), value: str(j, 'value'), ttl: integer(j, 'ttl'));
+
+  Json toJson() {
+    final j = <String, dynamic>{'name': name, 'type': type, 'value': value};
+    putOmit(j, 'ttl', ttl);
+    return j;
+  }
+
+  DnsRecord copy() => DnsRecord(name: name, type: type, value: value, ttl: ttl);
+}
+
+class DnsForwarder {
+  DnsForwarder({required this.zone, List<String>? servers}) : servers = servers ?? [];
+
+  String zone;
+  List<String> servers;
+
+  factory DnsForwarder.fromJson(Json j) => DnsForwarder(zone: str(j, 'zone'), servers: strList(j, 'servers'));
+
+  Json toJson() => {'zone': zone, 'servers': servers};
+
+  DnsForwarder copy() => DnsForwarder(zone: zone, servers: [...servers]);
+}
+
 class DnsPolicy {
   DnsPolicy({
     this.blockResponse = '',
     List<Blocklist>? blocklists,
     List<String>? allowDomains,
     List<String>? blockDomains,
+    this.redirectQueries = false,
+    this.zone = '',
+    List<DnsRecord>? records,
+    List<DnsForwarder>? forwarders,
+    this.logQueries = false,
   }) : blocklists = blocklists ?? [],
        allowDomains = allowDomains ?? [],
-       blockDomains = blockDomains ?? [];
+       blockDomains = blockDomains ?? [],
+       records = records ?? [],
+       forwarders = forwarders ?? [];
 
   /// "nxdomain" | "zero" ("" means nxdomain).
   String blockResponse;
   List<Blocklist> blocklists;
   List<String> allowDomains;
   List<String> blockDomains;
+  bool redirectQueries;
+  String zone;
+  List<DnsRecord> records;
+  List<DnsForwarder> forwarders;
+  bool logQueries;
 
   factory DnsPolicy.fromJson(Json j) => DnsPolicy(
     blockResponse: str(j, 'blockResponse'),
     blocklists: objList(j, 'blocklists', Blocklist.fromJson),
     allowDomains: strList(j, 'allowDomains'),
     blockDomains: strList(j, 'blockDomains'),
+    redirectQueries: boolean(j, 'redirectQueries'),
+    zone: str(j, 'zone'),
+    records: objList(j, 'records', DnsRecord.fromJson),
+    forwarders: objList(j, 'forwarders', DnsForwarder.fromJson),
+    logQueries: boolean(j, 'logQueries'),
   );
 
   Json toJson() {
@@ -205,8 +259,15 @@ class DnsPolicy {
     };
     putOmit(j, 'allowDomains', allowDomains);
     putOmit(j, 'blockDomains', blockDomains);
+    if (redirectQueries) j['redirectQueries'] = true;
+    putOmit(j, 'zone', zone);
+    putOmit(j, 'records', [for (final r in records) r.toJson()]);
+    putOmit(j, 'forwarders', [for (final f in forwarders) f.toJson()]);
+    if (logQueries) j['logQueries'] = true;
     return j;
   }
+
+  DnsPolicy copy() => DnsPolicy.fromJson(toJson());
 }
 
 /// policy.PrivateApp (ADR-0013).

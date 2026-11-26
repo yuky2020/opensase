@@ -25,6 +25,7 @@
 //	                                    the just-superseded cert is accepted ONLY here, to retry after a lost response)
 //	GET  /v1/self/rules                 -> UserRules (the stored user layer, unmerged) (mTLS)
 //	PUT  /v1/self/rules                 UserRules -> policy.Envelope (new snapshot) ; 403 if tenant disallows user rules (mTLS)
+//	POST /v1/posture                    Posture -> 204 (mTLS device; ADR-0035; a changed result issues a new snapshot)
 //	POST /v1/decide                     DecideRequest -> DecideResponse (mTLS device cert, or edge cert with ?device=<id>, evaluated in edge mode)
 //	POST /v1/flows                      FlowBatch -> 202 (mTLS device or edge cert; with an edge cert the tenant comes from each record's DeviceID)
 //	GET  /v1/edges                      -> DeviceEdges; for devices, mTLS (issue #71)
@@ -53,6 +54,7 @@
 //	GET  /v1/admin/tenants/{t}/policy  -> TenantPolicy
 //	POST /v1/admin/tenants/{t}/policy-test PolicyTestRequest -> PolicyTestResult (any tenant role; read only, not logged; issue #75)
 //	GET  /v1/admin/tenants/{t}/devices -> []AdminDevice (internal/controlplane)
+//	GET  /v1/admin/tenants/{t}/devices/{d}/posture -> DevicePosture | 404 (no report yet)
 //	POST /v1/admin/tenants/{t}/devices/{d}/revoke -> 204
 //	GET  /v1/admin/tenants/{t}/devices/{d}/routes -> DeviceRoutes (tenant role admin only)
 //	PUT  /v1/admin/tenants/{t}/devices/{d}/routes DeviceRoutes -> DeviceRoutes (tenant role admin only)
@@ -128,6 +130,47 @@ type EnrollRequest struct {
 	DeviceName      string `json:"deviceName"`
 	Platform        string `json:"platform"` // "android","linux","windows","macos","ios"
 	CSRPEM          string `json:"csrPem"`   // PKCS#10, ECDSA P-256 key generated on device
+	// Posture is the device's posture at enrolment (ADR-0035); the minimum OS and client
+	// versions of the tenant are checked against it.
+	Posture *Posture `json:"posture,omitempty"`
+}
+
+// Posture is a device's self-reported posture (ADR-0035). It is advisory evidence, not
+// attestation: it is sent over the device's mutual TLS channel, so it is bound to the
+// device key, but a modified client can report anything. Pointer fields are nil when the
+// platform cannot tell.
+type Posture struct {
+	OS            string    `json:"os"`        // android | windows | linux | macos | ios
+	OSVersion     string    `json:"osVersion"` // dotted numeric, e.g. "14", "10.0.22631"
+	ClientVersion string    `json:"clientVersion"`
+	DiskEncrypted *bool     `json:"diskEncrypted,omitempty"`
+	ScreenLock    *bool     `json:"screenLock,omitempty"`
+	Firewall      *bool     `json:"firewall,omitempty"` // Windows
+	Managed       *bool     `json:"managed,omitempty"`  // work profile, domain or MDM join
+	BootTime      time.Time `json:"bootTime,omitzero"`
+	CollectedAt   time.Time `json:"collectedAt"`
+}
+
+// PosturePolicy is the tenant's posture policy (ADR-0035).
+type PosturePolicy struct {
+	// MinOSVersion maps an OS name to its minimum version; MinClientVersion applies to
+	// every platform. Both are checked at enrolment and on every report.
+	MinOSVersion     map[string]string `json:"minOsVersion,omitempty"`
+	MinClientVersion string            `json:"minClientVersion,omitempty"`
+	// Require lists checks a device must pass: diskEncryption, screenLock, firewall
+	// (Windows only), managed. A check the platform cannot report (nil) fails.
+	Require []string `json:"require,omitempty"`
+	// Restrict gives failing devices the restricted snapshot instead of the normal one.
+	Restrict bool `json:"restrict,omitempty"`
+	// RemediationDomains stay reachable from a restricted device (update servers, help pages).
+	RemediationDomains []string `json:"remediationDomains,omitempty"`
+}
+
+// DevicePosture is the last posture of a device as the portal shows it.
+type DevicePosture struct {
+	Posture
+	Failing    []string  `json:"failing"` // check names; empty when compliant
+	ReportedAt time.Time `json:"reportedAt"`
 }
 
 // EnrollResponse is the reply to POST /v1/enroll: the device identity and trust material.
@@ -186,6 +229,8 @@ type UserRules struct {
 type TenantPrivateApp struct {
 	policy.PrivateApp
 	Users []string `json:"users,omitempty"`
+	// Posture limits the app to compliant (or noncompliant) devices (ADR-0035).
+	Posture policy.PostureCondition `json:"posture,omitempty"`
 }
 
 // DecideRequest is the body of POST /v1/decide.
@@ -425,8 +470,10 @@ type TenantPolicy struct {
 	// CustomLists from the tenant's URLs, BuiltinLists by ID from the built-in catalog.
 	CustomLists []CustomList `json:"customLists,omitempty"`
 	// Mesh controls device-to-device traffic (ADR-0034); off without rules.
-	Mesh         MeshPolicy `json:"mesh,omitzero"`
-	BuiltinLists []string   `json:"builtinLists,omitempty"`
+	Mesh MeshPolicy `json:"mesh,omitzero"`
+	// Posture holds the device posture checks (ADR-0035).
+	Posture      PosturePolicy `json:"posture,omitzero"`
+	BuiltinLists []string      `json:"builtinLists,omitempty"`
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`

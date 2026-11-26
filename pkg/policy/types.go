@@ -70,6 +70,11 @@ type Snapshot struct {
 	// Empty: no device-to-device traffic to it. The Edge checks it on the Edge path; the
 	// device checks it on direct links.
 	MeshInbound []MeshGrant `json:"meshInbound,omitempty"`
+	// PostureFailing lists the tenant posture checks this device failed in its last report
+	// (ADR-0035), so the app can show what to fix. When it is not empty and the tenant
+	// restricts failing devices, the snapshot is the restricted one: Firewall allows only
+	// DNS, the Control Plane and the remediation domains.
+	PostureFailing []string `json:"postureFailing,omitempty"`
 }
 
 // MeshGrant allows flows from matching devices of the same tenant (ADR-0034).
@@ -212,7 +217,21 @@ type Rule struct {
 	// users and clears both fields, so devices and Edges never see them.
 	Users  []string `json:"users,omitempty"`
 	Groups []string `json:"groups,omitempty"`
+	// Posture limits a tenant rule to devices whose last posture report passes ("compliant")
+	// or fails ("noncompliant") the tenant posture checks (ADR-0035). Resolved by the
+	// Control Plane like Users and Groups, and cleared in snapshots.
+	Posture PostureCondition `json:"posture,omitempty"`
 }
+
+// PostureCondition is the posture condition of a rule or a private app (ADR-0035).
+type PostureCondition string
+
+// Posture conditions; the empty condition matches every device.
+const (
+	PostureAny          PostureCondition = ""
+	PostureCompliant    PostureCondition = "compliant"
+	PostureNoncompliant PostureCondition = "noncompliant"
+)
 
 // Match holds the conditions of a Rule (see Rule for how they combine).
 type Match struct {

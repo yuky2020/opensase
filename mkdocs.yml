@@ -143,6 +143,7 @@ nav:
       - "0032 Windows client": adr/0032-windows-client.md
       - "0033 PostgreSQL and replicas": adr/0033-postgresql-and-replicas.md
       - "0034 Device mesh": adr/0034-device-mesh.md
+      - "0035 Device posture": adr/0035-device-posture.md
   - Security:
       - Security policy: security-policy.md
       - Threat model: security/threat-model.md

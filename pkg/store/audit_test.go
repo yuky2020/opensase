@@ -131,3 +131,27 @@ func restoreAudit(t *testing.T, s *Store, snap []auditRow, anchor []byte) {
 		t.Fatal(err)
 	}
 }
+
+// TestAuditPrevHashUnique covers issue #66: a second entry chained to the same head (what
+// two replicas appending at once would write) is rejected, so the chain cannot fork.
+func TestAuditPrevHashUnique(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	for i := range 3 {
+		if err := s.AddAudit(ctx, AuditEntry{At: time.Now(), Actor: "super", Method: "POST", Path: "/v1/admin/tenants", Status: 200 + i}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var prev []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT prev_hash FROM admin_audit ORDER BY id DESC LIMIT 1`).Scan(&prev); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_audit(at, actor, tenant_id, method, path, status, prev_hash) VALUES (?, 'x', '', 'GET', '/', 200, ?)`, time.Now().Unix(), prev)
+	if !isUniqueViolation(err) {
+		t.Fatalf("forked insert: want unique violation, got %v", err)
+	}
+	v, err := s.VerifyAudit(ctx)
+	if err != nil || v.BadID != 0 || v.Entries != 3 {
+		t.Fatalf("verify %+v %v", v, err)
+	}
+}

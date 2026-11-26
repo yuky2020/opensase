@@ -101,11 +101,8 @@ type Server struct {
 
 	cats atomic.Pointer[catState] // web category list (ADR-0022)
 
-	policyMu sync.Mutex // serialises If-Match checks and policy writes (issue #19)
-
 	oidcMu        sync.Mutex
 	oidcProviders map[string]*oidcProviderEntry // key: tenant ID
-	oidcPending   map[string]pendingOIDCLogin   // key: state
 	oidcClient    *http.Client
 }
 
@@ -153,7 +150,6 @@ func New(cfg Config) (*Server, error) {
 		decide:        map[string]*decideEntry{},
 		polls:         newPollLimiter(maxLongPollsPerDev),
 		oidcProviders: make(map[string]*oidcProviderEntry),
-		oidcPending:   make(map[string]pendingOIDCLogin),
 	}
 	if cfg.OIDCClient != nil {
 		s.oidcClient = cfg.OIDCClient

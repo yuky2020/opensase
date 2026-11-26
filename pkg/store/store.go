@@ -387,14 +387,50 @@ func (s *Store) GetTenantPolicy(ctx context.Context, tenantID string) (api.Tenan
 
 // PutTenantPolicy replaces the tenant layer.
 func (s *Store) PutTenantPolicy(ctx context.Context, tenantID string, p api.TenantPolicy) error {
-	raw, err := json.Marshal(p)
+	_, err := s.UpdateTenantPolicy(ctx, tenantID, func(api.TenantPolicy, bool) (api.TenantPolicy, error) { return p, nil })
+	return err
+}
+
+// UpdateTenantPolicy reads the tenant layer, passes it to update and stores the result, in
+// one transaction (issue #66). exists is false when no policy was set; cur is then the zero
+// policy. An error from update aborts the write and is returned unchanged.
+//
+// The transaction takes the database write lock when it begins (the DSN sets
+// _txlock=immediate), so two Control Plane replicas cannot interleave a read and a write:
+// this is what makes If-Match safe without a per-process mutex.
+func (s *Store) UpdateTenantPolicy(ctx context.Context, tenantID string, update func(cur api.TenantPolicy, exists bool) (api.TenantPolicy, error)) (api.TenantPolicy, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return api.TenantPolicy{}, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO tenant_policy(tenant_id, policy, updated_at, version) VALUES (?, ?, ?, 1)
+	defer func() { _ = tx.Rollback() }()
+	var cur api.TenantPolicy
+	var raw string
+	exists := true
+	switch err := tx.QueryRowContext(ctx, `SELECT policy FROM tenant_policy WHERE tenant_id = ?`, tenantID).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		exists = false
+	case err != nil:
+		return api.TenantPolicy{}, err
+	default:
+		if err := json.Unmarshal([]byte(raw), &cur); err != nil {
+			return api.TenantPolicy{}, fmt.Errorf("store: decode tenant policy: %w", err)
+		}
+	}
+	next, err := update(cur, exists)
+	if err != nil {
+		return api.TenantPolicy{}, err
+	}
+	b, err := json.Marshal(next)
+	if err != nil {
+		return api.TenantPolicy{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO tenant_policy(tenant_id, policy, updated_at, version) VALUES (?, ?, ?, 1)
 		ON CONFLICT(tenant_id) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at, version = version + 1`,
-		tenantID, string(raw), time.Now().Unix())
-	return mapErr(err)
+		tenantID, string(b), time.Now().Unix()); err != nil {
+		return api.TenantPolicy{}, mapErr(err)
+	}
+	return next, mapErr(tx.Commit())
 }
 
 // TenantPolicyVersion returns the number of times the tenant policy was written (0 if never).

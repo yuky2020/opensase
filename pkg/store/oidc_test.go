@@ -126,3 +126,41 @@ func TestTenantOIDC(t *testing.T) {
 		t.Run(tt.name, tt.run)
 	}
 }
+
+// TestOIDCPending covers issue #66: a pending sign-in is taken once, expires, and the
+// capacity counts only live sign-ins.
+func TestOIDCPending(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Now()
+	p := OIDCPending{State: "st1", TenantID: "acme", Verifier: "v", Nonce: "n", ExpiresAt: now.Add(10 * time.Minute)}
+	if err := s.PutOIDCPending(ctx, p, now, 2); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.TakeOIDCPending(ctx, "st1", now)
+	if err != nil || got.TenantID != "acme" || got.Verifier != "v" || got.Nonce != "n" {
+		t.Fatalf("take %+v %v", got, err)
+	}
+	if _, err := s.TakeOIDCPending(ctx, "st1", now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second take: %v", err)
+	}
+	old := OIDCPending{State: "old", TenantID: "acme", Verifier: "v", Nonce: "n", ExpiresAt: now.Add(-time.Second)}
+	if err := s.PutOIDCPending(ctx, old, now.Add(-time.Hour), 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TakeOIDCPending(ctx, "old", now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired take: %v", err)
+	}
+	for i, st := range []string{"a", "b"} {
+		if err := s.PutOIDCPending(ctx, OIDCPending{State: st, TenantID: "acme", ExpiresAt: now.Add(time.Minute)}, now, 2); err != nil {
+			t.Fatal(i, err)
+		}
+	}
+	if err := s.PutOIDCPending(ctx, OIDCPending{State: "c", TenantID: "acme", ExpiresAt: now.Add(time.Minute)}, now, 2); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("capacity: %v", err)
+	}
+	// Once the two expire they no longer count.
+	if err := s.PutOIDCPending(ctx, OIDCPending{State: "c", TenantID: "acme", ExpiresAt: now.Add(time.Hour)}, now.Add(2*time.Minute), 2); err != nil {
+		t.Fatalf("after expiry: %v", err)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -70,10 +71,22 @@ func auditHead(ctx context.Context, q interface {
 	return h, err
 }
 
-// AddAudit appends an entry to the chain.
+// AddAudit appends an entry to the chain. If another Control Plane replica appended to the
+// same head at the same time, the unique index on prev_hash rejects this insert and the
+// append is retried on the new head (issue #66).
 func (s *Store) AddAudit(ctx context.Context, e AuditEntry) error {
-	s.auditMu.Lock()
+	s.auditMu.Lock() // avoids pointless retries inside one process
 	defer s.auditMu.Unlock()
+	var err error
+	for range 5 {
+		if err = s.addAudit(ctx, &e); !isUniqueViolation(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func (s *Store) addAudit(ctx context.Context, e *AuditEntry) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -91,10 +104,16 @@ func (s *Store) AddAudit(ctx context.Context, e AuditEntry) error {
 	if e.ID, err = res.LastInsertId(); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE admin_audit SET hash = ? WHERE id = ?`, auditHash(prev, e), e.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE admin_audit SET hash = ? WHERE id = ?`, auditHash(prev, *e), e.ID); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// isUniqueViolation reports whether err is a unique constraint violation (SQLite text; the
+// PostgreSQL backend matches its error code 23505).
+func isUniqueViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 // chainLegacyAudit hashes the entries written before the chain existed (migration 0008),

@@ -248,3 +248,41 @@ func TestFlows(t *testing.T) {
 		t.Fatal("cross-tenant flows")
 	}
 }
+
+// TestUpdateTenantPolicyConditional covers issue #66: the update sees the stored policy, an
+// error aborts the write, and a write bumps the version.
+func TestUpdateTenantPolicyConditional(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	if err := s.CreateTenant(ctx, Tenant{ID: "acme", Name: "Acme"}); err != nil {
+		t.Fatal(err)
+	}
+	first := api.TenantPolicy{Categories: []string{"malware"}}
+	if _, err := s.UpdateTenantPolicy(ctx, "acme", func(_ api.TenantPolicy, exists bool) (api.TenantPolicy, error) {
+		if exists {
+			t.Fatal("exists before the first write")
+		}
+		return first, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("boom")
+	_, err := s.UpdateTenantPolicy(ctx, "acme", func(cur api.TenantPolicy, exists bool) (api.TenantPolicy, error) {
+		if !exists || len(cur.Categories) != 1 || cur.Categories[0] != "malware" {
+			t.Fatalf("cur %+v exists %v", cur, exists)
+		}
+		return api.TenantPolicy{}, boom
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("want boom, got %v", err)
+	}
+	if v, _ := s.TenantPolicyVersion(ctx, "acme"); v != 1 {
+		t.Fatalf("version after aborted write: %d", v)
+	}
+	if _, err := s.UpdateTenantPolicy(ctx, "acme", func(api.TenantPolicy, bool) (api.TenantPolicy, error) { return api.TenantPolicy{}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.TenantPolicyVersion(ctx, "acme"); v != 2 {
+		t.Fatalf("version: %d", v)
+	}
+}

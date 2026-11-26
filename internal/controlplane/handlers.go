@@ -27,6 +27,9 @@ const provisioningKeyPrefix = "osk_"
 
 var platforms = map[string]bool{"android": true, "linux": true, "windows": true, "macos": true, "ios": true}
 
+// errPolicyChanged aborts a conditional policy write whose If-Match no longer matches.
+var errPolicyChanged = errors.New("policy changed since it was read")
+
 // --- device endpoints ---
 
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
@@ -565,24 +568,22 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 		tp.Rules[i].Source = policy.SourceTenant
 	}
 	// Optimistic concurrency (issue #19): with If-Match, the policy must not have changed
-	// since the client read it. The check and the write are one critical section.
-	s.policyMu.Lock()
-	if want := r.Header.Get("If-Match"); want != "" && want != "*" {
-		cur, err := s.tenantPolicy(r.Context(), t)
-		if err != nil {
-			s.policyMu.Unlock()
-			s.internalErr(w, r, "load policy", err)
-			return
+	// since the client read it. The check and the write are one database transaction, so
+	// this also holds across Control Plane replicas (issue #66).
+	want := r.Header.Get("If-Match")
+	var current api.TenantPolicy
+	_, err = s.cfg.Store.UpdateTenantPolicy(r.Context(), t, func(cur api.TenantPolicy, _ bool) (api.TenantPolicy, error) {
+		if want != "" && want != "*" && policyETag(cur) != want {
+			current = cur
+			return api.TenantPolicy{}, errPolicyChanged
 		}
-		if policyETag(cur) != want {
-			s.policyMu.Unlock()
-			w.Header().Set("ETag", policyETag(cur))
-			writeErr(w, http.StatusPreconditionFailed, "the policy changed since it was read; reload it and apply the change again")
-			return
-		}
+		return tp, nil
+	})
+	if errors.Is(err, errPolicyChanged) {
+		w.Header().Set("ETag", policyETag(current))
+		writeErr(w, http.StatusPreconditionFailed, "the policy changed since it was read; reload it and apply the change again")
+		return
 	}
-	err = s.cfg.Store.PutTenantPolicy(r.Context(), t, tp)
-	s.policyMu.Unlock()
 	if err != nil {
 		s.internalErr(w, r, "store policy", err)
 		return

@@ -27,13 +27,6 @@ type oidcProviderEntry struct {
 	fetchedAt time.Time
 }
 
-type pendingOIDCLogin struct {
-	tenantID  string
-	verifier  string
-	nonce     string
-	expiresAt time.Time
-}
-
 func (s *Server) oidcCallbackURL(r *http.Request) string {
 	base := strings.TrimRight(s.cfg.ControlURL, "/")
 	if base == "" && r != nil {
@@ -239,25 +232,21 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.oidcMu.Lock()
-	now := s.now()
-	for st, p := range s.oidcPending {
-		if !now.Before(p.expiresAt) {
-			delete(s.oidcPending, st)
-		}
-	}
-	if len(s.oidcPending) >= 10000 {
-		s.oidcMu.Unlock()
+	err = s.cfg.Store.PutOIDCPending(r.Context(), store.OIDCPending{
+		State:     authReq.State,
+		TenantID:  tenant,
+		Verifier:  authReq.Verifier,
+		Nonce:     authReq.Nonce,
+		ExpiresAt: s.now().Add(10 * time.Minute),
+	}, s.now(), 10000)
+	if errors.Is(err, store.ErrCapacity) {
 		writeErr(w, http.StatusServiceUnavailable, "sign-in capacity exceeded")
 		return
 	}
-	s.oidcPending[authReq.State] = pendingOIDCLogin{
-		tenantID:  tenant,
-		verifier:  authReq.Verifier,
-		nonce:     authReq.Nonce,
-		expiresAt: now.Add(10 * time.Minute),
+	if err != nil {
+		s.internalErr(w, r, "store oidc sign-in", err)
+		return
 	}
-	s.oidcMu.Unlock()
 
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, authReq.URL, http.StatusFound)
@@ -267,19 +256,20 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 
-	s.oidcMu.Lock()
-	now := s.now()
-	pending, ok := s.oidcPending[state]
-	if ok {
-		delete(s.oidcPending, state)
-	}
-	s.oidcMu.Unlock()
-
-	if !ok || state == "" || !now.Before(pending.expiresAt) {
+	if state == "" {
 		writeOIDCErrorPage(w, http.StatusBadRequest, "Invalid Request", "The sign-in request is invalid or has expired. Please return to the portal and try again.")
 		return
 	}
-
+	pending, err := s.cfg.Store.TakeOIDCPending(r.Context(), state, s.now())
+	if errors.Is(err, store.ErrNotFound) {
+		writeOIDCErrorPage(w, http.StatusBadRequest, "Invalid Request", "The sign-in request is invalid or has expired. Please return to the portal and try again.")
+		return
+	}
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "oidc take pending sign-in failed", "err", err)
+		writeOIDCErrorPage(w, http.StatusInternalServerError, "Sign-in Error", "Failed to load the sign-in request.")
+		return
+	}
 	if code == "" {
 		writeOIDCErrorPage(w, http.StatusBadRequest, "Invalid Request", "Missing authorization code.")
 		return
@@ -288,24 +278,24 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	cfg, err := s.cfg.Store.GetTenantOIDC(ctx, pending.tenantID)
+	cfg, err := s.cfg.Store.GetTenantOIDC(ctx, pending.TenantID)
 	if err != nil {
-		s.log.ErrorContext(ctx, "oidc get config failed", "tenant", pending.tenantID, "err", err)
+		s.log.ErrorContext(ctx, "oidc get config failed", "tenant", pending.TenantID, "err", err)
 		writeOIDCErrorPage(w, http.StatusInternalServerError, "Sign-in Error", "Failed to load tenant configuration.")
 		return
 	}
 
 	redirectURL := s.oidcCallbackURL(r)
-	prov, err := s.getOIDCProvider(ctx, pending.tenantID, cfg, redirectURL)
+	prov, err := s.getOIDCProvider(ctx, pending.TenantID, cfg, redirectURL)
 	if err != nil {
-		s.log.ErrorContext(ctx, "oidc get provider failed", "tenant", pending.tenantID, "err", err)
+		s.log.ErrorContext(ctx, "oidc get provider failed", "tenant", pending.TenantID, "err", err)
 		writeOIDCErrorPage(w, http.StatusBadGateway, "Sign-in Error", "Failed to connect to identity provider.")
 		return
 	}
 
-	claims, err := prov.Exchange(ctx, code, pending.verifier, pending.nonce)
+	claims, err := prov.Exchange(ctx, code, pending.Verifier, pending.Nonce)
 	if err != nil {
-		s.log.ErrorContext(ctx, "oidc exchange failed", "tenant", pending.tenantID, "err", err)
+		s.log.ErrorContext(ctx, "oidc exchange failed", "tenant", pending.TenantID, "err", err)
 		writeOIDCErrorPage(w, http.StatusBadRequest, "Sign-in Failed", "Identity verification failed.")
 		return
 	}
@@ -343,7 +333,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		auditEntry := store.AuditEntry{
 			At:       s.now(),
 			Actor:    userActor,
-			TenantID: pending.tenantID,
+			TenantID: pending.TenantID,
 			Method:   "oidc.login.denied",
 			Path:     "sub=" + claims.Subject + " email=" + claims.Email,
 			Status:   http.StatusForbidden,
@@ -372,7 +362,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	row := store.AdminToken{
 		ID:        uuid.NewString(),
-		TenantID:  pending.tenantID,
+		TenantID:  pending.TenantID,
 		Name:      label,
 		Hash:      hash[:],
 		CreatedAt: tokenNow,
@@ -387,7 +377,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	auditEntry := store.AuditEntry{
 		At:       s.now(),
 		Actor:    userActor,
-		TenantID: pending.tenantID,
+		TenantID: pending.TenantID,
 		Method:   "oidc.login",
 		Path:     "sub=" + claims.Subject + " role=" + matchedRole,
 		Status:   http.StatusOK,

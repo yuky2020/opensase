@@ -52,6 +52,17 @@ helm install edge1 deploy/helm/opensase-edge -n opensase-edge \
   --set pki.existingSecret=opensase-edge-1-pki
 ```
 
+Each release also publishes both charts, signed with cosign, as OCI artifacts. Install them
+without a checkout, with the same values:
+
+```bash
+helm install cp oci://ghcr.io/yuky2020/charts/opensase-controlplane --version <version> -n opensase \
+  --set controlURL=https://controlplane.example.com:9443
+cosign verify ghcr.io/yuky2020/charts/opensase-controlplane:<version> \
+  --certificate-identity-regexp '^https://github.com/yuky2020/opensase/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Point the DNS names at the LoadBalancer addresses. The Services use
 `externalTrafficPolicy: Local`, so clients' source addresses reach the pods unchanged.
 

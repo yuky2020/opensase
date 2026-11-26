@@ -231,6 +231,46 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  charts:
+    name: Helm charts (OCI)
+    needs: [gate, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version and registry
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "CHART_REPO=ghcr.io/${OWNER_LOWER}/charts" >> "$GITHUB_ENV"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Package, push and sign the charts
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          echo "$REGISTRY_TOKEN" | cosign login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          for chart in opensase-controlplane opensase-edge; do
+            helm package "deploy/helm/$chart" --version "$VERSION" --app-version "$VERSION" -d dist
+            out=$(helm push "dist/$chart-$VERSION.tgz" "oci://$CHART_REPO" 2>&1)
+            echo "$out"
+            digest=$(echo "$out" | sed -n 's/^Digest: //p')
+            test -n "$digest"
+            cosign sign --yes "$CHART_REPO/$chart@$digest"
+          done
+
   binaries:
     name: Standalone binaries
     needs: gate
@@ -479,7 +519,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [gate, images, quickstart, binaries, msi, deb, apk]
+    needs: [gate, images, quickstart, charts, binaries, msi, deb, apk]
     runs-on: ubuntu-latest
     permissions:
       contents: write

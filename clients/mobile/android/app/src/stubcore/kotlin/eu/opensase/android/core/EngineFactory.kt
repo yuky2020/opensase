@@ -23,5 +23,7 @@ class StubCoreEngine : CoreEngine {
     override fun setAppPolicy(pkg: String, wifi: String, cellular: String, roaming: String) = missing()
     override fun recentFlows(limit: Int) = "[]"
     override fun appStats() = "[]"
+    override fun setPosture(json: String) {}
+    override fun postureFailing() = "[]"
     override fun status() = """{"state":"stopped","error":"Go core not bundled"}"""
 }

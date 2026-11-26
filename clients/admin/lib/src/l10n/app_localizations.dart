@@ -2234,6 +2234,111 @@ abstract class AppLocalizations {
 
   /// Empty state message.
   String get experienceEmpty;
+
+  /// Field label: Posture.
+  String get fieldPosture;
+
+  /// Posture status: Compliant.
+  String get postureCompliant;
+
+  /// Posture status: No report.
+  String get postureNoReport;
+
+  /// Posture status: failing checks count.
+  String postureChecksFailing(int count);
+
+  /// Posture dialog title.
+  String get postureDialogTitle;
+
+  /// Posture OS label.
+  String get postureOs;
+
+  /// Posture OS version label.
+  String get postureOsVersion;
+
+  /// Posture client version label.
+  String get postureClientVersion;
+
+  /// Posture disk encrypted label.
+  String get postureDiskEncrypted;
+
+  /// Posture screen lock label.
+  String get postureScreenLock;
+
+  /// Posture firewall label.
+  String get postureFirewall;
+
+  /// Posture managed label.
+  String get postureManaged;
+
+  /// Posture boot time label.
+  String get postureBootTime;
+
+  /// Posture collected at label.
+  String get postureCollectedAt;
+
+  /// Posture reported at label.
+  String get postureReportedAt;
+
+  /// Posture failing checks header.
+  String get postureFailingChecks;
+
+  /// Posture none label.
+  String get postureNone;
+
+  /// Posture unknown label.
+  String get postureUnknown;
+
+  /// Policy section title: Device posture.
+  String get policyPosture;
+
+  /// Policy section help: Device posture.
+  String get policyPostureHelp;
+
+  /// Posture policy: Minimum OS versions.
+  String get postureMinOsVersion;
+
+  /// Posture policy: Minimum client version.
+  String get postureMinClientVersion;
+
+  /// Posture policy: Required checks.
+  String get postureRequire;
+
+  /// Posture policy: Restrict non-compliant devices.
+  String get postureRestrict;
+
+  /// Posture policy: Restrict help.
+  String get postureRestrictHelp;
+
+  /// Posture policy: Remediation domains.
+  String get postureRemediationDomains;
+
+  /// Posture policy: Remediation domains help.
+  String get postureRemediationDomainsHelp;
+
+  /// Posture policy: Add domain button.
+  String get postureAddDomain;
+
+  /// Posture check name: Disk encryption.
+  String get postureCheckDiskEncryption;
+
+  /// Posture check name: Screen lock.
+  String get postureCheckScreenLock;
+
+  /// Posture check name: Firewall.
+  String get postureCheckFirewall;
+
+  /// Posture check name: Managed.
+  String get postureCheckManaged;
+
+  /// Posture condition dropdown: Any.
+  String get postureConditionAny;
+
+  /// Posture condition dropdown: Compliant only.
+  String get postureConditionCompliant;
+
+  /// Posture condition dropdown: Non-compliant only.
+  String get postureConditionNoncompliant;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

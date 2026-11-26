@@ -12,6 +12,7 @@ import android.provider.Settings
 import android.util.LruCache
 import eu.opensase.android.MainActivity
 import eu.opensase.android.NativeGraph
+import eu.opensase.android.core.PostureCollector
 import eu.opensase.android.core.UserRulesForbiddenException
 import eu.opensase.android.core.classifyCoreError
 import eu.opensase.android.vpn.OpenSaseVpnService
@@ -78,6 +79,7 @@ class EngineChannel(
         return when (call.method) {
             "isEnrolled" -> io { e.isEnrolled() }
             "enroll" -> io {
+                e.setPosture(PostureCollector.collect(activity))
                 // The control URL may carry "#sha256=<hex>" (CA pin): pass it through unchanged.
                 e.enroll(call.arg<String>("controlUrl")!!, call.arg<String>("provisioningKey")!!, call.arg<String>("deviceName")!!)
                 null

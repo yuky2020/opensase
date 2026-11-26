@@ -16,6 +16,7 @@ class FakeEngine implements Engine {
   FakeEngine({
     this.allowUserRules = true,
     this.liveTraffic = true,
+    this.postureFailing = const [],
     this._enrolled = false,
     int seed = 42,
     DateTime Function()? clock,
@@ -26,6 +27,7 @@ class FakeEngine implements Engine {
 
   final bool allowUserRules;
   final bool liveTraffic;
+  List<String> postureFailing;
   final Random _random;
   final DateTime Function() _clock;
   final _events = StreamController<EngineEvent>.broadcast();
@@ -125,6 +127,7 @@ class FakeEngine implements Engine {
       pq: _state == EngineStatus.connected,
       certExpiresAt: _enrolled ? _clock().toUtc().add(const Duration(days: 30)).toIso8601String() : '',
       kex: _state == EngineStatus.connected ? 'X25519MLKEM768' : '',
+      postureFailing: postureFailing,
     ).toJson(),
   );
 

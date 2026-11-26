@@ -20,6 +20,8 @@ interface CoreEngine {
     fun start(tunFd: Int, networkType: String)
     fun stop()
     fun setNetworkType(networkType: String)
+    fun setPosture(json: String)
+    fun postureFailing(): String
 
     /** JSON [Snapshot] or "". */
     fun snapshot(): String

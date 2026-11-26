@@ -22,6 +22,7 @@ EngineStatus _$EngineStatusFromJson(Map<String, dynamic> json) => EngineStatus(
   txBytes: (json['txBytes'] as num?)?.toInt() ?? 0,
   rxBytes: (json['rxBytes'] as num?)?.toInt() ?? 0,
   certExpiresAt: json['certExpiresAt'] == null ? '' : _timeFromJson(json['certExpiresAt']),
+  postureFailing: (json['postureFailing'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
 );
 
 Map<String, dynamic> _$EngineStatusToJson(EngineStatus instance) => <String, dynamic>{
@@ -40,6 +41,7 @@ Map<String, dynamic> _$EngineStatusToJson(EngineStatus instance) => <String, dyn
   'txBytes': instance.txBytes,
   'rxBytes': instance.rxBytes,
   'certExpiresAt': instance.certExpiresAt,
+  'postureFailing': instance.postureFailing,
 };
 
 AppStat _$AppStatFromJson(Map<String, dynamic> json) => AppStat(

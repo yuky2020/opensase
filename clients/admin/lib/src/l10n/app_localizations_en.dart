@@ -1515,4 +1515,119 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get experienceEmpty => 'No digital experience data for this period';
+
+  @override
+  String get fieldPosture => 'Posture';
+
+  @override
+  String get postureCompliant => 'Compliant';
+
+  @override
+  String get postureNoReport => 'No report';
+
+  @override
+  String postureChecksFailing(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count checks failing',
+      one: '1 check failing',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get postureDialogTitle => 'Device posture';
+
+  @override
+  String get postureOs => 'Operating system';
+
+  @override
+  String get postureOsVersion => 'OS version';
+
+  @override
+  String get postureClientVersion => 'Client version';
+
+  @override
+  String get postureDiskEncrypted => 'Disk encrypted';
+
+  @override
+  String get postureScreenLock => 'Screen lock';
+
+  @override
+  String get postureFirewall => 'Firewall';
+
+  @override
+  String get postureManaged => 'Managed';
+
+  @override
+  String get postureBootTime => 'Boot time';
+
+  @override
+  String get postureCollectedAt => 'Collected at';
+
+  @override
+  String get postureReportedAt => 'Reported at';
+
+  @override
+  String get postureFailingChecks => 'Failing checks';
+
+  @override
+  String get postureNone => 'None';
+
+  @override
+  String get postureUnknown => 'Unknown';
+
+  @override
+  String get policyPosture => 'Device posture';
+
+  @override
+  String get policyPostureHelp => 'Enforce minimum OS and client versions, required checks, and remediation access.';
+
+  @override
+  String get postureMinOsVersion => 'Minimum OS versions';
+
+  @override
+  String get postureMinClientVersion => 'Minimum client version';
+
+  @override
+  String get postureRequire => 'Required checks';
+
+  @override
+  String get postureRestrict => 'Restrict non-compliant devices';
+
+  @override
+  String get postureRestrictHelp =>
+      'Devices failing posture receive a restricted snapshot allowing only remediation domains.';
+
+  @override
+  String get postureRemediationDomains => 'Remediation domains';
+
+  @override
+  String get postureRemediationDomainsHelp =>
+      'Domains reachable from restricted devices (e.g. update servers or help pages).';
+
+  @override
+  String get postureAddDomain => 'Add domain';
+
+  @override
+  String get postureCheckDiskEncryption => 'Disk encryption';
+
+  @override
+  String get postureCheckScreenLock => 'Screen lock';
+
+  @override
+  String get postureCheckFirewall => 'Firewall (Windows)';
+
+  @override
+  String get postureCheckManaged => 'Managed profile or MDM';
+
+  @override
+  String get postureConditionAny => 'Any posture';
+
+  @override
+  String get postureConditionCompliant => 'Compliant only';
+
+  @override
+  String get postureConditionNoncompliant => 'Non-compliant only';
 }

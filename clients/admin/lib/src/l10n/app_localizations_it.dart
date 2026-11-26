@@ -1525,4 +1525,120 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get experienceEmpty => 'Nessun dato di esperienza digitale per questo periodo';
+
+  @override
+  String get fieldPosture => 'Posture';
+
+  @override
+  String get postureCompliant => 'Conforme';
+
+  @override
+  String get postureNoReport => 'Nessun report';
+
+  @override
+  String postureChecksFailing(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count controlli non superati',
+      one: '1 controllo non superato',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get postureDialogTitle => 'Posture del dispositivo';
+
+  @override
+  String get postureOs => 'Sistema operativo';
+
+  @override
+  String get postureOsVersion => 'Versione SO';
+
+  @override
+  String get postureClientVersion => 'Versione client';
+
+  @override
+  String get postureDiskEncrypted => 'Disco crittografato';
+
+  @override
+  String get postureScreenLock => 'Blocco schermo';
+
+  @override
+  String get postureFirewall => 'Firewall';
+
+  @override
+  String get postureManaged => 'Gestito';
+
+  @override
+  String get postureBootTime => 'Ora di avvio';
+
+  @override
+  String get postureCollectedAt => 'Rilevato il';
+
+  @override
+  String get postureReportedAt => 'Segnalato il';
+
+  @override
+  String get postureFailingChecks => 'Controlli non superati';
+
+  @override
+  String get postureNone => 'Nessuno';
+
+  @override
+  String get postureUnknown => 'Sconosciuto';
+
+  @override
+  String get policyPosture => 'Posture dispositivo';
+
+  @override
+  String get policyPostureHelp =>
+      'Applica versioni minime di SO e client, controlli richiesti e accesso di correzione.';
+
+  @override
+  String get postureMinOsVersion => 'Versioni minime del SO';
+
+  @override
+  String get postureMinClientVersion => 'Versione minima client';
+
+  @override
+  String get postureRequire => 'Controlli richiesti';
+
+  @override
+  String get postureRestrict => 'Limita dispositivi non conformi';
+
+  @override
+  String get postureRestrictHelp =>
+      'I dispositivi non conformi ricevono uno snapshot limitato consentendo solo i domini di correzione.';
+
+  @override
+  String get postureRemediationDomains => 'Domini di correzione';
+
+  @override
+  String get postureRemediationDomainsHelp =>
+      'Domini raggiungibili dai dispositivi limitati (es. server di aggiornamento o pagine di supporto).';
+
+  @override
+  String get postureAddDomain => 'Aggiungi dominio';
+
+  @override
+  String get postureCheckDiskEncryption => 'Crittografia disco';
+
+  @override
+  String get postureCheckScreenLock => 'Blocco schermo';
+
+  @override
+  String get postureCheckFirewall => 'Firewall (Windows)';
+
+  @override
+  String get postureCheckManaged => 'Profilo di lavoro o MDM';
+
+  @override
+  String get postureConditionAny => 'Qualsiasi posture';
+
+  @override
+  String get postureConditionCompliant => 'Solo conformi';
+
+  @override
+  String get postureConditionNoncompliant => 'Solo non conformi';
 }

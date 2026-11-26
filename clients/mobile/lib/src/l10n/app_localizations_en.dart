@@ -681,4 +681,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingOrKey => 'or enter a provisioning key';
+
+  @override
+  String get postureAttention => 'Device needs attention';
+
+  @override
+  String get postureHintOsVersion => 'Update Android';
+
+  @override
+  String get postureHintClientVersion => 'Update the OpenSASE app';
+
+  @override
+  String get postureHintDiskEncryption => 'Turn on device encryption';
+
+  @override
+  String get postureHintScreenLock => 'Set a screen lock';
+
+  @override
+  String get postureHintManaged => 'Use your work profile or a company device';
+
+  @override
+  String get postureHintFirewall => 'Turn on device firewall';
 }

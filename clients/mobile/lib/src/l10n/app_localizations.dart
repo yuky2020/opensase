@@ -1363,6 +1363,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'or enter a provisioning key'**
   String get onboardingOrKey;
+
+  /// No description provided for @postureAttention.
+  ///
+  /// In en, this message translates to:
+  /// **'Device needs attention'**
+  String get postureAttention;
+
+  /// No description provided for @postureHintOsVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Android'**
+  String get postureHintOsVersion;
+
+  /// No description provided for @postureHintClientVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the OpenSASE app'**
+  String get postureHintClientVersion;
+
+  /// No description provided for @postureHintDiskEncryption.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on device encryption'**
+  String get postureHintDiskEncryption;
+
+  /// No description provided for @postureHintScreenLock.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a screen lock'**
+  String get postureHintScreenLock;
+
+  /// No description provided for @postureHintManaged.
+  ///
+  /// In en, this message translates to:
+  /// **'Use your work profile or a company device'**
+  String get postureHintManaged;
+
+  /// No description provided for @postureHintFirewall.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on device firewall'**
+  String get postureHintFirewall;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

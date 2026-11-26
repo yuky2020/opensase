@@ -27,6 +27,10 @@ class HomeScreen extends ConsumerWidget {
           _ConnectToggle(state: s),
           const SizedBox(height: 16),
           _StatusCard(state: s),
+          if (s.status.postureFailing.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _PostureAttentionCard(failing: s.status.postureFailing),
+          ],
           if (isDesktop && !s.daemonConnected) ...[const SizedBox(height: 12), const DaemonUnreachableBanner()],
           if (s.status.stale) ...[const SizedBox(height: 12), InfoBanner(l.homeStale, warning: true)],
           if (s.vpn.phase == VpnPhase.failed && s.vpn.message.isNotEmpty) ...[
@@ -206,6 +210,72 @@ class _CountersCard extends StatelessWidget {
                 counter(c.dnsBlocked, l.homeDnsBlocked, v.ask),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PostureAttentionCard extends StatelessWidget {
+  const _PostureAttentionCard({required this.failing});
+  final List<String> failing;
+
+  String _hintFor(BuildContext context, String check) {
+    final l = context.l10n;
+    return switch (check) {
+      'osVersion' => l.postureHintOsVersion,
+      'clientVersion' => l.postureHintClientVersion,
+      'diskEncryption' => l.postureHintDiskEncryption,
+      'screenLock' => l.postureHintScreenLock,
+      'managed' => l.postureHintManaged,
+      'firewall' => l.postureHintFirewall,
+      _ => check,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l10n;
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      key: const ValueKey('posture_attention_card'),
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l.postureAttention,
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(color: scheme.onErrorContainer, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final check in failing)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• ',
+                      style: TextStyle(color: scheme.onErrorContainer, fontWeight: FontWeight.bold),
+                    ),
+                    Expanded(
+                      child: Text(_hintFor(context, check), style: TextStyle(color: scheme.onErrorContainer)),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

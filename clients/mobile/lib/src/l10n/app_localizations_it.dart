@@ -683,4 +683,25 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get onboardingOrKey => 'oppure inserisci una chiave di provisioning';
+
+  @override
+  String get postureAttention => 'Il dispositivo richiede attenzione';
+
+  @override
+  String get postureHintOsVersion => 'Aggiorna Android';
+
+  @override
+  String get postureHintClientVersion => 'Aggiorna l\'app OpenSASE';
+
+  @override
+  String get postureHintDiskEncryption => 'Attiva la crittografia del dispositivo';
+
+  @override
+  String get postureHintScreenLock => 'Imposta un blocco schermo';
+
+  @override
+  String get postureHintManaged => 'Usa il profilo di lavoro o un dispositivo aziendale';
+
+  @override
+  String get postureHintFirewall => 'Attiva il firewall del dispositivo';
 }

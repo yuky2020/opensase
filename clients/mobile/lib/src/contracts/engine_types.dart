@@ -27,6 +27,7 @@ class EngineStatus {
     this.txBytes = 0,
     this.rxBytes = 0,
     this.certExpiresAt = '',
+    this.postureFailing = const [],
   });
 
   factory EngineStatus.fromJson(Map<String, dynamic> json) => _$EngineStatusFromJson(json);
@@ -84,6 +85,10 @@ class EngineStatus {
   /// Expiry of the device certificate (renewed by the core before it expires).
   @JsonKey(fromJson: _timeFromJson)
   final String certExpiresAt;
+
+  /// Failing posture checks reported by the Go core.
+  @JsonKey(defaultValue: <String>[])
+  final List<String> postureFailing;
 
   bool get isConnected => state == connected;
 

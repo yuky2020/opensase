@@ -96,6 +96,21 @@ The application provides real-time status and activity details across several ta
     - Connected Edge ID and geographic region.
     - Post-quantum security indicator (`PQ: X25519MLKEM768`).
     - Active Policy Snapshot version and status (shows `(stale)` if the snapshot has expired).
+    - **Device needs attention card:** Displayed when one or more posture compliance checks fail.
+
+### Device needs attention
+
+If your device does not satisfy the security posture requirements set by your organization, a **Device needs attention** warning card appears on the Home screen.
+
+The card lists each failing requirement alongside actionable remediation guidance:
+
+- **`osVersion`:** Update Android to the minimum version required by your organization.
+- **`clientVersion`:** Update the OpenSASE app.
+- **`diskEncryption`:** Turn on device encryption in your Android security settings.
+- **`screenLock`:** Set a screen lock (PIN, pattern, password, or biometric).
+- **`managed`:** Use your work profile or a company-managed device.
+
+If the tenant policy is configured to restrict non-compliant endpoints, device traffic is restricted to remediation resources until all issues are resolved.
 - **Activity tab:** Live stream of network flows showing timestamps, destinations, protocols, and verdicts
   (`allow`, `block`, or `ask`).
 - **Settings tab:**

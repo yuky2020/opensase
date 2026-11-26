@@ -183,6 +183,16 @@ class AdminApi {
   Future<List<AdminDevice>> listDevices(String tenant) async =>
       _list(await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/devices'), AdminDevice.fromJson);
 
+  Future<DevicePosture?> getDevicePosture(String tenant, String device) async {
+    try {
+      final v = await _send('GET', '/v1/admin/tenants/${_seg(tenant)}/devices/${_seg(device)}/posture');
+      return v == null ? null : DevicePosture.fromJson(v as Map<String, dynamic>);
+    } on ApiException catch (e) {
+      if (e.status == 404) return null;
+      rethrow;
+    }
+  }
+
   Future<void> revokeDevice(String tenant, String device) async =>
       _send('POST', '/v1/admin/tenants/${_seg(tenant)}/devices/${_seg(device)}/revoke');
 

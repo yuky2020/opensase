@@ -46,5 +46,7 @@ class GoCoreEngine(stateDir: File, bridge: PlatformBridge) : CoreEngine {
         call { engine.setAppPolicy(pkg, wifi, cellular, roaming) }
     override fun recentFlows(limit: Int): String = call { engine.recentFlows(limit.toLong()) }
     override fun appStats(): String = call { engine.appStats() }
+    override fun setPosture(json: String) = call { engine.setPosture(json) }
+    override fun postureFailing(): String = call { engine.postureFailing() }
     override fun status(): String = call { engine.status() }
 }

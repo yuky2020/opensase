@@ -76,9 +76,33 @@ Widget _actionDropdown(
   final options = [if (allowUnset) '', ...Verdicts.all];
   return DropdownButtonFormField<String>(
     key: key,
+    isExpanded: true,
     initialValue: options.contains(value) ? value : options.first,
     decoration: _dec(label),
     items: [for (final a in options) DropdownMenuItem(value: a, child: Text(actionLabel(context, a)))],
+    onChanged: (v) => onChanged(v ?? ''),
+  );
+}
+
+Widget _postureDropdown(
+  BuildContext context, {
+  required String value,
+  required ValueChanged<String> onChanged,
+  Key? key,
+}) {
+  final l = context.l10n;
+  final options = const ['', 'compliant', 'noncompliant'];
+  String label(String v) => switch (v) {
+    'compliant' => l.postureConditionCompliant,
+    'noncompliant' => l.postureConditionNoncompliant,
+    _ => l.postureConditionAny,
+  };
+  return DropdownButtonFormField<String>(
+    key: key,
+    isExpanded: true,
+    initialValue: options.contains(value) ? value : options.first,
+    decoration: _dec(l.fieldPosture),
+    items: [for (final a in options) DropdownMenuItem(value: a, child: Text(label(a)))],
     onChanged: (v) => onChanged(v ?? ''),
   );
 }
@@ -185,6 +209,12 @@ class _RuleDialogState extends State<RuleDialog> {
           label: l.ruleAction,
           value: _r.action,
           onChanged: (v) => _r.action = v,
+        ),
+        _postureDropdown(
+          context,
+          key: const ValueKey('rule_posture'),
+          value: _r.posture,
+          onChanged: (v) => _r.posture = v,
         ),
         TextFormField(controller: _desc, decoration: _dec(l.ruleDescription)),
         CheckboxListTile(
@@ -383,6 +413,7 @@ class _PrivateAppDialogState extends State<PrivateAppDialog> {
     text: widget.app.connectorGroup.isEmpty ? 'default' : widget.app.connectorGroup,
   );
   late final _users = TextEditingController(text: widget.app.users.join('\n'));
+  late String _posture = widget.app.posture;
 
   @override
   void dispose() {
@@ -408,7 +439,9 @@ class _PrivateAppDialogState extends State<PrivateAppDialog> {
             domains: parseList(_domains.text),
             ports: parsePorts(_ports.text),
             connectorGroup: _group.text.trim(),
+            posture: _posture,
             users: parseList(_users.text),
+            extra: widget.app.extra,
           ),
         );
       },
@@ -445,6 +478,7 @@ class _PrivateAppDialogState extends State<PrivateAppDialog> {
           decoration: _dec(l.privateAppConnectorGroup),
           validator: (s) => (s?.trim() ?? '').isEmpty ? l.fieldRequired : null,
         ),
+        _postureDropdown(context, key: const ValueKey('papp_posture'), value: _posture, onChanged: (v) => _posture = v),
         TextFormField(controller: _users, minLines: 1, maxLines: 6, decoration: _dec(l.privateAppUsers)),
       ],
     );

@@ -72,20 +72,31 @@ class ProvisioningKey {
 
 /// api.TenantPrivateApp: an embedded policy.PrivateApp (fields flattened) plus Users.
 class TenantPrivateApp extends PrivateApp {
-  TenantPrivateApp({super.id, super.name, super.domains, super.ports, super.connectorGroup, List<String>? users})
-    : users = users ?? [];
+  TenantPrivateApp({
+    super.id,
+    super.name,
+    super.domains,
+    super.ports,
+    super.connectorGroup,
+    super.posture,
+    super.extra,
+    List<String>? users,
+  }) : users = users ?? [];
 
   /// User IDs or emails; empty means every user of the tenant.
   List<String> users;
 
   factory TenantPrivateApp.fromJson(Json j) {
     final p = PrivateApp.fromJson(j);
+    p.extra.remove('users');
     return TenantPrivateApp(
       id: p.id,
       name: p.name,
       domains: p.domains,
       ports: p.ports,
       connectorGroup: p.connectorGroup,
+      posture: p.posture,
+      extra: p.extra,
       users: strList(j, 'users'),
     );
   }
@@ -155,6 +166,7 @@ class TenantPolicy {
     this.decideDefault = '',
     SaasPolicy? saas,
     WebPolicy? web,
+    TenantPosturePolicy? posture,
     List<String>? categories,
     this.safeSearch = false,
     List<CustomList>? customLists,
@@ -162,6 +174,7 @@ class TenantPolicy {
   }) : saas = saas ?? SaasPolicy(),
        categories = categories ?? [],
        web = web ?? WebPolicy(),
+       posture = posture ?? TenantPosturePolicy(),
        rules = rules ?? [],
        apps = apps ?? {},
        dns = dns ?? DnsPolicy(),
@@ -191,6 +204,9 @@ class TenantPolicy {
 
   /// TLS inspection and web rules, enforced by the Edge (ADR-0018).
   WebPolicy web;
+
+  /// Posture policy (ADR-0035).
+  TenantPosturePolicy posture;
 
   /// Web categories to block (ADR-0022), names from the loaded category list.
   List<String> categories;
@@ -222,6 +238,7 @@ class TenantPolicy {
       decideDefault: str(j, 'decideDefault'),
       saas: SaasPolicy.fromJson(objOrEmpty(j, 'saas')),
       web: WebPolicy.fromJson(objOrEmpty(j, 'web')),
+      posture: TenantPosturePolicy.fromJson(objOrEmpty(j, 'posture')),
       categories: strList(j, 'categories'),
       safeSearch: boolean(j, 'safeSearch'),
       customLists: objList(j, 'customLists', CustomList.fromJson),
@@ -244,6 +261,7 @@ class TenantPolicy {
     j['decideDefault'] = decideDefault;
     if (!saas.isEmpty) j['saas'] = saas.toJson();
     if (!web.isEmpty) j['web'] = web.toJson();
+    if (!posture.isEmpty) j['posture'] = posture.toJson();
     putOmit(j, 'categories', categories);
     if (safeSearch) j['safeSearch'] = true;
     putOmit(j, 'customLists', [for (final l in customLists) l.toJson()]);
@@ -390,6 +408,95 @@ class AdminDevice {
     'revoked': revoked,
     'createdAt': goTime(createdAt),
   };
+}
+
+/// api.DevicePosture: device posture report (ADR-0035).
+class DevicePosture {
+  DevicePosture({
+    this.os = '',
+    this.osVersion = '',
+    this.clientVersion = '',
+    this.diskEncrypted,
+    this.screenLock,
+    this.firewall,
+    this.managed,
+    this.bootTime,
+    this.collectedAt,
+    List<String>? failing,
+    this.reportedAt,
+    Map<String, dynamic>? extra,
+  }) : failing = failing ?? [],
+       extra = extra ?? {};
+
+  String os;
+  String osVersion;
+  String clientVersion;
+  bool? diskEncrypted;
+  bool? screenLock;
+  bool? firewall;
+  bool? managed;
+  DateTime? bootTime;
+  DateTime? collectedAt;
+  List<String> failing;
+  DateTime? reportedAt;
+  Map<String, dynamic> extra;
+
+  bool get isCompliant => failing.isEmpty;
+
+  factory DevicePosture.fromJson(Json j) {
+    const known = {
+      'os',
+      'osVersion',
+      'clientVersion',
+      'diskEncrypted',
+      'screenLock',
+      'firewall',
+      'managed',
+      'bootTime',
+      'collectedAt',
+      'failing',
+      'reportedAt',
+    };
+    final extra = <String, dynamic>{
+      for (final e in j.entries)
+        if (!known.contains(e.key)) e.key: e.value,
+    };
+    bool? optBool(String key) {
+      final v = j[key];
+      return v is bool ? v : null;
+    }
+
+    return DevicePosture(
+      os: str(j, 'os'),
+      osVersion: str(j, 'osVersion'),
+      clientVersion: str(j, 'clientVersion'),
+      diskEncrypted: optBool('diskEncrypted'),
+      screenLock: optBool('screenLock'),
+      firewall: optBool('firewall'),
+      managed: optBool('managed'),
+      bootTime: time(j, 'bootTime'),
+      collectedAt: time(j, 'collectedAt'),
+      failing: strList(j, 'failing'),
+      reportedAt: time(j, 'reportedAt'),
+      extra: extra,
+    );
+  }
+
+  Json toJson() {
+    final j = Map<String, dynamic>.from(extra);
+    putOmit(j, 'os', os);
+    putOmit(j, 'osVersion', osVersion);
+    putOmit(j, 'clientVersion', clientVersion);
+    if (diskEncrypted != null) j['diskEncrypted'] = diskEncrypted;
+    if (screenLock != null) j['screenLock'] = screenLock;
+    if (firewall != null) j['firewall'] = firewall;
+    if (managed != null) j['managed'] = managed;
+    if (bootTime != null) j['bootTime'] = goTime(bootTime);
+    if (collectedAt != null) j['collectedAt'] = goTime(collectedAt);
+    putOmit(j, 'failing', failing);
+    if (reportedAt != null) j['reportedAt'] = goTime(reportedAt);
+    return j;
+  }
 }
 
 class AdminConnectorRequest {
@@ -631,6 +738,65 @@ class SaasPolicy {
     putOmit(j, 'allowApps', allowApps);
     return j;
   }
+}
+
+/// TenantPolicy.posture: tenant posture policy (ADR-0035).
+class TenantPosturePolicy {
+  TenantPosturePolicy({
+    Map<String, String>? minOsVersion,
+    this.minClientVersion = '',
+    List<String>? require,
+    this.restrict = false,
+    List<String>? remediationDomains,
+    Map<String, dynamic>? extra,
+  }) : minOsVersion = minOsVersion ?? {},
+       require = require ?? [],
+       remediationDomains = remediationDomains ?? [],
+       extra = extra ?? {};
+
+  Map<String, String> minOsVersion;
+  String minClientVersion;
+  List<String> require;
+  bool restrict;
+  List<String> remediationDomains;
+  Map<String, dynamic> extra;
+
+  bool get isEmpty =>
+      minOsVersion.isEmpty &&
+      minClientVersion.isEmpty &&
+      require.isEmpty &&
+      !restrict &&
+      remediationDomains.isEmpty &&
+      extra.isEmpty;
+
+  factory TenantPosturePolicy.fromJson(Json j) {
+    const known = {'minOsVersion', 'minClientVersion', 'require', 'restrict', 'remediationDomains'};
+    final extra = <String, dynamic>{
+      for (final e in j.entries)
+        if (!known.contains(e.key)) e.key: e.value,
+    };
+    final minOs = objOrEmpty(j, 'minOsVersion');
+    return TenantPosturePolicy(
+      minOsVersion: {for (final e in minOs.entries) e.key: e.value?.toString() ?? ''},
+      minClientVersion: str(j, 'minClientVersion'),
+      require: strList(j, 'require'),
+      restrict: boolean(j, 'restrict'),
+      remediationDomains: strList(j, 'remediationDomains'),
+      extra: extra,
+    );
+  }
+
+  Json toJson() {
+    final j = Map<String, dynamic>.from(extra);
+    putOmit(j, 'minOsVersion', minOsVersion);
+    putOmit(j, 'minClientVersion', minClientVersion);
+    putOmit(j, 'require', require);
+    if (restrict) j['restrict'] = true;
+    putOmit(j, 'remediationDomains', remediationDomains);
+    return j;
+  }
+
+  TenantPosturePolicy copy() => TenantPosturePolicy.fromJson(toJson());
 }
 
 /// One entry of the built-in SaaS catalog.

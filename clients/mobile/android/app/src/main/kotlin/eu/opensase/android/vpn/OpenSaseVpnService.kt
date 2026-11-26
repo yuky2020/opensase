@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import eu.opensase.android.MainActivity
 import eu.opensase.android.R
 import eu.opensase.android.core.CoreEvent
+import eu.opensase.android.core.PostureCollector
 import eu.opensase.android.core.classifyCoreError
 import eu.opensase.android.graph
 import kotlinx.coroutines.CancellationException
@@ -118,6 +119,7 @@ class OpenSaseVpnService : VpnService() {
         monitor.start()
         try {
             if (!withContext(Dispatchers.IO) { g.engine.isEnrolled() }) error(getString(R.string.vpn_error_not_enrolled))
+            withContext(Dispatchers.IO) { g.engine.setPosture(PostureCollector.collect(this@OpenSaseVpnService)) }
             // tunnelConfig() performs session setup with the Edge (network I/O).
             val cfg = TunnelConfig.parse(withContext(Dispatchers.IO) { g.engine.tunnelConfig() })
             val pfd = buildInterface(cfg).establish() ?: error(getString(R.string.vpn_error_not_prepared))
@@ -126,6 +128,7 @@ class OpenSaseVpnService : VpnService() {
             val fd = pfd.detachFd()
             val net = monitor.current.value.type.wire
             withContext(NonCancellable + Dispatchers.IO) {
+                g.engine.setPosture(PostureCollector.collect(this@OpenSaseVpnService))
                 g.engine.start(fd, net)
                 running = true
             }

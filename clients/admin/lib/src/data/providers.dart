@@ -62,6 +62,10 @@ final devicesProvider = FutureProvider.family<List<AdminDevice>, String>(
   (ref, t) => ref.watch(apiProvider).listDevices(t),
 );
 
+final devicePostureProvider = FutureProvider.family<DevicePosture?, (String, String)>(
+  (ref, arg) => ref.watch(apiProvider).getDevicePosture(arg.$1, arg.$2),
+);
+
 final connectorsProvider = FutureProvider.family<List<AdminConnector>, String>(
   (ref, t) => ref.watch(apiProvider).listConnectors(t),
 );

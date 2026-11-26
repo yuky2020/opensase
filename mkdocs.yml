@@ -72,6 +72,7 @@ nav:
       - Policy: admin/policy.md
       - DNS: admin/dns.md
       - Private apps: admin/private-apps.md
+      - Device posture: admin/posture.md
       - Status: admin/status.md
   - User guide:
       - Android: user/android.md

@@ -348,5 +348,12 @@
   "onboardingSsoTenantInvalid": "Only lowercase letters, numbers, and hyphens are allowed",
   "onboardingSsoButton": "Sign in",
   "onboardingSsoError": "Single sign-on failed: session expired or invalid state",
-  "onboardingOrKey": "or enter a provisioning key"
+  "onboardingOrKey": "or enter a provisioning key",
+  "postureAttention": "Device needs attention",
+  "postureHintOsVersion": "Update Android",
+  "postureHintClientVersion": "Update the OpenSASE app",
+  "postureHintDiskEncryption": "Turn on device encryption",
+  "postureHintScreenLock": "Set a screen lock",
+  "postureHintManaged": "Use your work profile or a company device",
+  "postureHintFirewall": "Turn on device firewall"
 }

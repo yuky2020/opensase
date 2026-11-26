@@ -106,7 +106,10 @@ class Rule {
     Match? match,
     this.log = false,
     this.description = '',
-  }) : match = match ?? Match();
+    this.posture = '',
+    Map<String, dynamic>? extra,
+  }) : match = match ?? Match(),
+       extra = extra ?? {};
 
   String id;
   String source;
@@ -115,27 +118,38 @@ class Rule {
   Match match;
   bool log;
   String description;
+  String posture;
+  Map<String, dynamic> extra;
 
-  factory Rule.fromJson(Json j) => Rule(
-    id: str(j, 'id'),
-    source: str(j, 'source'),
-    priority: integer(j, 'priority'),
-    action: str(j, 'action'),
-    match: Match.fromJson(objOrEmpty(j, 'match')),
-    log: boolean(j, 'log'),
-    description: str(j, 'description'),
-  );
+  factory Rule.fromJson(Json j) {
+    const known = {'id', 'source', 'priority', 'action', 'match', 'log', 'description', 'posture'};
+    final extra = <String, dynamic>{
+      for (final e in j.entries)
+        if (!known.contains(e.key)) e.key: e.value,
+    };
+    return Rule(
+      id: str(j, 'id'),
+      source: str(j, 'source'),
+      priority: integer(j, 'priority'),
+      action: str(j, 'action'),
+      match: Match.fromJson(objOrEmpty(j, 'match')),
+      log: boolean(j, 'log'),
+      description: str(j, 'description'),
+      posture: str(j, 'posture'),
+      extra: extra,
+    );
+  }
 
   Json toJson() {
-    final j = <String, dynamic>{
-      'id': id,
-      'source': source,
-      'priority': priority,
-      'action': action,
-      'match': match.toJson(),
-      'log': log,
-    };
+    final j = Map<String, dynamic>.from(extra);
+    j['id'] = id;
+    j['source'] = source;
+    j['priority'] = priority;
+    j['action'] = action;
+    j['match'] = match.toJson();
+    j['log'] = log;
     putOmit(j, 'description', description);
+    putOmit(j, 'posture', posture);
     return j;
   }
 
@@ -272,31 +286,53 @@ class DnsPolicy {
 
 /// policy.PrivateApp (ADR-0013).
 class PrivateApp {
-  PrivateApp({this.id = '', this.name = '', List<String>? domains, List<PortRange>? ports, this.connectorGroup = ''})
-    : domains = domains ?? [],
-      ports = ports ?? [];
+  PrivateApp({
+    this.id = '',
+    this.name = '',
+    List<String>? domains,
+    List<PortRange>? ports,
+    this.connectorGroup = '',
+    this.posture = '',
+    Map<String, dynamic>? extra,
+  }) : domains = domains ?? [],
+       ports = ports ?? [],
+       extra = extra ?? {};
 
   String id;
   String name;
   List<String> domains;
   List<PortRange> ports;
   String connectorGroup;
+  String posture;
+  Map<String, dynamic> extra;
 
-  factory PrivateApp.fromJson(Json j) => PrivateApp(
-    id: str(j, 'id'),
-    name: str(j, 'name'),
-    domains: strList(j, 'domains'),
-    ports: objList(j, 'ports', PortRange.fromJson),
-    connectorGroup: str(j, 'connectorGroup'),
-  );
+  factory PrivateApp.fromJson(Json j) {
+    const known = {'id', 'name', 'domains', 'ports', 'connectorGroup', 'posture'};
+    final extra = <String, dynamic>{
+      for (final e in j.entries)
+        if (!known.contains(e.key)) e.key: e.value,
+    };
+    return PrivateApp(
+      id: str(j, 'id'),
+      name: str(j, 'name'),
+      domains: strList(j, 'domains'),
+      ports: objList(j, 'ports', PortRange.fromJson),
+      connectorGroup: str(j, 'connectorGroup'),
+      posture: str(j, 'posture'),
+      extra: extra,
+    );
+  }
 
-  Json toJson() => {
-    'id': id,
-    'name': name,
-    'domains': domains,
-    'ports': [for (final p in ports) p.toJson()],
-    'connectorGroup': connectorGroup,
-  };
+  Json toJson() {
+    final j = Map<String, dynamic>.from(extra);
+    j['id'] = id;
+    j['name'] = name;
+    j['domains'] = domains;
+    j['ports'] = [for (final p in ports) p.toJson()];
+    j['connectorGroup'] = connectorGroup;
+    putOmit(j, 'posture', posture);
+    return j;
+  }
 }
 
 class Flow {

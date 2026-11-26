@@ -211,5 +211,12 @@
   "onboardingSsoTenantInvalid": "Sono consentiti solo lettere minuscole, numeri e trattini",
   "onboardingSsoButton": "Accedi",
   "onboardingSsoError": "Accesso Single Sign-On non riuscito: sessione scaduta o stato non valido",
-  "onboardingOrKey": "oppure inserisci una chiave di provisioning"
+  "onboardingOrKey": "oppure inserisci una chiave di provisioning",
+  "postureAttention": "Il dispositivo richiede attenzione",
+  "postureHintOsVersion": "Aggiorna Android",
+  "postureHintClientVersion": "Aggiorna l'app OpenSASE",
+  "postureHintDiskEncryption": "Attiva la crittografia del dispositivo",
+  "postureHintScreenLock": "Imposta un blocco schermo",
+  "postureHintManaged": "Usa il profilo di lavoro o un dispositivo aziendale",
+  "postureHintFirewall": "Attiva il firewall del dispositivo"
 }

@@ -167,6 +167,7 @@ class DevicesScreen extends ConsumerWidget {
                     DataColumn(label: Text(l.fieldUser)),
                     DataColumn(label: Text(l.fieldPlatform)),
                     DataColumn(label: Text(l.fieldCreated)),
+                    DataColumn(label: Text(l.fieldPosture)),
                     DataColumn(label: Text(l.fieldStatus)),
                     DataColumn(label: Text(l.fieldId)),
                     const DataColumn(label: SizedBox.shrink()),
@@ -179,6 +180,7 @@ class DevicesScreen extends ConsumerWidget {
                           DataCell(Text(d.userId)),
                           DataCell(Text(d.platform)),
                           DataCell(Text(formatTime(context, d.createdAt))),
+                          DataCell(_DevicePostureChip(tenant: tenant, device: d)),
                           DataCell(revokedChip(context, d.revoked)),
                           DataCell(SelectableText(d.id)),
                           DataCell(
@@ -195,6 +197,100 @@ class DevicesScreen extends ConsumerWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+void _showDevicePostureDialog(BuildContext context, AdminDevice device, DevicePosture posture) {
+  final l = context.l10n;
+  String boolLabel(bool? b) => b == null ? l.postureUnknown : (b ? l.yes : l.no);
+
+  Widget row(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ),
+        Expanded(child: SelectableText(value)),
+      ],
+    ),
+  );
+
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l.postureDialogTitle),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              row(l.fieldName, device.name.isEmpty ? device.id : device.name),
+              row(l.postureOs, posture.os.isEmpty ? l.postureUnknown : posture.os),
+              row(l.postureOsVersion, posture.osVersion.isEmpty ? l.postureUnknown : posture.osVersion),
+              row(l.postureClientVersion, posture.clientVersion.isEmpty ? l.postureUnknown : posture.clientVersion),
+              row(l.postureDiskEncrypted, boolLabel(posture.diskEncrypted)),
+              row(l.postureScreenLock, boolLabel(posture.screenLock)),
+              row(l.postureFirewall, boolLabel(posture.firewall)),
+              row(l.postureManaged, boolLabel(posture.managed)),
+              row(l.postureBootTime, formatTime(ctx, posture.bootTime)),
+              row(l.postureCollectedAt, formatTime(ctx, posture.collectedAt)),
+              row(l.postureReportedAt, formatTime(ctx, posture.reportedAt)),
+              const Divider(height: 16),
+              Text(l.postureFailingChecks, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              if (posture.failing.isEmpty)
+                Text(l.postureNone, style: TextStyle(color: ctx.verdicts.allow))
+              else
+                for (final f in posture.failing)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text('• $f', style: TextStyle(color: ctx.verdicts.block)),
+                  ),
+            ],
+          ),
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.actionClose))],
+    ),
+  );
+}
+
+class _DevicePostureChip extends ConsumerWidget {
+  const _DevicePostureChip({required this.tenant, required this.device});
+
+  final String tenant;
+  final AdminDevice device;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = context.l10n;
+    final async = ref.watch(devicePostureProvider((tenant, device.id)));
+    return async.when(
+      loading: () => const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (_, _) => const Icon(Icons.error_outline, size: 16),
+      data: (posture) {
+        if (posture == null) {
+          return StatusChip(
+            key: ValueKey('posture_chip_${device.id}'),
+            label: l.postureNoReport,
+            color: Theme.of(context).colorScheme.outline,
+          );
+        }
+        final color = posture.isCompliant ? context.verdicts.allow : context.verdicts.block;
+        final label = posture.isCompliant ? l.postureCompliant : l.postureChecksFailing(posture.failing.length);
+        return InkWell(
+          key: ValueKey('posture_chip_${device.id}'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => _showDevicePostureDialog(context, device, posture),
+          child: StatusChip(label: label, color: color),
+        );
+      },
     );
   }
 }

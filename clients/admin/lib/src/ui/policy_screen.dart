@@ -259,6 +259,8 @@ class PolicyForm extends StatelessWidget {
                 gap,
                 _decide(context),
                 gap,
+                _posture(context),
+                gap,
               ],
             ),
           ),
@@ -609,6 +611,214 @@ class PolicyForm extends StatelessWidget {
           enabled: on,
           onChanged: (v) => _set(() => p.decideBlockCidrs = v),
         ),
+      ],
+    );
+  }
+
+  Widget _posture(BuildContext context) {
+    final l = context.l10n;
+    final on = editor.canEditForm;
+    final tt = Theme.of(context).textTheme;
+    const osList = ['android', 'windows', 'linux', 'macos', 'ios'];
+    return SectionCard(
+      title: l.policyPosture,
+      subtitle: l.policyPostureHelp,
+      children: [
+        Text(l.postureMinOsVersion, style: tt.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final os in osList)
+              SizedBox(
+                width: 160,
+                child: TextFormField(
+                  key: ValueKey('posture_min_os_$os'),
+                  initialValue: p.posture.minOsVersion[os] ?? '',
+                  enabled: on,
+                  decoration: InputDecoration(labelText: os, border: const OutlineInputBorder()),
+                  onChanged: (v) => _set(() {
+                    final trimmed = v.trim();
+                    if (trimmed.isEmpty) {
+                      p.posture.minOsVersion.remove(os);
+                    } else {
+                      p.posture.minOsVersion[os] = trimmed;
+                    }
+                  }),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          key: const ValueKey('posture_min_client_version'),
+          initialValue: p.posture.minClientVersion,
+          enabled: on,
+          decoration: InputDecoration(labelText: l.postureMinClientVersion, border: const OutlineInputBorder()),
+          onChanged: (v) => _set(() => p.posture.minClientVersion = v.trim()),
+        ),
+        const SizedBox(height: 16),
+        Text(l.postureRequire, style: tt.titleSmall),
+        CheckboxListTile(
+          key: const ValueKey('posture_require_diskEncryption'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l.postureCheckDiskEncryption),
+          value: p.posture.require.contains('diskEncryption'),
+          onChanged: on
+              ? (v) => _set(() {
+                  if (v == true) {
+                    if (!p.posture.require.contains('diskEncryption')) p.posture.require.add('diskEncryption');
+                  } else {
+                    p.posture.require.remove('diskEncryption');
+                  }
+                })
+              : null,
+        ),
+        CheckboxListTile(
+          key: const ValueKey('posture_require_screenLock'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l.postureCheckScreenLock),
+          value: p.posture.require.contains('screenLock'),
+          onChanged: on
+              ? (v) => _set(() {
+                  if (v == true) {
+                    if (!p.posture.require.contains('screenLock')) p.posture.require.add('screenLock');
+                  } else {
+                    p.posture.require.remove('screenLock');
+                  }
+                })
+              : null,
+        ),
+        CheckboxListTile(
+          key: const ValueKey('posture_require_firewall'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l.postureCheckFirewall),
+          value: p.posture.require.contains('firewall'),
+          onChanged: on
+              ? (v) => _set(() {
+                  if (v == true) {
+                    if (!p.posture.require.contains('firewall')) p.posture.require.add('firewall');
+                  } else {
+                    p.posture.require.remove('firewall');
+                  }
+                })
+              : null,
+        ),
+        CheckboxListTile(
+          key: const ValueKey('posture_require_managed'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l.postureCheckManaged),
+          value: p.posture.require.contains('managed'),
+          onChanged: on
+              ? (v) => _set(() {
+                  if (v == true) {
+                    if (!p.posture.require.contains('managed')) p.posture.require.add('managed');
+                  } else {
+                    p.posture.require.remove('managed');
+                  }
+                })
+              : null,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey('posture_restrict'),
+          contentPadding: EdgeInsets.zero,
+          title: Text(l.postureRestrict),
+          subtitle: Text(l.postureRestrictHelp),
+          value: p.posture.restrict,
+          onChanged: on ? (v) => _set(() => p.posture.restrict = v) : null,
+        ),
+        const SizedBox(height: 16),
+        _RemediationDomainsChips(
+          domains: p.posture.remediationDomains,
+          enabled: on,
+          onChanged: (v) => _set(() => p.posture.remediationDomains = v),
+        ),
+      ],
+    );
+  }
+}
+
+class _RemediationDomainsChips extends StatefulWidget {
+  const _RemediationDomainsChips({required this.domains, required this.onChanged, required this.enabled});
+
+  final List<String> domains;
+  final ValueChanged<List<String>> onChanged;
+  final bool enabled;
+
+  @override
+  State<_RemediationDomainsChips> createState() => _RemediationDomainsChipsState();
+}
+
+class _RemediationDomainsChipsState extends State<_RemediationDomainsChips> {
+  final _c = TextEditingController();
+
+  void _add() {
+    final v = _c.text.trim();
+    if (v.isNotEmpty && !widget.domains.contains(v)) {
+      widget.onChanged([...widget.domains, v]);
+      _c.clear();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l10n;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.domains.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final d in widget.domains)
+                  InputChip(
+                    key: ValueKey('remediation_chip_$d'),
+                    label: Text(d),
+                    onDeleted: widget.enabled
+                        ? () {
+                            final next = List<String>.from(widget.domains)..remove(d);
+                            widget.onChanged(next);
+                          }
+                        : null,
+                  ),
+              ],
+            ),
+          ),
+        if (widget.enabled)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('remediation_domain_input'),
+                  controller: _c,
+                  decoration: InputDecoration(
+                    labelText: l.postureRemediationDomains,
+                    hintText: 'remediation.example.com',
+                    helperText: l.postureRemediationDomainsHelp,
+                    border: const OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => _add(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                key: const ValueKey('remediation_domain_add'),
+                onPressed: _add,
+                child: Text(l.actionAdd),
+              ),
+            ],
+          ),
       ],
     );
   }

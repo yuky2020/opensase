@@ -37,6 +37,9 @@ List<PolicyIssue> validateTenantPolicy(TenantPolicy p) {
     }
     if (r.source.isNotEmpty && r.source != 'tenant') add('$f.source', 'must be "tenant"');
     if (!Verdicts.all.contains(r.action)) add('$f.action', 'invalid action "${r.action}"');
+    if (!['', 'compliant', 'noncompliant'].contains(r.posture)) {
+      add('$f.posture', 'must be "compliant", "noncompliant" or empty');
+    }
     final m = r.match;
     for (var j = 0; j < m.apps.length; j++) {
       if (m.apps[j].isEmpty) add('$f.match.apps[$j]', 'empty');
@@ -88,6 +91,7 @@ List<PolicyIssue> validateTenantPolicy(TenantPolicy p) {
     final e = cidrError(p.decideBlockCidrs[i]);
     if (e != null) add('decideBlockCidrs[$i]', e);
   }
+  _domains(p.posture.remediationDomains, 'posture.remediationDomains', add);
 
   out.addAll(validatePrivateApps(p.privateApps));
   return out;
@@ -105,6 +109,9 @@ List<PolicyIssue> validatePrivateApps(List<TenantPrivateApp> apps) {
       add('$f.id', a.id.isEmpty ? 'empty' : 'invalid identifier "${a.id}"');
     } else if (!ids.add(a.id)) {
       add('$f.id', 'duplicate app id "${a.id}"');
+    }
+    if (!['', 'compliant', 'noncompliant'].contains(a.posture)) {
+      add('$f.posture', 'must be "compliant", "noncompliant" or empty');
     }
     if (a.domains.isEmpty) add('$f.domains', 'at least one domain is required');
     _domains(a.domains, '$f.domains', add);

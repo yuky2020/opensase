@@ -669,5 +669,47 @@
   "experienceColLoss": "Loss",
   "experienceColDnsP50": "DNS p50",
   "experienceColLast": "Last sample",
-  "experienceEmpty": "No digital experience data for this period"
+  "experienceEmpty": "No digital experience data for this period",
+  "fieldPosture": "Posture",
+  "postureCompliant": "Compliant",
+  "postureNoReport": "No report",
+  "postureChecksFailing": "{count, plural, =1{1 check failing} other{{count} checks failing}}",
+  "@postureChecksFailing": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "postureDialogTitle": "Device posture",
+  "postureOs": "Operating system",
+  "postureOsVersion": "OS version",
+  "postureClientVersion": "Client version",
+  "postureDiskEncrypted": "Disk encrypted",
+  "postureScreenLock": "Screen lock",
+  "postureFirewall": "Firewall",
+  "postureManaged": "Managed",
+  "postureBootTime": "Boot time",
+  "postureCollectedAt": "Collected at",
+  "postureReportedAt": "Reported at",
+  "postureFailingChecks": "Failing checks",
+  "postureNone": "None",
+  "postureUnknown": "Unknown",
+  "policyPosture": "Device posture",
+  "policyPostureHelp": "Enforce minimum OS and client versions, required checks, and remediation access.",
+  "postureMinOsVersion": "Minimum OS versions",
+  "postureMinClientVersion": "Minimum client version",
+  "postureRequire": "Required checks",
+  "postureRestrict": "Restrict non-compliant devices",
+  "postureRestrictHelp": "Devices failing posture receive a restricted snapshot allowing only remediation domains.",
+  "postureRemediationDomains": "Remediation domains",
+  "postureRemediationDomainsHelp": "Domains reachable from restricted devices (e.g. update servers or help pages).",
+  "postureAddDomain": "Add domain",
+  "postureCheckDiskEncryption": "Disk encryption",
+  "postureCheckScreenLock": "Screen lock",
+  "postureCheckFirewall": "Firewall (Windows)",
+  "postureCheckManaged": "Managed profile or MDM",
+  "postureConditionAny": "Any posture",
+  "postureConditionCompliant": "Compliant only",
+  "postureConditionNoncompliant": "Non-compliant only"
 }

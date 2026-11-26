@@ -95,7 +95,7 @@ func enableKillSwitch(ctx context.Context, tunDev string, allow []netip.Addr, lo
 		return nil, err
 	}
 	log.Info("kill switch on: traffic outside the tunnel is blocked", "allowed", len(allow))
-	return func() {
+	return func() { //nolint:contextcheck // runs at teardown, after the connect request's context is gone
 		if err := nft(context.Background(), fmt.Sprintf("table inet %s {}\ndelete table inet %s\n", ksTable, ksTable), "-f", "-"); err != nil {
 			log.Error("kill switch not removed; run: nft delete table inet "+ksTable, "err", err)
 			return

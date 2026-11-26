@@ -34,7 +34,10 @@ func TestKillSwitchScript(t *testing.T) {
 func TestEnableKillSwitch(t *testing.T) {
 	var scripts []string
 	orig, origLook := nft, lookNft
-	nft = func(_ context.Context, script string, _ ...string) error { scripts = append(scripts, script); return nil }
+	nft = func(_ context.Context, script string, _ ...string) error {
+		scripts = append(scripts, script)
+		return nil
+	}
 	lookNft = func() error { return nil }
 	defer func() { nft, lookNft = orig, origLook }()
 	undo, err := enableKillSwitch(context.Background(), "osase0", []netip.Addr{netip.MustParseAddr("192.0.2.1")}, discardLog())

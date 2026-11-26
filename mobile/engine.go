@@ -860,9 +860,6 @@ func (e *Engine) emitError(op string, err error) {
 // statePath is used by tests.
 func (e *Engine) statePath(name string) string { return filepath.Join(e.stateDir, name) }
 
-// BypassHosts returns the host names or IPs the core talks to outside the tunnel (Control
-// Plane, Edge session URLs and WireGuard endpoints). Go-only: the headless Linux client adds
-// host routes for them via the physical gateway; Android uses VpnService.protect instead.
 // KillSwitch reports whether the desktop kill switch should be on: true unless the device's
 // snapshot sets firewall.disableKillSwitch (issues #78, #79). Go-only.
 func (e *Engine) KillSwitch() bool {
@@ -871,6 +868,9 @@ func (e *Engine) KillSwitch() bool {
 	return e.snap == nil || !e.snap.Firewall.DisableKillSwitch
 }
 
+// BypassHosts returns the host names or IPs the core talks to outside the tunnel (Control
+// Plane, Edge session URLs and WireGuard endpoints). Go-only: the headless Linux client adds
+// host routes for them via the physical gateway; Android uses VpnService.protect instead.
 func (e *Engine) BypassHosts() []string {
 	id := e.en.Load()
 	if id == nil {

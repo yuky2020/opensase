@@ -659,7 +659,7 @@ func TestFilter(t *testing.T) {
 		{"app rule skipped at edge", ipv4(me, "198.51.100.1", packet.ProtoTCP, tcpSeg(40003, 80, packet.FlagSYN)), true, false},
 		{"mid-stream without state", ipv4(me, "198.51.100.1", packet.ProtoTCP, tcpSeg(40004, 80, packet.FlagACK)), false, false},
 		{"spoofed source", ipv4("100.64.0.99", "198.51.100.1", packet.ProtoTCP, tcpSeg(40005, 80, packet.FlagSYN)), false, false},
-		{"device to device", ipv4(me, "100.64.0.3", packet.ProtoUDP, udpDgram(5000, 5000)), false, false},
+		{"device to device without a mesh rule", ipv4(me, "100.64.0.3", packet.ProtoUDP, udpDgram(5000, 5000)), false, true},
 		{"edge dns", ipv4(me, "100.64.0.1", packet.ProtoUDP, udpDgram(5001, 53)), true, false},
 		{"edge other port", ipv4(me, "100.64.0.1", packet.ProtoUDP, udpDgram(5002, 22)), false, true},
 		{"udp allowed", ipv4(me, "198.51.100.7", packet.ProtoUDP, udpDgram(5003, 443)), true, false},
@@ -932,6 +932,81 @@ func TestFilterDNSRedirect(t *testing.T) {
 	}
 	if write(ipv4(me, "1.1.1.1", packet.ProtoTCP, tcpSeg(42002, 853, packet.FlagSYN))) {
 		t.Fatal("DNS over TLS passed")
+	}
+	readOne(t, rd)
+}
+
+// TestFilterMesh covers ADR-0034 on the Edge path: a flow allowed by the target's mesh
+// grant passes both ways; other ports, other devices and other tenants do not.
+func TestFilterMesh(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	fx.setPeer("d2", 1)
+	// d2 accepts TCP 22 from user u1 (setPeer's user).
+	fx.cp.mu.Lock()
+	for i := range fx.cp.peers.Devices {
+		if fx.cp.peers.Devices[i].DeviceID != "d2" {
+			continue
+		}
+		var env = fx.cp.peers.Devices[i].Snapshot
+		snap, err := policy.Verify(&env, map[string]ed25519.PublicKey{fx.kid: fx.sk.Public().(ed25519.PublicKey)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		snap.Version++
+		snap.MeshInbound = []policy.MeshGrant{{RuleID: "ssh", FromUsers: []string{"u1"}, Protocol: "tcp", Ports: []policy.PortRange{{From: 22}}}}
+		signed, err := policy.Sign(snap, fx.kid, fx.sk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fx.cp.peers.Devices[i].Snapshot = *signed
+	}
+	fx.cp.mu.Unlock()
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r := fx.e.reg
+	r.mu.Lock()
+	d1, d2 := r.devices["d1"], r.devices["d2"]
+	_ = r.allocateLocked(d1)
+	_ = r.allocateLocked(d2)
+	d2.hasPeer = true
+	r.mu.Unlock()
+	a, b := d1.ip4.String(), d2.ip4.String()
+	ft := newFakeTUN()
+	f := newFilter(ft, fx.e)
+	defer f.Close()
+	rd := startReader(f)
+	write := func(pkt []byte) bool {
+		before := ft.nWrites()
+		if _, err := f.Write([][]byte{pkt}, 0); err != nil {
+			t.Fatal(err)
+		}
+		return ft.nWrites() > before
+	}
+	if !write(ipv4(a, b, packet.ProtoTCP, tcpSeg(43000, 22, packet.FlagSYN))) {
+		t.Fatal("allowed mesh SYN dropped")
+	}
+	// The kernel hands the packet back toward d2: inbound must pass it.
+	ft.in <- ipv4(a, b, packet.ProtoTCP, tcpSeg(43000, 22, packet.FlagSYN))
+	if _, ok := readOne(t, rd); !ok {
+		t.Fatal("mesh packet toward the target dropped")
+	}
+	// d2's reply passes outbound and comes back to d1.
+	if !write(ipv4(b, a, packet.ProtoTCP, tcpSeg(22, 43000, packet.FlagSYN|packet.FlagACK))) {
+		t.Fatal("mesh reply dropped")
+	}
+	ft.in <- ipv4(b, a, packet.ProtoTCP, tcpSeg(22, 43000, packet.FlagSYN|packet.FlagACK))
+	if _, ok := readOne(t, rd); !ok {
+		t.Fatal("mesh reply toward the source dropped")
+	}
+	if write(ipv4(a, b, packet.ProtoTCP, tcpSeg(43001, 80, packet.FlagSYN))) {
+		t.Fatal("port without a grant passed")
+	}
+	readOne(t, rd)
+	// d2 opens a flow to d1: d1 grants nothing.
+	if write(ipv4(b, a, packet.ProtoTCP, tcpSeg(43002, 22, packet.FlagSYN))) {
+		t.Fatal("flow toward a device without grants passed")
 	}
 	readOne(t, rd)
 }

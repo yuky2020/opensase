@@ -374,8 +374,10 @@ type TenantPolicy struct {
 	SafeSearch        bool                        `json:"safeSearch,omitempty"`  // force safe search and restricted video modes (ADR-0025)
 	// Blocklists downloaded by the Control Plane and enforced like categories (issue #63):
 	// CustomLists from the tenant's URLs, BuiltinLists by ID from the built-in catalog.
-	CustomLists  []CustomList `json:"customLists,omitempty"`
-	BuiltinLists []string     `json:"builtinLists,omitempty"`
+	CustomLists []CustomList `json:"customLists,omitempty"`
+	// Mesh controls device-to-device traffic (ADR-0034); off without rules.
+	Mesh         MeshPolicy `json:"mesh,omitzero"`
+	BuiltinLists []string   `json:"builtinLists,omitempty"`
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`
@@ -627,4 +629,29 @@ type BuiltinBlocklist struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Licence string `json:"licence"`
+}
+
+// MeshPolicy is the tenant's device-to-device policy (ADR-0034).
+type MeshPolicy struct {
+	Rules []MeshRule `json:"rules,omitempty"`
+	// DirectLinks lets devices that see each other connect directly instead of through the
+	// Edge (the Edge then does not inspect that traffic). Off by default.
+	DirectLinks bool `json:"directLinks,omitempty"`
+}
+
+// MeshRule allows flows from the From devices to the To devices.
+type MeshRule struct {
+	ID       string             `json:"id"`
+	From     MeshSelector       `json:"from"`
+	To       MeshSelector       `json:"to"`
+	Protocol string             `json:"protocol,omitempty"` // tcp, udp, icmp; empty: any
+	Ports    []policy.PortRange `json:"ports,omitempty"`
+}
+
+// MeshSelector selects devices of the tenant: all of them, those of some users, or some
+// devices.
+type MeshSelector struct {
+	All     bool     `json:"all,omitempty"`
+	Users   []string `json:"users,omitempty"`
+	Devices []string `json:"devices,omitempty"`
 }

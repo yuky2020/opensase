@@ -597,3 +597,33 @@ func BenchmarkReadEstablished(b *testing.B) {
 		}
 	}
 }
+
+// TestMeshInbound covers ADR-0034 on the device: with a mesh grant, a flow another device
+// opens through the Edge (source in the tunnel prefix) is accepted and its replies pass;
+// without a grant, or from outside the tunnel prefix, it is dropped.
+func TestMeshInbound(t *testing.T) {
+	peer := netip.MustParseAddr("100.64.0.9")
+	syn := tcp(ap(peer, 50000), ap(devIP, 22), packet.FlagSYN, nil)
+	synack := tcp(ap(devIP, 22), ap(peer, 50000), packet.FlagSYN|packet.FlagACK, nil)
+
+	e := newEnv(t, snapshot(policy.ActionBlock))
+	if e.fw.inbound(syn) {
+		t.Fatal("mesh SYN passed without a grant")
+	}
+
+	s := snapshot(policy.ActionBlock)
+	s.MeshInbound = []policy.MeshGrant{{RuleID: "ssh", FromAll: true, Protocol: "tcp", Ports: []policy.PortRange{{From: 22}}}}
+	e = newEnv(t, s)
+	if !e.fw.inbound(syn) {
+		t.Fatal("mesh SYN from a tunnel address dropped")
+	}
+	if !e.fw.outbound(synack) {
+		t.Fatal("reply to a mesh flow dropped by the default block")
+	}
+	if e.fw.inbound(tcp(ap(webIP, 50001), ap(devIP, 22), packet.FlagSYN, nil)) {
+		t.Fatal("unsolicited SYN from outside the tunnel prefix passed")
+	}
+	if e.fw.inbound(tcp(ap(netip.MustParseAddr("100.64.0.1"), 50002), ap(devIP, 22), packet.FlagSYN, nil)) {
+		t.Fatal("unsolicited SYN from the Edge address passed")
+	}
+}

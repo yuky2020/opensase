@@ -23,6 +23,7 @@ import (
 	"github.com/yuky2020/opensase/pkg/dnsfilter"
 	"github.com/yuky2020/opensase/pkg/packet"
 	"github.com/yuky2020/opensase/pkg/policy"
+	"github.com/yuky2020/opensase/pkg/tunneladdr"
 )
 
 // Defaults for Config.
@@ -44,6 +45,8 @@ const (
 const (
 	RuleNoSnapshot       = "no-snapshot"
 	RuleCloudUnreachable = "cloud-unreachable"
+	// RuleMeshInbound marks flows another device opened through the Edge (ADR-0034).
+	RuleMeshInbound = "mesh:inbound"
 	// LayerDNS marks flow records of DNS queries blocked by the DNS policy; RuleID is
 	// "dns:<listId>".
 	LayerDNS = "dns"
@@ -491,10 +494,54 @@ func (f *FilteringTUN) slowOutbound(p *packet.Packet, pkt []byte, key packet.Flo
 	return true
 }
 
+// meshInbound accepts the first packet of a flow another device of the tenant opens to this
+// one (ADR-0034). The Edge forwards it only after checking this device's mesh grants, which
+// it knows by source device; here the device checks that its snapshot grants mesh access at
+// all and that the source is a tunnel address. It returns the new entry, or nil.
+func (f *FilteringTUN) meshInbound(p *packet.Packet, key packet.FlowKey) *entry {
+	ps := f.policy.Load()
+	src := p.Src.Unmap()
+	if ps == nil || !ps.c.HasMesh() || (!tunneladdr.Prefix4.Contains(src) && !tunneladdr.Prefix6.Contains(src)) ||
+		src == tunneladdr.EdgeIPv4 || src == tunneladdr.EdgeIPv6 {
+		return nil
+	}
+	switch {
+	case p.Protocol == packet.ProtoTCP && p.SYN() && !p.ACK():
+	case p.Protocol == packet.ProtoUDP:
+	case (p.Protocol == packet.ProtoICMP && p.ICMPType == 8) || (p.Protocol == packet.ProtoICMPv6 && p.ICMPType == 128):
+	default:
+		return nil
+	}
+	now := f.refreshClock()
+	fl := f.buildFlow(p)
+	fl.SrcIP, fl.DstIP, fl.DstPort, fl.App = p.Dst.Unmap().String(), src.String(), p.SrcPort, "" // outbound orientation
+	dec := policy.Decision{Action: policy.ActionAllow, RuleID: RuleMeshInbound, Layer: policy.LayerTenant, Log: true}
+	ne := &entry{key: key, flow: fl, start: time.Unix(0, now), app: f.stats.get(""), mesh: true}
+	ne.lastSeen.Store(now)
+	ne.v.Store(&verdict{dec: dec, ps: ps})
+	e, evicted := f.ct.insert(ne, now)
+	for _, x := range evicted {
+		f.finish(x, now)
+	}
+	if e == ne {
+		f.started(e, dec, now)
+	}
+	return e
+}
+
 // reevaluate recomputes e's verdict for ps. It returns false if the verdict is pending a
 // cloud decision (the packet must be dropped, the flow is kept).
 func (f *FilteringTUN) reevaluate(e *entry, ps *policyState, now int64) bool {
 	old := e.v.Load()
+	if e.mesh {
+		// A mesh flow stays allowed while the snapshot still grants mesh access.
+		dec := old.dec
+		if ps == nil || !ps.c.HasMesh() {
+			dec = policy.Decision{Action: policy.ActionBlock, RuleID: RuleMeshInbound, Layer: policy.LayerTenant, Log: true}
+		}
+		e.v.CompareAndSwap(old, &verdict{dec: dec, ps: ps})
+		return true
+	}
 	fl := e.flow
 	fl.Network = *f.network.Load() // the network may have changed since the flow started
 	dec, ok := f.evaluate(fl, ps, old)
@@ -725,8 +772,10 @@ func (f *FilteringTUN) inbound(pkt []byte) bool {
 	}
 	e := f.ct.get(key)
 	if e == nil {
-		f.dropsInbound.Add(1)
-		return false
+		if e = f.meshInbound(&p, key); e == nil {
+			f.dropsInbound.Add(1)
+			return false
+		}
 	}
 	ps := f.policy.Load()
 	v := e.v.Load()

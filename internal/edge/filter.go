@@ -201,11 +201,11 @@ func (f *Filter) outbound(pkt []byte) bool {
 	}
 	local := dst == EdgeIPv4 || dst == EdgeIPv6
 	synthetic := dst.Is4() && SyntheticPrefix.Contains(dst)
-	if !local && !synthetic && (TunnelPrefix4.Contains(dst) || TunnelPrefix6.Contains(dst)) {
-		return false // no device-to-device traffic
-	}
 	key := p.FlowKey()
 	now := time.Now()
+	if !local && !synthetic && (TunnelPrefix4.Contains(dst) || TunnelPrefix6.Contains(dst)) {
+		return f.meshOutbound(&p, pkt, d, key, dst, now) // device to device (ADR-0034)
+	}
 	if cn := f.ct.get(key); cn != nil && cn.deviceID == d.id {
 		if cn.blocked.Load() {
 			f.reject(&p, pkt)
@@ -325,11 +325,69 @@ func (f *Filter) inbound(pkt []byte) bool {
 		return true // PMTU and unreachable signals for known devices
 	}
 	cn := f.ct.get(p.FlowKey().Reverse())
-	if cn == nil || cn.blocked.Load() {
+	if cn == nil {
+		// A mesh packet from another device comes back from the kernel in the direction of
+		// the tracked flow (ADR-0034).
+		if m := f.ct.get(p.FlowKey()); m != nil && m.mesh && !m.blocked.Load() {
+			return true
+		}
+		return false
+	}
+	if cn.blocked.Load() {
 		return false
 	}
 	cn.touch(time.Now(), len(pkt), false, &p)
 	return true
+}
+
+// meshOutbound decides a packet from device d to another device's tunnel address
+// (ADR-0034): replies of tracked mesh flows pass; a new flow passes if both devices are in
+// one tenant, the target has a session here and its snapshot grants the source.
+func (f *Filter) meshOutbound(p *packet.Packet, pkt []byte, d *device, key packet.FlowKey, dst netip.Addr, now time.Time) bool {
+	if cn := f.ct.get(key.Reverse()); cn != nil && cn.mesh {
+		if cn.blocked.Load() {
+			return false
+		}
+		cn.touch(now, len(pkt), false, p)
+		return true
+	}
+	if cn := f.ct.get(key); cn != nil && cn.mesh && cn.deviceID == d.id {
+		if cn.blocked.Load() {
+			return false
+		}
+		cn.touch(now, len(pkt), true, p)
+		return true
+	}
+	proto := protoName(p.Protocol)
+	if proto == "" || (p.Protocol == packet.ProtoTCP && (!p.SYN() || p.ACK())) || (proto == "icmp" && !isEchoRequest(p)) {
+		return false
+	}
+	flow := policy.Flow{Protocol: proto, SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort}
+	if proto == "icmp" {
+		flow.DstPort = 0
+	}
+	dec := policy.Decision{Action: policy.ActionBlock, RuleID: RuleMeshDenied, Layer: LayerEdge, Log: true}
+	if target := f.e.reg.byTunnelIP(dst); target != nil && target.tenantID == d.tenantID && target.id != d.id {
+		f.e.reg.mu.Lock()
+		live := target.hasPeer
+		f.e.reg.mu.Unlock()
+		src := d.compiled.Load()
+		if tc := target.compiled.Load(); live && tc != nil && src != nil {
+			if rule, ok := tc.MeshAllows(src.UserID(), d.id, proto, flow.DstPort); ok {
+				dec = policy.Decision{Action: policy.ActionAllow, RuleID: rule, Layer: LayerEdge, Log: true}
+			}
+		}
+	}
+	cn := &conn{deviceID: d.id, proto: p.Protocol, flow: flow, decision: dec, start: now, mesh: true}
+	if dec.Action != policy.ActionAllow {
+		cn.blocked.Store(true)
+		if f.ct.add(key, cn, now, len(pkt), p) {
+			f.e.flows.add(cn.record(now))
+		}
+		f.reject(p, pkt)
+		return false
+	}
+	return f.ct.add(key, cn, now, len(pkt), p)
 }
 
 // reject sends a TCP RST or ICMP unreachable for pkt back into the tunnel.
@@ -357,6 +415,7 @@ type conn struct {
 	proto    uint8
 	start    time.Time
 	local    bool      // to the Edge itself (DNS, ping): not reported
+	mesh     bool      // device to device (ADR-0034)
 	peek     *hostPeek // allowed TCP flows until their host is known (ADR-0017); nil otherwise
 
 	mu       sync.Mutex // guards flow and decision, which web control may update

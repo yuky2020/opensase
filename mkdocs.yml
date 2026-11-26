@@ -76,6 +76,7 @@ nav:
   - Operations:
       - Monitoring: operations/monitoring.md
       - DNS security: operations/dns-security.md
+      - Device mesh: operations/mesh.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

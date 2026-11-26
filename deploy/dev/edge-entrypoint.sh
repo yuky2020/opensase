@@ -81,6 +81,9 @@ iptables -A OSASE_FWD -i "$WAN" -o "$TUN" -m conntrack --ctstate RELATED,ESTABLI
 for net in 169.254.0.0/16 127.0.0.0/8 0.0.0.0/8 224.0.0.0/4 240.0.0.0/4; do
   iptables -A OSASE_FWD -i "$TUN" -d "$net" -j DROP
 done
+# Device mesh (ADR-0034): the Edge filter writes to the TUN only the device-to-device flows a
+# mesh rule allows, and the kernel routes them back into the tunnel.
+iptables -A OSASE_FWD -i "$TUN" -o "$TUN" -s "$POOL" -d "$POOL" ! -d "$SYNTH" -j ACCEPT
 if [ "$ALLOW_PRIVATE" != 1 ]; then
   for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 198.18.0.0/15; do
     iptables -A OSASE_FWD -i "$TUN" -d "$net" -j DROP

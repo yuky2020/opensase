@@ -134,10 +134,41 @@ func validateTenantPolicy(tp api.TenantPolicy) error {
 	if err := validateSaaS(tp.SaaS); err != nil {
 		return err
 	}
+	if err := validateMesh(tp.Mesh); err != nil {
+		return err
+	}
 	fw, dns := MergeLayers(tp, nil)
 	_, err := policy.Compile(&policy.Snapshot{SchemaVersion: policy.CurrentSchemaVersion, TenantID: "t", DeviceID: "d", Firewall: fw, DNS: dns,
-		PrivateApps: stripUsers(tp.PrivateApps), Web: tp.Web, Categories: tp.Categories})
+		PrivateApps: stripUsers(tp.PrivateApps), Web: tp.Web, Categories: tp.Categories,
+		MeshInbound: meshInbound(api.MeshPolicy{Rules: allTo(tp.Mesh.Rules)}, store.Device{})})
 	return remapField(err, 0)
+}
+
+// validateMesh checks the mesh rules (ADR-0034); the compiler checks protocols and ports.
+func validateMesh(m api.MeshPolicy) error {
+	seen := map[string]bool{}
+	for i, r := range m.Rules {
+		f := fmt.Sprintf("mesh.rules[%d]", i)
+		if r.ID == "" || seen[r.ID] {
+			return &policy.ValidationError{Field: f + ".id", Msg: "a unique id is required"}
+		}
+		seen[r.ID] = true
+		for name, sel := range map[string]api.MeshSelector{"from": r.From, "to": r.To} {
+			if !sel.All && len(sel.Users) == 0 && len(sel.Devices) == 0 {
+				return &policy.ValidationError{Field: f + "." + name, Msg: "select all, some users or some devices"}
+			}
+		}
+	}
+	return nil
+}
+
+// allTo returns the rules with To set to all devices, so validation compiles every rule.
+func allTo(rules []api.MeshRule) []api.MeshRule {
+	out := slices.Clone(rules)
+	for i := range out {
+		out[i].To = api.MeshSelector{All: true}
+	}
+	return out
 }
 
 // normalizePrivateApps defaults an empty ConnectorGroup to "default" (ADR-0013).
@@ -309,6 +340,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 				Web:           tp.Web,
 				Categories:    append(slices.Clone(tp.Categories), listCategories(tenantID, tp)...),
 				SafeSearch:    tp.SafeSearch,
+				MeshInbound:   meshInbound(tp.Mesh, d),
 			}
 			env, err := policy.Sign(snap, s.cfg.SigningKeyID, s.cfg.SigningKey)
 			if err != nil {
@@ -525,4 +557,17 @@ func (s *Server) invalidateDecide(tenantID string) {
 	s.decideMu.Lock()
 	delete(s.decide, tenantID)
 	s.decideMu.Unlock()
+}
+
+// meshInbound turns the tenant mesh rules whose To selects d into d's grants (ADR-0034).
+func meshInbound(m api.MeshPolicy, d store.Device) []policy.MeshGrant {
+	var out []policy.MeshGrant
+	for _, r := range m.Rules {
+		if !r.To.All && !slices.Contains(r.To.Users, d.UserID) && !slices.Contains(r.To.Devices, d.ID) {
+			continue
+		}
+		out = append(out, policy.MeshGrant{RuleID: r.ID, FromAll: r.From.All, FromUsers: r.From.Users,
+			FromDevices: r.From.Devices, Protocol: r.Protocol, Ports: r.Ports})
+	}
+	return out
 }

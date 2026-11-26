@@ -43,6 +43,7 @@ type entry struct {
 	start time.Time
 	app   *appCounters
 	dns   bool // UDP to port 53: every query goes through dnsfilter
+	mesh  bool // opened by another device through the Edge (ADR-0034)
 
 	v        atomic.Pointer[verdict]
 	state    atomic.Uint32

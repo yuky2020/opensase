@@ -66,6 +66,20 @@ type Snapshot struct {
 	// SafeSearch forces the safe modes of search engines and video sites (ADR-0025), enforced
 	// by the Edge resolver, on flow hostnames and on the inspected path.
 	SafeSearch bool `json:"safeSearch,omitempty"`
+	// MeshInbound lists who may open flows to this device's tunnel addresses (ADR-0034).
+	// Empty: no device-to-device traffic to it. The Edge checks it on the Edge path; the
+	// device checks it on direct links.
+	MeshInbound []MeshGrant `json:"meshInbound,omitempty"`
+}
+
+// MeshGrant allows flows from matching devices of the same tenant (ADR-0034).
+type MeshGrant struct {
+	RuleID      string      `json:"ruleId"`
+	FromAll     bool        `json:"fromAll,omitempty"`
+	FromUsers   []string    `json:"fromUsers,omitempty"`
+	FromDevices []string    `json:"fromDevices,omitempty"`
+	Protocol    string      `json:"protocol,omitempty"` // "tcp", "udp", "icmp"; "" any
+	Ports       []PortRange `json:"ports,omitempty"`    // empty: any port
 }
 
 // WebPolicy decrypts and controls the HTTPS (and plain HTTP) traffic of the tenant's devices

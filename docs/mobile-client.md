@@ -156,6 +156,9 @@ The `payload` parameter is always a JSON document:
 - DNS: every UDP/53 query to the tunnel DNS servers is checked against the DNS policy; blocked names get NXDOMAIN, or 0.0.0.0 / :: for A/AAAA when `blockResponse` is `"zero"` (NODATA for other types). Responses are snooped to map IP -> queried name only if they answer an outstanding forwarded query: same transaction ID, same question name, same client port, from the session DNS server (outstanding queries expire after 10 s, at most 4096). A response is used once. When the session has no DNS servers, queries are still filtered but nothing is snooped. CNAME chains map to the queried name, TTL clamped to 30 s..24 h, 8192 entries LRU; this fills `flow.domain` for domain rules. DNS over TCP, DoT and DoH are not inspected (the Edge resolver enforces DNS policy again).
 - Limitations: non-first IP fragments are dropped; no SNI inspection.
 
+## Digital experience samples
+While a tunnel session is connected, the client collects a digital experience sample every 60 seconds (issue #76). Each measurement performs a sequential burst of 5 session probes (with a 2-second timeout per probe) to the current Edge session endpoint to compute round-trip time (`RTTms`, the median of answered probes in milliseconds, or 0 if none answered) and probe packet loss percentage (`LossPct`). It also includes DNS resolution latency (`DNSms`, the median duration of forwarded DNS queries answered through the tunnel resolver since the last sample, or 0 if empty) and the active network type (`Network`). Samples are queued in the client (up to 60 buffered samples, dropping the oldest on overflow) and sent to the Control Plane in `batch.Probes` with the next flow batch upload (`POST /v1/flows`), including when there are no flow records to send. Successfully uploaded samples are cleared from the queue, while errors retain them for retry.
+
 ## State directory
 All files are mode 0600 and written atomically:
 

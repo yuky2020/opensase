@@ -67,6 +67,9 @@ const (
 	defaultProbeTimeout  = 4 * time.Second
 	defaultFailbackAfter = 5 * time.Minute
 	probeFailures        = 2
+
+	defaultExperienceInterval     = 60 * time.Second
+	defaultExperienceProbeTimeout = 2 * time.Second
 )
 
 // Engine is the Client core. See mobile/api.go for the method contract.
@@ -98,16 +101,18 @@ type Engine struct {
 	renewMu sync.Mutex // serialises certificate renewals
 
 	// Options for tests and the headless Linux client.
-	flowInterval     time.Duration
-	pollWait         int // seconds
-	statsInterval    time.Duration
-	livenessTimeout  time.Duration
-	livenessInterval time.Duration
-	renewRetryMin    time.Duration
-	probeInterval    time.Duration
-	probeIdle        time.Duration
-	probeTimeout     time.Duration
-	failbackAfter    time.Duration
+	flowInterval           time.Duration
+	pollWait               int // seconds
+	statsInterval          time.Duration
+	livenessTimeout        time.Duration
+	livenessInterval       time.Duration
+	renewRetryMin          time.Duration
+	probeInterval          time.Duration
+	probeIdle              time.Duration
+	probeTimeout           time.Duration
+	failbackAfter          time.Duration
+	experienceInterval     time.Duration
+	experienceProbeTimeout time.Duration
 }
 
 // identity is the enrolled device plus its Control Plane client. Every cp connection must
@@ -139,13 +144,15 @@ func NewEngine(stateDir string, platform Platform) (*Engine, error) {
 		pollWait:      30,
 		statsInterval: 5 * time.Second,
 
-		livenessTimeout:  defaultLivenessTimeout,
-		livenessInterval: defaultLivenessInterval,
-		renewRetryMin:    defaultMinRenewRetry,
-		probeInterval:    defaultProbeInterval,
-		probeIdle:        defaultProbeIdle,
-		probeTimeout:     defaultProbeTimeout,
-		failbackAfter:    defaultFailbackAfter,
+		livenessTimeout:        defaultLivenessTimeout,
+		livenessInterval:       defaultLivenessInterval,
+		renewRetryMin:          defaultMinRenewRetry,
+		probeInterval:          defaultProbeInterval,
+		probeIdle:              defaultProbeIdle,
+		probeTimeout:           defaultProbeTimeout,
+		failbackAfter:          defaultFailbackAfter,
+		experienceInterval:     defaultExperienceInterval,
+		experienceProbeTimeout: defaultExperienceProbeTimeout,
 	}
 	if platform != nil {
 		e.protect = platform.Protect
@@ -455,6 +462,46 @@ type runState struct {
 
 	pendingFlows []api.FlowRecord // owned by the flow loop
 	stale        atomic.Bool
+
+	expMu          sync.Mutex
+	pendingSamples []api.ExperienceSample
+}
+
+const (
+	maxPendingSamples = 60
+	maxSampleBatch    = 60
+)
+
+func (rs *runState) addExperienceSample(s api.ExperienceSample) {
+	rs.expMu.Lock()
+	defer rs.expMu.Unlock()
+	if len(rs.pendingSamples) >= maxPendingSamples {
+		rs.pendingSamples = append(rs.pendingSamples[len(rs.pendingSamples)-maxPendingSamples+1:], s)
+	} else {
+		rs.pendingSamples = append(rs.pendingSamples, s)
+	}
+}
+
+func (rs *runState) takeSamples(n int) []api.ExperienceSample {
+	rs.expMu.Lock()
+	defer rs.expMu.Unlock()
+	count := min(len(rs.pendingSamples), n)
+	if count == 0 {
+		return nil
+	}
+	out := make([]api.ExperienceSample, count)
+	copy(out, rs.pendingSamples[:count])
+	return out
+}
+
+func (rs *runState) clearSamples(n int) {
+	rs.expMu.Lock()
+	defer rs.expMu.Unlock()
+	if n >= len(rs.pendingSamples) {
+		rs.pendingSamples = nil
+		return
+	}
+	rs.pendingSamples = rs.pendingSamples[n:]
 }
 
 // StartDevice is Start with any tun.Device (Go-only: tests and the headless Linux client).
@@ -558,13 +605,14 @@ func (e *Engine) StartDevice(dev tun.Device, networkType string) (err error) {
 	e.lastFW.Store(rs.fw)
 	e.lastDNS.Store(rs.dns)
 
-	rs.wg.Add(6)
+	rs.wg.Add(7)
 	go e.edgesLoop(rs)
 	go e.snapshotLoop(rs)
 	go e.flowLoop(rs)
 	go e.sessionLoop(rs)
 	go e.statsLoop(rs)
 	go e.renewLoop(rs)
+	go e.experienceLoop(rs)
 	e.setState(StateConnected, "")
 	e.log.Info("tunnel started", "edge", sess.edge.ID, "network", string(*e.network.Load()))
 	return nil
@@ -827,6 +875,12 @@ func peerStats(dev *device.Device) (hs int64, tx, rx uint64) {
 		}
 	}
 	return
+}
+
+func (e *Engine) isConnected() bool {
+	e.statusMu.Lock()
+	defer e.statusMu.Unlock()
+	return e.state == StateConnected
 }
 
 func (e *Engine) setState(state, errMsg string) {

@@ -134,6 +134,8 @@ type fakeCloud struct {
 	snap     *policy.Snapshot
 	updated  chan struct{}
 	flows    []api.FlowRecord
+	probes   []api.ExperienceSample
+	flowFail int
 	psks     map[uint64][32]byte // epoch -> PSK derived by the Edge
 	rotate   int
 	userPuts int
@@ -396,10 +398,17 @@ func (fc *fakeCloud) snapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (fc *fakeCloud) postFlows(w http.ResponseWriter, r *http.Request) {
-	var b api.FlowBatch
-	json.NewDecoder(r.Body).Decode(&b)
 	fc.mu.Lock()
+	if fc.flowFail > 0 {
+		fc.flowFail--
+		fc.mu.Unlock()
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+	var b api.FlowBatch
+	_ = json.NewDecoder(r.Body).Decode(&b)
 	fc.flows = append(fc.flows, b.Records...)
+	fc.probes = append(fc.probes, b.Probes...)
 	fc.mu.Unlock()
 	w.WriteHeader(http.StatusAccepted)
 }

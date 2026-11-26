@@ -360,6 +360,188 @@ func TestStats(t *testing.T) {
 	}
 }
 
+func TestTakeDNSTimes(t *testing.T) {
+	// Table-driven: matched response yields duration; unmatched responses add nothing.
+	t.Run("query and response timing", func(t *testing.T) {
+		const ans = "a.example. 300 IN A 203.0.113.9"
+		otherPort := netip.MustParseAddrPort("100.64.0.7:40001")
+		otherServer := netip.MustParseAddrPort("198.51.100.53:53")
+		tests := []struct {
+			name     string
+			ask      bool
+			qname    string
+			rname    string
+			idOff    uint16
+			server   netip.AddrPort
+			client   netip.AddrPort
+			advance  time.Duration
+			replay   bool
+			wantTime time.Duration
+			wantLen  int
+		}{
+			{
+				name:     "matched response",
+				ask:      true,
+				qname:    "a.example",
+				rname:    "a.example",
+				server:   snoopServer,
+				client:   snoopClient,
+				advance:  25 * time.Millisecond,
+				wantTime: 25 * time.Millisecond,
+				wantLen:  1,
+			},
+			{
+				name:    "unmatched wrong txid",
+				ask:     true,
+				qname:   "a.example",
+				rname:   "a.example",
+				idOff:   1,
+				server:  snoopServer,
+				client:  snoopClient,
+				advance: 25 * time.Millisecond,
+				wantLen: 0,
+			},
+			{
+				name:    "unmatched wrong qname",
+				ask:     true,
+				qname:   "b.example",
+				rname:   "a.example",
+				server:  snoopServer,
+				client:  snoopClient,
+				advance: 25 * time.Millisecond,
+				wantLen: 0,
+			},
+			{
+				name:    "unmatched wrong client port",
+				ask:     true,
+				qname:   "a.example",
+				rname:   "a.example",
+				server:  snoopServer,
+				client:  otherPort,
+				advance: 25 * time.Millisecond,
+				wantLen: 0,
+			},
+			{
+				name:    "unmatched wrong server",
+				ask:     true,
+				qname:   "a.example",
+				rname:   "a.example",
+				server:  otherServer,
+				client:  snoopClient,
+				advance: 25 * time.Millisecond,
+				wantLen: 0,
+			},
+			{
+				name:    "unmatched expired query",
+				ask:     true,
+				qname:   "a.example",
+				rname:   "a.example",
+				server:  snoopServer,
+				client:  snoopClient,
+				advance: DefaultQueryTimeout + time.Second,
+				wantLen: 0,
+			},
+			{
+				name:    "unmatched unsolicited",
+				ask:     false,
+				rname:   "a.example",
+				server:  snoopServer,
+				client:  snoopClient,
+				wantLen: 0,
+			},
+			{
+				name:     "unmatched replayed response adds nothing extra",
+				ask:      true,
+				qname:    "a.example",
+				rname:    "a.example",
+				server:   snoopServer,
+				client:   snoopClient,
+				advance:  15 * time.Millisecond,
+				replay:   true,
+				wantTime: 15 * time.Millisecond,
+				wantLen:  1,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				now := time.Unix(1_000_000, 0)
+				i := New(Config{Now: func() time.Time { return now }})
+				var id uint16
+				if tt.ask {
+					id = ask(t, i, tt.qname)
+				} else {
+					id = 42
+				}
+				now = now.Add(tt.advance)
+				respPkt := response(t, id+tt.idOff, tt.rname, ans)
+				_ = i.SnoopResponse(tt.server, tt.client, respPkt)
+				if tt.replay {
+					now = now.Add(10 * time.Millisecond)
+					_ = i.SnoopResponse(tt.server, tt.client, respPkt)
+				}
+				got := i.TakeDNSTimes()
+				if len(got) != tt.wantLen {
+					t.Fatalf("got %d durations, want %d", len(got), tt.wantLen)
+				}
+				if tt.wantLen > 0 && got[0] != tt.wantTime {
+					t.Fatalf("got duration %v, want %v", got[0], tt.wantTime)
+				}
+			})
+		}
+	})
+
+	// Buffer bounded at 256, drops the oldest.
+	t.Run("buffer bounded at 256", func(t *testing.T) {
+		now := time.Unix(1_000_000, 0)
+		i := New(Config{Now: func() time.Time { return now }})
+		const total = 300
+		for k := 0; k < total; k++ {
+			name := fmt.Sprintf("h%d.example", k)
+			src := netip.AddrPortFrom(snoopClient.Addr(), uint16(30000+k%10000))
+			qPkt := query(t, name, dns.TypeA)
+			var m dns.Msg
+			_ = m.Unpack(qPkt)
+			m.Id = uint16(k + 1)
+			qPkt, _ = m.Pack()
+			if _, err := i.HandleQuery(nil, "", src, snoopServer, qPkt); err != nil {
+				t.Fatal(err)
+			}
+			elapsed := time.Duration(k+1) * time.Millisecond
+			now = now.Add(elapsed)
+			rPkt := response(t, uint16(k+1), name, fmt.Sprintf("%s. 300 IN A 192.0.2.1", name))
+			i.SnoopResponse(snoopServer, src, rPkt)
+		}
+		got := i.TakeDNSTimes()
+		if len(got) != 256 {
+			t.Fatalf("buffer len = %d, want 256", len(got))
+		}
+		if got[0] != 45*time.Millisecond {
+			t.Fatalf("oldest kept duration = %v, want 45ms", got[0])
+		}
+		if got[len(got)-1] != 300*time.Millisecond {
+			t.Fatalf("newest kept duration = %v, want 300ms", got[len(got)-1])
+		}
+	})
+
+	// Take clears buffer.
+	t.Run("take clears buffer", func(t *testing.T) {
+		now := time.Unix(1_000_000, 0)
+		i := New(Config{Now: func() time.Time { return now }})
+		id := ask(t, i, "clear.example")
+		now = now.Add(10 * time.Millisecond)
+		i.SnoopResponse(snoopServer, snoopClient, response(t, id, "clear.example", "clear.example. 300 IN A 192.0.2.1"))
+		first := i.TakeDNSTimes()
+		if len(first) != 1 {
+			t.Fatalf("first take len = %d, want 1", len(first))
+		}
+		second := i.TakeDNSTimes()
+		if len(second) != 0 {
+			t.Fatalf("second take len = %d, want 0", len(second))
+		}
+	})
+}
+
 func BenchmarkDomainLookup(b *testing.B) {
 	i := New(Config{})
 	q := query(&testing.T{}, "www.example.com", dns.TypeA)

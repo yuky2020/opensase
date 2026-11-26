@@ -29,6 +29,8 @@ const (
 	DefaultMaxPending = 4096
 	// DefaultQueryTimeout is how long a forwarded query waits for its response.
 	DefaultQueryTimeout = 10 * time.Second
+
+	maxDNSTimes = 256
 )
 
 // ErrNotQuery is returned for DNS messages that are not a single-question standard query.
@@ -55,6 +57,7 @@ type queryKey struct {
 
 type pendingQuery struct {
 	name    string // normalized qname
+	seen    time.Time
 	expires time.Time
 }
 
@@ -63,9 +66,10 @@ type Interceptor struct {
 	cfg   Config
 	cache *domainCache
 
-	mu      sync.Mutex
-	stats   map[string]*AppStats
-	pending map[queryKey]pendingQuery
+	mu       sync.Mutex
+	stats    map[string]*AppStats
+	pending  map[queryKey]pendingQuery
+	dnsTimes []time.Duration
 }
 
 // AppStats counts DNS queries per app ("" = unknown app).
@@ -189,11 +193,16 @@ func (i *Interceptor) SnoopResponse(server, client netip.AddrPort, payload []byt
 	name := NormalizeName(m.Question[0].Name)
 	i.mu.Lock()
 	pq, ok := i.pending[key]
+	matched := ok && pq.name == name && now.Before(pq.expires) && name != ""
 	if ok && pq.name == name {
 		delete(i.pending, key)
 	}
+	if matched {
+		d := max(0, now.Sub(pq.seen))
+		i.recordDNSTimeLocked(d)
+	}
 	i.mu.Unlock()
-	if !ok || pq.name != name || !now.Before(pq.expires) || name == "" || m.Rcode != dns.RcodeSuccess {
+	if !matched || m.Rcode != dns.RcodeSuccess {
 		return 0
 	}
 	n := 0
@@ -219,6 +228,27 @@ func (i *Interceptor) SnoopResponse(server, client netip.AddrPort, payload []byt
 	return n
 }
 
+// recordDNSTimeLocked adds d to dnsTimes, keeping at most maxDNSTimes and dropping the oldest.
+// Caller must hold mu.
+func (i *Interceptor) recordDNSTimeLocked(d time.Duration) {
+	if len(i.dnsTimes) < maxDNSTimes {
+		i.dnsTimes = append(i.dnsTimes, d)
+		return
+	}
+	copy(i.dnsTimes, i.dnsTimes[1:])
+	i.dnsTimes[len(i.dnsTimes)-1] = d
+}
+
+// TakeDNSTimes returns and clears the recorded DNS resolution durations.
+// It is safe for concurrent use.
+func (i *Interceptor) TakeDNSTimes() []time.Duration {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	times := i.dnsTimes
+	i.dnsTimes = nil
+	return times
+}
+
 // remember records an outstanding query. When the table is full, expired entries are
 // purged; if it is still full the query is not recorded (its response will not be snooped).
 func (i *Interceptor) remember(k queryKey, name string) {
@@ -235,7 +265,7 @@ func (i *Interceptor) remember(k queryKey, name string) {
 			return
 		}
 	}
-	i.pending[k] = pendingQuery{name: name, expires: now.Add(i.cfg.QueryTimeout)}
+	i.pending[k] = pendingQuery{name: name, seen: now, expires: now.Add(i.cfg.QueryTimeout)}
 }
 
 // PendingLen returns the number of outstanding queries.

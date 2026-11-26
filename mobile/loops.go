@@ -253,23 +253,118 @@ func (e *Engine) flowLoop(rs *runState) {
 	}
 }
 
-// uploadFlows sends pending and newly drained records. Only the flow loop and Stop (after
-// the loop has exited) call it.
+// uploadFlows sends pending and newly drained records and experience samples. Only the
+// flow loop and Stop (after the loop has exited) call it.
 func (e *Engine) uploadFlows(ctx context.Context, rs *runState) error {
 	rs.pendingFlows = append(rs.pendingFlows, rs.fw.Drain()...)
 	if over := len(rs.pendingFlows) - maxPendingFlows; over > 0 {
 		rs.pendingFlows = rs.pendingFlows[over:] // keep the newest
 	}
-	for len(rs.pendingFlows) > 0 {
-		n := min(len(rs.pendingFlows), maxFlowBatch)
-		batch := api.FlowBatch{Records: rs.pendingFlows[:n]}
+	probes := rs.takeSamples(maxSampleBatch)
+	if len(rs.pendingFlows) == 0 && len(probes) == 0 {
+		return nil
+	}
+	if len(rs.pendingFlows) == 0 {
+		batch := api.FlowBatch{Probes: probes}
 		if _, err := doJSON(ctx, rs.id.cp, http.MethodPost, joinURL(rs.id.resp.ControlURL, "/v1/flows"), nil, &batch, nil); err != nil {
 			return err
+		}
+		rs.clearSamples(len(probes))
+		return nil
+	}
+	for len(rs.pendingFlows) > 0 {
+		n := min(len(rs.pendingFlows), maxFlowBatch)
+		batch := api.FlowBatch{Records: rs.pendingFlows[:n], Probes: probes}
+		if _, err := doJSON(ctx, rs.id.cp, http.MethodPost, joinURL(rs.id.resp.ControlURL, "/v1/flows"), nil, &batch, nil); err != nil {
+			return err
+		}
+		if len(probes) > 0 {
+			rs.clearSamples(len(probes))
+			probes = nil
 		}
 		rs.pendingFlows = rs.pendingFlows[n:]
 	}
 	rs.pendingFlows = nil
 	return nil
+}
+
+const experienceProbes = 5
+
+// experienceLoop collects digital experience samples every experienceInterval (60 s) while a session is up.
+func (e *Engine) experienceLoop(rs *runState) {
+	defer rs.wg.Done()
+	interval := e.experienceInterval
+	if interval <= 0 {
+		interval = defaultExperienceInterval
+	}
+	probeTimeout := e.experienceProbeTimeout
+	if probeTimeout <= 0 {
+		probeTimeout = defaultExperienceProbeTimeout
+	}
+	for sleep(rs.ctx, interval) {
+		if !e.isConnected() {
+			continue
+		}
+		sess := rs.session()
+		if sess == nil || sess.edge.ID == "" {
+			continue
+		}
+		var rtts []time.Duration
+		for j := 0; j < experienceProbes; j++ {
+			if rs.ctx.Err() != nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(rs.ctx, probeTimeout)
+			start := time.Now()
+			live, err := e.probeSession(ctx, rs, sess)
+			d := time.Since(start)
+			cancel()
+			if err == nil && live {
+				rtts = append(rtts, d)
+			}
+		}
+		unanswered := experienceProbes - len(rtts)
+		var dnsTimes []time.Duration
+		if rs.dns != nil {
+			dnsTimes = rs.dns.TakeDNSTimes()
+		}
+		netType := ""
+		if nt := e.network.Load(); nt != nil {
+			netType = string(*nt)
+		}
+		sample := api.ExperienceSample{
+			At:      time.Now().UTC(),
+			EdgeID:  sess.edge.ID,
+			RTTms:   medianMs(rtts),
+			LossPct: lossPct(unanswered, experienceProbes),
+			DNSms:   medianMs(dnsTimes),
+			Network: netType,
+		}
+		rs.addExperienceSample(sample)
+	}
+}
+
+// medianMs returns the median of ds in milliseconds. If ds is empty, it returns 0.
+func medianMs(ds []time.Duration) float64 {
+	if len(ds) == 0 {
+		return 0
+	}
+	sorted := make([]time.Duration, len(ds))
+	copy(sorted, ds)
+	slices.Sort(sorted)
+	n := len(sorted)
+	if n%2 == 1 {
+		return float64(sorted[n/2]) / float64(time.Millisecond)
+	}
+	return (float64(sorted[n/2-1]) + float64(sorted[n/2])) / (2 * float64(time.Millisecond))
+}
+
+// lossPct calculates the loss percentage given unanswered probes out of total.
+func lossPct(unanswered, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(100*unanswered) / float64(total)
 }
 
 // sessionLoop keeps the Edge session alive (review #5):

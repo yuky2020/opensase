@@ -273,6 +273,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/provisioning-keys", s.handleCreateKey)
 			r.Put("/policy", s.handlePutPolicy)
 			r.Get("/policy", s.handleGetPolicy)
+			r.Post("/policy-test", s.handlePolicyTest) // read only: every role (roleAllows)
 			r.Get("/flows", s.handleListFlows)
 			r.Get("/devices", s.handleListDevices)
 			r.Post("/devices/{d}/revoke", s.handleRevokeDevice)

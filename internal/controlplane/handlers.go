@@ -740,3 +740,53 @@ func (s *Server) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 	s.log.InfoContext(r.Context(), "device revoked", "tenant", t, "device", d)
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// handlePolicyTest evaluates a sample flow against a device's latest signed snapshot, as
+// the device (or, with Edge set, the Edge) would, resolving "ask" like POST /v1/decide.
+// Nothing is recorded (issue #75).
+func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.tenantParam(w, r)
+	if !ok {
+		return
+	}
+	var req api.PolicyTestRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	dev, err := s.cfg.Store.GetDevice(r.Context(), req.DeviceID)
+	if errors.Is(err, store.ErrNotFound) || err == nil && dev.TenantID != t {
+		writeErr(w, http.StatusNotFound, "unknown device")
+		return
+	}
+	if err != nil {
+		s.internalErr(w, r, "load device", err)
+		return
+	}
+	rec, err := s.cfg.Store.LatestSnapshot(r.Context(), dev.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "device has no snapshot yet")
+		return
+	}
+	if err != nil {
+		s.internalErr(w, r, "load snapshot", err)
+		return
+	}
+	c, err := s.compiled.get(rec)
+	if err != nil {
+		s.internalErr(w, r, "compile snapshot", err)
+		return
+	}
+	if req.Edge {
+		req.Flow.App, req.Flow.UID, req.Flow.Network = "", 0, ""
+	}
+	d := c.Evaluate(req.Flow, req.Edge)
+	if d.Action == policy.ActionAsk {
+		de, err := s.decideFor(r.Context(), dev.TenantID)
+		if err != nil {
+			s.internalErr(w, r, "decide data", err)
+			return
+		}
+		d = de.cloudDecide(req.Flow)
+	}
+	writeJSON(w, http.StatusOK, api.PolicyTestResult{Decision: d, SnapshotVersion: rec.Version})
+}

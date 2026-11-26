@@ -123,7 +123,8 @@ func requireTenantRole(next http.Handler) http.Handler {
 
 // roleAllows decides one request on /v1/admin/tenants/{tenant}/....
 func roleAllows(role, method, path, tenant string) bool {
-	read := method == http.MethodGet || method == http.MethodHead
+	read := method == http.MethodGet || method == http.MethodHead ||
+		method == http.MethodPost && path == "/v1/admin/tenants/"+tenant+"/policy-test" // evaluates, changes nothing
 	switch role {
 	case api.TenantRoleAdmin:
 		return true

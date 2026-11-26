@@ -50,6 +50,7 @@
 //	PUT  /v1/admin/tenants/{t}/policy   TenantPolicy -> 204 (recompiles all device snapshots)
 //	GET  /v1/admin/tenants/{t}/flows?limit=   -> FlowBatch
 //	GET  /v1/admin/tenants/{t}/policy  -> TenantPolicy
+//	POST /v1/admin/tenants/{t}/policy-test PolicyTestRequest -> PolicyTestResult (any tenant role; read only, not logged; issue #75)
 //	GET  /v1/admin/tenants/{t}/devices -> []AdminDevice (internal/controlplane)
 //	POST /v1/admin/tenants/{t}/devices/{d}/revoke -> 204
 //	GET  /v1/admin/tenants/{t}/devices/{d}/routes -> DeviceRoutes (tenant role admin only)
@@ -195,6 +196,22 @@ type DecideRequest struct {
 type DecideResponse struct {
 	Decision policy.Decision `json:"decision"` // Action is never "ask"
 	TTL      int             `json:"ttlSeconds"`
+}
+
+// PolicyTestRequest asks how a device's current signed snapshot decides a sample flow
+// (issue #75). Edge evaluates as the Edge does: device-only attributes (app, UID,
+// network) are ignored.
+type PolicyTestRequest struct {
+	DeviceID string      `json:"deviceId"`
+	Flow     policy.Flow `json:"flow"`
+	Edge     bool        `json:"edge,omitempty"`
+}
+
+// PolicyTestResult is the reply to a policy test: the decision ("ask" resolved by the cloud
+// layer, as POST /v1/decide does) and the snapshot version it came from.
+type PolicyTestResult struct {
+	Decision        policy.Decision `json:"decision"`
+	SnapshotVersion uint64          `json:"snapshotVersion"`
 }
 
 // FlowRecord is one logged flow with its decision and byte counts.

@@ -68,20 +68,20 @@ A manual checklist executed by the maintainer on one machine prior to release:
 
 The following known limitations must be resolved before tagging 1.0:
 
-- **Windows installer signing**: Replace the unsigned Windows MSI with a code-signed MSI.
+- **Release signatures**: Sign container images and `SHA256SUMS` with keyless cosign, and publish an SBOM and build provenance. Windows code signing is not required for 1.0: the MSI ships unsigned, so SmartScreen warns, and is verified through the signed `SHA256SUMS`.
 - **Android APK signing**: Replace the debug-signed Android APK with a signed release APK.
 - **Windows kill switch**: Implement the kill switch for the Windows client.
 - **Real install testing**: The client has never been installed and run end to end on Windows, Debian or Fedora; the manual checklist above must pass on every listed platform.
 - **Linux display driver defect**: Resolve the Linux app drawing only part of the window on the NVIDIA EGL driver.
-- **Edge high availability**: Deploy at least two Edges with client failover (multi-region support comes later).
-- **Single Control Plane**: A single Control Plane running on SQLite is acceptable for 1.0 when documented, with backup and restore tested.
+- **Edge high availability**: Deploy at least two Edges with client failover within 30 seconds, and Edge selection by region and latency.
+- **Control Plane availability**: Support several Control Plane replicas on PostgreSQL. A single Control Plane on SQLite stays the default for single-node installs, with backup and restore tested.
 
 ## Packages for 1.0
 
 The 1.0 release produces the following packages:
 
 - **Linux client**: Packaged as `.deb`, `.rpm`, and an Arch Linux package.
-- **Windows client**: Code-signed Windows MSI.
+- **Windows client**: Windows MSI (not code-signed in 1.0), listed in the signed `SHA256SUMS`.
 - **Android client**: Signed Android release APK.
 - **Container images**: Container images for the central components and the all-in-one quick start.
 

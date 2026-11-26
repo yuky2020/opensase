@@ -306,7 +306,7 @@ func (s *Server) compileDevices(ctx context.Context, tenantID string, devs []sto
 				DNS:           dns,
 				PrivateApps:   apps,
 				Web:           tp.Web,
-				Categories:    tp.Categories,
+				Categories:    append(slices.Clone(tp.Categories), listCategories(tenantID, tp)...),
 				SafeSearch:    tp.SafeSearch,
 			}
 			env, err := policy.Sign(snap, s.cfg.SigningKeyID, s.cfg.SigningKey)

@@ -74,6 +74,7 @@ nav:
   - Manual test checklist: testing/manual-checklist.md
   - Operations:
       - Monitoring: operations/monitoring.md
+      - DNS security: operations/dns-security.md
   - Architecture:
       - Overview: architecture.md
       - Glossary: glossary.md

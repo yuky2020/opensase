@@ -573,6 +573,9 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = s.validateCategories(tp.Categories)
 	}
+	if err == nil {
+		err = validateLists(tp)
+	}
 	if err != nil {
 		writeValidationErr(w, err)
 		return
@@ -603,6 +606,7 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", policyETag(tp))
 	s.invalidateDecide(t)
+	s.kickLists()                        // download lists the policy added (issue #63)
 	s.wake(r.Context(), notifyTenant(t)) // connector configs (ADR-0013)
 	devs, err := s.cfg.Store.ListDevices(r.Context(), store.DeviceFilter{TenantID: t})
 	if err != nil {

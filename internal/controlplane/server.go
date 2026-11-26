@@ -86,6 +86,7 @@ type Config struct {
 	PKIDir             string
 	ServerCertNotAfter time.Time        // expiry of the serving certificate, for metrics (issue #73)
 	OIDCClient         *http.Client     // optional; default timeout 10s (issue #17)
+	ListClient         *http.Client     // downloads blocklists (issue #63); default: public addresses only
 	Logger             *slog.Logger     // default slog.Default()
 	Now                func() time.Time // default time.Now
 }
@@ -107,7 +108,10 @@ type Server struct {
 	flowLimit   *rateLimiter
 	enrollLimit *rateLimiter // failed enroll attempts per source IP (ST-05)
 
-	cats atomic.Pointer[catState] // web category list (ADR-0022)
+	cats       atomic.Pointer[catState] // web category list (ADR-0022)
+	edgeCats   atomic.Pointer[catState] // cats plus downloaded blocklists, served to Edges (issue #63)
+	lists      *listState
+	listClient *http.Client
 
 	obs     *observer    // metrics (issue #73)
 	auditOK atomic.Int32 // last audit chain check: 1 ok, 0 broken, -1 not run yet
@@ -171,6 +175,11 @@ func New(cfg Config) (*Server, error) {
 	s.enrollLimit = newRateLimiter(cfg.EnrollRate, time.Minute, cfg.Now)
 	s.pool.Store(cfg.Authority.ClientCAPool())
 	s.auditOK.Store(-1)
+	s.lists = newListState()
+	s.listClient = cfg.ListClient
+	if s.listClient == nil {
+		s.listClient = publicListClient()
+	}
 	s.initMetrics()
 	return s, nil
 }
@@ -238,6 +247,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/info", s.handleAdminInfo)
 		r.Get("/saas/catalog", s.handleSaaSCatalog)
 		r.Get("/categories", s.handleCategories)
+		r.Get("/blocklists", s.handleBlocklists)
 		r.Get("/tenants", s.handleListTenants) // filtered to the caller's tenant
 		r.Group(func(r chi.Router) {
 			r.Use(requireSuper)
@@ -334,6 +344,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 	go s.cfg.Store.KeepLeadership(ctx, func(leader bool) { s.log.Info("leadership changed", "leader", leader) })
 	go s.cfg.Store.Subscribe(ctx, s.notify.notify, s.notify.notifyAll)
 	go s.categoriesLoop(ctx)
+	go s.listsLoop(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ServeTLS(netutil.LimitListener(ln, s.cfg.MaxConns), "", "") }()
 	s.log.Info("control plane listening", "addr", ln.Addr().String(), "kex", "X25519MLKEM768", "maxConns", s.cfg.MaxConns)

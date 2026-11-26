@@ -53,6 +53,7 @@ func (s *Server) loadCategoryFile(path string) error {
 	}
 	sum := sha256.Sum256(b)
 	s.cats.Store(&catState{db: db, version: hex.EncodeToString(sum[:6]), loadedAt: s.now()})
+	s.publishCategories()
 	s.log.Info("web categories loaded", "categories", len(db.Names()), "version", hex.EncodeToString(sum[:6]), "file", path)
 	return nil
 }
@@ -174,7 +175,7 @@ func (s *Server) handleCategories(w http.ResponseWriter, _ *http.Request) {
 // handleEdgeCategories sends an Edge the categories it asks for, in the pkg/categories wire
 // format.
 func (s *Server) handleEdgeCategories(w http.ResponseWriter, r *http.Request) {
-	st := s.categoryState()
+	st := s.edgeCats.Load()
 	if st == nil {
 		writeErr(w, http.StatusServiceUnavailable, "no category list loaded")
 		return

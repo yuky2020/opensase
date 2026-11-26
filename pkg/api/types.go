@@ -69,6 +69,7 @@
 //	GET  /v1/admin/audit?limit=&tenant=       -> []AuditEntry (super-admin: every entry, or one tenant)
 //	GET  /v1/admin/audit/verify[?id=N&hash=H] -> AuditVerification (super-admin; hash chain check, ADR-0028)
 //	GET  /v1/admin/status                     -> AdminStatus (super-admin; deployment health, issue #73)
+//	GET  /v1/admin/blocklists                 -> []BuiltinBlocklist (built-in lists for builtinLists, issue #63)
 //	Super-admin only (403 for a tenant admin): POST /v1/admin/tenants, /v1/admin/edges* and /v1/admin/audit.
 //	GET  /v1/admin/tenants/{t}/users      -> []AdminUser
 //	PUT  /v1/admin/tenants/{t}/dlp-datasets/{name}  DLPDatasetRequest -> DLPDataset (ADR-0029; only hashes are kept)
@@ -366,6 +367,10 @@ type TenantPolicy struct {
 	Web            policy.WebPolicy            `json:"web,omitzero"`          // TLS inspection and URL rules, Edge only (ADR-0018)
 	Categories     []string                    `json:"categories,omitempty"`  // web categories to block (ADR-0022)
 	SafeSearch     bool                        `json:"safeSearch,omitempty"`  // force safe search and restricted video modes (ADR-0025)
+	// Blocklists downloaded by the Control Plane and enforced like categories (issue #63):
+	// CustomLists from the tenant's URLs, BuiltinLists by ID from the built-in catalog.
+	CustomLists  []CustomList `json:"customLists,omitempty"`
+	BuiltinLists []string     `json:"builtinLists,omitempty"`
 	// Cloud-only decision data for "ask" flows, too large or too sensitive for devices.
 	DecideBlockDomains []string      `json:"decideBlockDomains,omitempty"`
 	DecideBlockCIDRs   []string      `json:"decideBlockCidrs,omitempty"`
@@ -599,4 +604,22 @@ type EdgeStatus struct {
 type CertExpiry struct {
 	Name     string    `json:"name"`
 	NotAfter time.Time `json:"notAfter"`
+}
+
+// CustomList is a domain blocklist the Control Plane downloads from URL (https only) and
+// refreshes every 6 hours (issue #63). Formats: hosts file, one domain per line, or
+// domain-only adblock rules.
+type CustomList struct {
+	ID    string `json:"id"`              // [a-z0-9-], unique in the tenant
+	Title string `json:"title,omitempty"` // display name
+	URL   string `json:"url"`
+}
+
+// BuiltinBlocklist is one entry of GET /v1/admin/blocklists, the lists a tenant policy can
+// enable by ID in builtinLists (issue #63).
+type BuiltinBlocklist struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Licence string `json:"licence"`
 }

@@ -120,6 +120,7 @@ nav:
       - "0031 Portal OIDC sign-in": adr/0031-portal-oidc-sign-in.md
       - "0032 Windows client": adr/0032-windows-client.md
       - "0033 PostgreSQL and replicas": adr/0033-postgresql-and-replicas.md
+      - "0034 Device mesh": adr/0034-device-mesh.md
   - Security:
       - Security policy: security-policy.md
       - Threat model: security/threat-model.md

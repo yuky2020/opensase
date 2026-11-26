@@ -24,12 +24,20 @@ import (
 const (
 	KindValues   = "values"
 	KindDocument = "document"
+	// KindRecords protects rows of structured data (for example a customer table): a match is
+	// two or more fields of the same row in one text, so a common value alone (a first name,
+	// a city) does not count (issue #75).
+	KindRecords = "records"
 )
 
 // Candidate bounds.
 const (
 	MaxValueTokens = 4
 	ShingleTokens  = 8
+	// MaxRecordFields bounds the fields of one record; MaxRecordMatches bounds the distinct
+	// field values of one text that are paired when counting records.
+	MaxRecordFields  = 16
+	MaxRecordMatches = 512
 )
 
 // Tokens normalizes text into lowercase tokens: letters and digits, keeping the inner
@@ -87,6 +95,44 @@ func ValueHashes(key []byte, values []string) []uint64 {
 	return slices.Compact(out)
 }
 
+// Record hashes are domain separated so that field and pair hashes can share one sorted
+// list (and the existing wire format) without colliding.
+func fieldHash(key []byte, v string) uint64 { return KeyedHash(key, "f\x00"+v) }
+
+func pairHash(key []byte, a, b string) uint64 {
+	if b < a {
+		a, b = b, a
+	}
+	return KeyedHash(key, "p\x00"+a+"\x00"+b)
+}
+
+// RecordHashes returns the sorted, unique hashes of records: one per normalized field and
+// one per unordered pair of distinct fields of the same record. Empty fields are skipped,
+// fields beyond MaxRecordFields are ignored, and records with fewer than two usable fields
+// add nothing.
+func RecordHashes(key []byte, records [][]string) []uint64 {
+	var out []uint64
+	for _, rec := range records {
+		var fs []string
+		for _, f := range rec[:min(len(rec), MaxRecordFields)] {
+			if n := NormalizeValue(f); n != "" && !slices.Contains(fs, n) {
+				fs = append(fs, n)
+			}
+		}
+		if len(fs) < 2 {
+			continue
+		}
+		for i, a := range fs {
+			out = append(out, fieldHash(key, a))
+			for _, b := range fs[i+1:] {
+				out = append(out, pairHash(key, a, b))
+			}
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // ShingleHashes returns the sorted, unique hashes of the shingles of text.
 func ShingleHashes(key []byte, text string) []uint64 {
 	t := Tokens(text)
@@ -131,6 +177,8 @@ func (d *Dataset) Count(text []byte) int {
 				}
 			}
 		}
+	case KindRecords:
+		return d.countRecords(t)
 	case KindDocument:
 		seen := map[uint64]bool{}
 		for i := 0; i+ShingleTokens <= len(t); i++ {
@@ -140,6 +188,41 @@ func (d *Dataset) Count(text []byte) int {
 			h := KeyedHash(d.Key, strings.Join(t[i:i+ShingleTokens], " "))
 			if d.has(h) && !seen[h] {
 				seen[h] = true
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// countRecords returns how many field pairs of the same record appear in the tokens: the
+// distinct candidates that are fields are collected first (at most MaxRecordMatches), then
+// every pair of them is looked up.
+func (d *Dataset) countRecords(t []string) int {
+	var fields []string
+	work := 0
+	for i := range t {
+		for k := 1; k <= MaxValueTokens && i+k <= len(t); k++ {
+			if work++; work > maxCandidates {
+				break
+			}
+			c := strings.Join(t[i:i+k], " ")
+			if d.has(fieldHash(d.Key, c)) && !slices.Contains(fields, c) {
+				fields = append(fields, c)
+				if len(fields) == MaxRecordMatches {
+					return d.countPairs(fields)
+				}
+			}
+		}
+	}
+	return d.countPairs(fields)
+}
+
+func (d *Dataset) countPairs(fields []string) int {
+	n := 0
+	for i, a := range fields {
+		for _, b := range fields[i+1:] {
+			if d.has(pairHash(d.Key, a, b)) {
 				n++
 			}
 		}

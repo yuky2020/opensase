@@ -52,14 +52,20 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	var hashes []uint64
 	switch req.Kind {
+	case dlp.KindRecords:
+		if len(req.Values) > 0 || len(req.Documents) > 0 {
+			writeErr(w, http.StatusBadRequest, "a records dataset takes records, not values or documents")
+			return
+		}
+		hashes = dlp.RecordHashes(key, req.Records)
 	case dlp.KindValues:
-		if len(req.Documents) > 0 {
+		if len(req.Documents) > 0 || len(req.Records) > 0 {
 			writeErr(w, http.StatusBadRequest, "a values dataset takes values, not documents")
 			return
 		}
 		hashes = dlp.ValueHashes(key, req.Values)
 	case dlp.KindDocument:
-		if len(req.Values) > 0 {
+		if len(req.Values) > 0 || len(req.Records) > 0 {
 			writeErr(w, http.StatusBadRequest, "a document dataset takes documents, not values")
 			return
 		}
@@ -75,7 +81,7 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 		slices.Sort(hashes)
 		hashes = slices.Compact(hashes)
 	default:
-		writeErr(w, http.StatusBadRequest, "kind must be values or document")
+		writeErr(w, http.StatusBadRequest, "kind must be values, document or records")
 		return
 	}
 	kind := req.Kind

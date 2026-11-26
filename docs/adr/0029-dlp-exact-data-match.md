@@ -71,3 +71,18 @@ upload, 500,000 entries per dataset.
   - `TestDLPDatasets`: only hashes stored and sent, tenant scope;
   - `TestInspectionDLPDatasets`: value, document excerpt, unrelated text;
   - SEC-DP-131 on the live stack.
+
+## Update: records datasets (issue #75)
+
+A third kind, `records`, protects rows of structured data such as a customer table:
+
+- The admin uploads rows of fields (`opensasectl dlp-dataset put -kind records -file customers.csv`).
+- The Control Plane keeps, under the dataset key, one hash per normalized field and one per
+  unordered pair of fields of the same row. Field and pair hashes are domain separated, so
+  they share the existing sorted hash list and wire format.
+- The Edge collects the fields found in a text (at most 512 distinct ones) and counts the
+  pairs that belong to one row. A single common value (a first name, a city) never matches;
+  two fields of the same row do.
+- Rows with fewer than two usable fields add nothing; fields beyond the 16th are ignored.
+
+DLP rules use the count as for the other kinds.

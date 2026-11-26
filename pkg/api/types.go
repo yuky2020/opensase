@@ -565,9 +565,10 @@ type AuditVerification struct {
 // (text, Office, PDF, ZIP...) whose text is fingerprinted. The Control Plane keeps only keyed
 // hashes and discards the content.
 type DLPDatasetRequest struct {
-	Kind      string   `json:"kind"`
-	Values    []string `json:"values,omitempty"`
-	Documents [][]byte `json:"documents,omitempty"`
+	Kind      string     `json:"kind"` // values | document | records
+	Values    []string   `json:"values,omitempty"`
+	Documents [][]byte   `json:"documents,omitempty"`
+	Records   [][]string `json:"records,omitempty"` // rows of fields (kind records, issue #75)
 }
 
 // DLPDataset describes a stored dataset.

@@ -79,7 +79,7 @@ func (e *Edge) syncDatasets(ctx context.Context, now time.Time) error {
 		}
 		sets := map[string]*dlp.Dataset{}
 		for _, d := range resp.Datasets {
-			if len(d.Hashes)%8 != 0 || len(d.Key) == 0 || (d.Kind != dlp.KindValues && d.Kind != dlp.KindDocument) {
+			if len(d.Hashes)%8 != 0 || len(d.Key) == 0 || (d.Kind != dlp.KindValues && d.Kind != dlp.KindDocument && d.Kind != dlp.KindRecords) {
 				continue
 			}
 			hs := make([]uint64, len(d.Hashes)/8)

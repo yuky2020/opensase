@@ -26,6 +26,11 @@ func TestDLPDatasets(t *testing.T) {
 	if d.Entries != 2 || d.Kind != "values" {
 		t.Fatalf("dataset %+v", d)
 	}
+	_ = json.Unmarshal(e.adminDo("PUT", "/v1/admin/tenants/acme/dlp-datasets/accounts", api.DLPDatasetRequest{Kind: "records", Records: [][]string{{"Mario Rossi", "ACCT-1234"}, {"Luigi Verdi", "ACCT-5678"}, {"alone"}}}, 200), &d)
+	if d.Entries != 6 || d.Kind != "records" { // 4 field hashes + 2 pair hashes; one-field rows add nothing
+		t.Fatalf("records dataset %+v", d)
+	}
+	e.adminDo("PUT", "/v1/admin/tenants/acme/dlp-datasets/mixed", api.DLPDatasetRequest{Kind: "records", Values: []string{"x"}, Records: [][]string{{"a", "b"}}}, 400)
 	doc := []byte("Project Falcon will acquire Example Industries for 42 euro per share before the end of March.")
 	_ = json.Unmarshal(e.adminDo("PUT", "/v1/admin/tenants/acme/dlp-datasets/falcon", api.DLPDatasetRequest{Kind: "document", Documents: [][]byte{doc}}, 200), &d)
 	if d.Entries < 5 || d.Kind != "document" {
@@ -39,7 +44,7 @@ func TestDLPDatasets(t *testing.T) {
 	var list []api.DLPDataset
 	raw := e.adminDo("GET", "/v1/admin/tenants/acme/dlp-datasets", nil, 200)
 	_ = json.Unmarshal(raw, &list)
-	if len(list) != 2 || bytes.Contains(raw, []byte("Mario")) {
+	if len(list) != 3 || bytes.Contains(raw, []byte("Mario")) {
 		t.Fatalf("list %s", raw)
 	}
 

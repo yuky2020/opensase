@@ -1,6 +1,7 @@
 package dlp
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -52,4 +53,42 @@ func FuzzTokens(f *testing.F) {
 		_ = d.Count([]byte(s))
 		_ = ShingleHashes([]byte("k"), s)
 	})
+}
+
+func TestRecords(t *testing.T) {
+	key := []byte("a key of thirty-two bytes long!!")
+	d := &Dataset{Kind: KindRecords, Key: key, Hashes: RecordHashes(key, [][]string{
+		{"Mario Rossi", "ACCT-99887766", "Roma"},
+		{"Luigi Verdi", "ACCT-11223344", "Roma"},
+		{"only-one-field"},
+	})}
+	cases := []struct {
+		name string
+		text string
+		want int
+	}{
+		{"two fields of one record", "pay Mario Rossi on ACCT-99887766 today", 1},
+		{"three fields of one record", "mario rossi, acct-99887766, roma", 3},
+		{"fields of different records", "Mario Rossi and ACCT-11223344", 0},
+		{"a shared value alone", "meeting in Roma", 0},
+		{"a common field of two records", "Roma: Mario Rossi, Luigi Verdi", 2},
+		{"single-field records add nothing", "only-one-field", 0},
+		{"no match", "nothing to see here", 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := d.Count([]byte(c.text)); got != c.want {
+				t.Fatalf("Count(%q) = %d, want %d", c.text, got, c.want)
+			}
+		})
+	}
+	// A different key matches nothing: hashes are useless without the dataset key.
+	other := &Dataset{Kind: KindRecords, Key: []byte("another key of thirty-two bytes!"), Hashes: d.Hashes}
+	if got := other.Count([]byte("Mario Rossi ACCT-99887766")); got != 0 {
+		t.Fatalf("other key matched %d", got)
+	}
+	// Field and pair hashes are domain separated from values datasets.
+	if slices.Contains(d.Hashes, KeyedHash(key, "mario rossi")) {
+		t.Fatal("record field hash equals the values hash")
+	}
 }

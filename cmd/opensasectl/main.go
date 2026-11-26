@@ -42,6 +42,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -143,7 +144,7 @@ commands:
   audit [-tenant ID] [-limit N] [-json]   (without -tenant: every tenant, super-admin only)
   audit verify [-id N -hash H]            (check the audit hash chain; with -id/-hash also a head published earlier)
   info                                    (pinned control URL for enrollment, version)
-  dlp-dataset put -tenant ID -name N -kind values|document -file F [-file F2...]   (values: one per line; ADR-0029)
+  dlp-dataset put -tenant ID -name N -kind values|document|records -file F [-file F2...]   (values: one per line; records: CSV; ADR-0029)
   dlp-dataset list -tenant ID | dlp-dataset delete -tenant ID -name N
   oidc get -tenant ID [-json]
   oidc set -tenant ID -issuer URL -client-id ID [-client-secret-file FILE] -group G=ROLE...
@@ -1093,7 +1094,7 @@ func dlpDataset(ctx context.Context, g *globals, args []string) error {
 	fs := flag.NewFlagSet("dlp-dataset "+sub, flag.ExitOnError)
 	tenant := tenantFlag(fs)
 	name := fs.String("name", "", "dataset name")
-	kind := fs.String("kind", "values", "values | document")
+	kind := fs.String("kind", "values", "values | document | records (CSV rows)")
 	var files fileList
 	fs.Var(&files, "file", "values file (one per line) or document (repeatable)")
 	_ = fs.Parse(args)
@@ -1122,13 +1123,22 @@ func dlpDataset(ctx context.Context, g *globals, args []string) error {
 			if err != nil {
 				return err
 			}
-			if *kind == "values" {
+			switch *kind {
+			case "values":
 				for _, line := range strings.Split(string(b), "\n") {
 					if line = strings.TrimSpace(line); line != "" {
 						req.Values = append(req.Values, line)
 					}
 				}
-			} else {
+			case "records":
+				cr := csv.NewReader(bytes.NewReader(b))
+				cr.FieldsPerRecord = -1
+				rows, err := cr.ReadAll()
+				if err != nil {
+					return fmt.Errorf("%s: %w", f, err)
+				}
+				req.Records = append(req.Records, rows...)
+			default:
 				req.Documents = append(req.Documents, b)
 			}
 		}

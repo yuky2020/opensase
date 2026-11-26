@@ -38,7 +38,7 @@ tenant policy. Three tenant policy settings control how DNS is protected (issue 
 ## Web categories
 
 `categories` blocks categories of the web category list; see
-[the categories ADR](../adr/0022-web-categories.md).
+[the categories ADR](../adr/0022-web-categories-ut1.md).
 
 ## Forced DNS
 

@@ -660,17 +660,46 @@ func compileDecide(tp api.TenantPolicy) (*decideEntry, error) {
 	}
 	e.domains = c
 	for i, s := range tp.DecideBlockCIDRs {
-		p, err := netip.ParsePrefix(s)
+		p, err := parseDecidePrefix(s)
 		if err != nil {
-			a, aerr := netip.ParseAddr(s)
-			if aerr != nil {
-				return nil, &policy.ValidationError{Field: fmt.Sprintf("decideBlockCidrs[%d]", i), Msg: err.Error()}
-			}
-			p = netip.PrefixFrom(a, a.BitLen())
+			return nil, &policy.ValidationError{Field: fmt.Sprintf("decideBlockCidrs[%d]", i), Msg: err.Error()}
 		}
-		e.cidrs = append(e.cidrs, p.Masked())
+		e.cidrs = append(e.cidrs, p)
 	}
 	return e, nil
+}
+
+// parseDecidePrefix parses a CIDR or bare IP address for DecideBlockCIDRs, mirroring
+// policy.parsePrefix: IPv6 zones are rejected and IPv4-mapped IPv6 addresses/prefixes are
+// unmapped to plain IPv4 so they match unmapped flows in cloudDecide.
+func parseDecidePrefix(s string) (netip.Prefix, error) {
+	if strings.Contains(s, "/") {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return netip.Prefix{}, err
+		}
+		if p.Addr().Zone() != "" {
+			return netip.Prefix{}, errors.New("zones not allowed")
+		}
+		if p.Addr().Is4In6() {
+			// Store v4-mapped prefixes as plain IPv4 so they match unmapped flows.
+			bits := p.Bits() - 96
+			if bits < 0 {
+				return netip.Prefix{}, errors.New("v4-mapped prefix shorter than /96")
+			}
+			p = netip.PrefixFrom(p.Addr().Unmap(), bits)
+		}
+		return p.Masked(), nil
+	}
+	a, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	if a.Zone() != "" {
+		return netip.Prefix{}, errors.New("zones not allowed")
+	}
+	a = a.Unmap()
+	return netip.PrefixFrom(a, a.BitLen()), nil
 }
 
 // cloudDecide resolves an "ask" verdict with the tenant's cloud-only data. Never returns ask.
@@ -725,6 +754,9 @@ func (s *Server) invalidateDecide(tenantID string) {
 }
 
 // meshInbound turns the tenant mesh rules whose To selects d into d's grants (ADR-0034).
+//
+// CONTRACT-CHANGE-REQUEST: api.MeshRule.Protocol in pkg/api/types.go documents
+// "tcp, udp, icmp; empty: any"; it now also accepts "icmpv6".
 func meshInbound(m api.MeshPolicy, d store.Device) []policy.MeshGrant {
 	var out []policy.MeshGrant
 	for _, r := range m.Rules {

@@ -83,7 +83,7 @@ type MeshGrant struct {
 	FromAll     bool        `json:"fromAll,omitempty"`
 	FromUsers   []string    `json:"fromUsers,omitempty"`
 	FromDevices []string    `json:"fromDevices,omitempty"`
-	Protocol    string      `json:"protocol,omitempty"` // "tcp", "udp", "icmp"; "" any
+	Protocol    string      `json:"protocol,omitempty"` // "tcp", "udp", "icmp", "icmpv6"; "" any
 	Ports       []PortRange `json:"ports,omitempty"`    // empty: any port
 }
 
@@ -169,7 +169,8 @@ type PrivateApp struct {
 }
 
 // SyntheticPrefix is the Edge-local pool of addresses handed out for PrivateApp names.
-// It is disjoint from the tunnel pool (100.64.0.0/16).
+// It lies inside the tunnel prefix (100.64.0.0/10) and is excluded from addresses
+// allocated to devices (pkg/tunneladdr).
 const SyntheticPrefix = "100.96.0.0/12"
 
 // FirewallPolicy is evaluated per new flow in this order:
@@ -237,7 +238,7 @@ const (
 type Match struct {
 	Apps      []string      `json:"apps,omitempty"`      // package names; device-only attribute
 	Networks  []NetworkType `json:"networks,omitempty"`  // device-only attribute
-	Protocols []string      `json:"protocols,omitempty"` // "tcp","udp","icmp"
+	Protocols []string      `json:"protocols,omitempty"` // "tcp","udp","icmp","icmpv6"
 	CIDRs     []string      `json:"cidrs,omitempty"`     // destination prefixes, v4 or v6
 	Ports     []PortRange   `json:"ports,omitempty"`     // destination ports
 	Domains   []string      `json:"domains,omitempty"`   // "example.com" exact, "*.example.com" suffix incl. apex

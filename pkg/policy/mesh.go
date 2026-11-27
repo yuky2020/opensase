@@ -18,9 +18,9 @@ func compileMesh(c *Compiled, grants []MeshGrant) error {
 	for i, g := range grants {
 		field := fmt.Sprintf("meshInbound[%d]", i)
 		switch g.Protocol {
-		case "", "tcp", "udp", "icmp":
+		case "", "tcp", "udp", "icmp", "icmpv6":
 		default:
-			return verr(field+".protocol", "protocol must be tcp, udp, icmp or empty")
+			return verr(field+".protocol", "protocol must be tcp, udp, icmp, icmpv6 or empty")
 		}
 		if !g.FromAll && len(g.FromUsers) == 0 && len(g.FromDevices) == 0 {
 			return verr(field, "a grant needs fromAll, fromUsers or fromDevices")
@@ -42,13 +42,13 @@ func compileMesh(c *Compiled, grants []MeshGrant) error {
 // may reach this device, and the rule that allows it (ADR-0034).
 func (c *Compiled) MeshAllows(fromUser, fromDevice, proto string, port uint16) (string, bool) {
 	for _, g := range c.mesh {
-		if g.proto != "" && g.proto != proto {
+		if !meshProtoMatches(g.proto, proto) {
 			continue
 		}
 		if !g.all && !slices.Contains(g.users, fromUser) && !slices.Contains(g.devices, fromDevice) {
 			continue
 		}
-		if len(g.ports) > 0 && proto != "icmp" {
+		if len(g.ports) > 0 && proto != "icmp" && proto != "icmpv6" {
 			ok := false
 			for _, pr := range g.ports {
 				to := pr.To
@@ -67,6 +67,16 @@ func (c *Compiled) MeshAllows(fromUser, fromDevice, proto string, port uint16) (
 		return g.ruleID, true
 	}
 	return "", false
+}
+
+// meshProtoMatches reports whether a grant protocol matches a flow protocol.
+// Empty matches any protocol; "icmp" matches both ICMPv4 and ICMPv6 (mirroring Evaluate);
+// "icmpv6" matches ICMPv6 only.
+func meshProtoMatches(grantProto, flowProto string) bool {
+	if grantProto == "" || grantProto == flowProto {
+		return true
+	}
+	return grantProto == "icmp" && flowProto == "icmpv6"
 }
 
 // UserID is the user the snapshot belongs to.

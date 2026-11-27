@@ -674,7 +674,8 @@
                   "",
                   "tcp",
                   "udp",
-                  "icmp"
+                  "icmp",
+                  "icmpv6"
                 ]
               },
               "ports": {

@@ -49,7 +49,7 @@ An array of firewall rule objects. Rules are evaluated in priority order (lowest
 - `match`: Flow match conditions:
   - `apps`: Array of matching application identifiers.
   - `networks`: Array of network types (`"wifi"`, `"cellular"`, `"roaming"`, `"ethernet"`, `"unknown"`).
-  - `protocols`: Array of transport protocols (`"tcp"`, `"udp"`, `"icmp"`).
+  - `protocols`: Array of transport protocols (`"tcp"`, `"udp"`, `"icmp"`, `"icmpv6"`; `"icmp"` matches both ICMPv4 and ICMPv6).
   - `cidrs`: Array of destination IP CIDRs (IPv4 and IPv6).
   - `ports`: Array of port ranges (`from` and `to` integers, `0` to `65535`).
   - `domains`: Array of matching destination domain names or wildcards.
@@ -124,7 +124,7 @@ Configures TLS inspection on Edge proxies:
 Configures peer-to-peer device mesh networking ([ADR-0034](../adr/0034-device-mesh.md)):
 
 - `directLinks`: When `true`, allows devices on the same physical network to negotiate direct WireGuard links bypassing the Edge.
-- `rules`: Access rules between devices specifying source (`from`), destination (`to`), protocol, and port ranges.
+- `rules`: Access rules between devices specifying source (`from`), destination (`to`), protocol (`"tcp"`, `"udp"`, `"icmp"`, `"icmpv6"`, or empty for any; `"icmp"` matches both ICMPv4 and ICMPv6), and port ranges.
 
 ---
 

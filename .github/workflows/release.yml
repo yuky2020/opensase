@@ -124,7 +124,7 @@ jobs:
 
       - name: Build and push container image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILD_RECORD_UPLOAD: false
         with:
@@ -194,7 +194,7 @@ jobs:
 
       - name: Build and push container image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILD_RECORD_UPLOAD: false
         with:

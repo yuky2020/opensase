@@ -799,6 +799,15 @@ func (f *FilteringTUN) inbound(pkt []byte) bool {
 	return true
 }
 
+// IPv6 extension header numbers walked in quotedFlowKey (matching pkg/packet).
+const (
+	ipv6HopByHop     = 0
+	ipv6Routing      = 43
+	ipv6Fragment     = 44
+	ipv6DestOpts     = 60
+	maxQuotedExtHdrs = 8
+)
+
 // quotedFlowKey extracts the outbound flow key from the datagram quoted in an inbound
 // ICMP/ICMPv6 error. The quote is truncated, so packet.Parse cannot be used.
 func quotedFlowKey(p *packet.Packet) (packet.FlowKey, bool) {
@@ -811,7 +820,7 @@ func quotedFlowKey(p *packet.Packet) (packet.FlowKey, bool) {
 	var k packet.FlowKey
 	var l4 []byte
 	switch {
-	case len(q) >= 20 && q[0]>>4 == 4:
+	case p.Version == 4 && len(q) >= 20 && q[0]>>4 == 4:
 		ihl := int(q[0]&0x0f) * 4
 		if ihl < 20 || len(q) < ihl+4 {
 			return k, false
@@ -820,18 +829,30 @@ func quotedFlowKey(p *packet.Packet) (packet.FlowKey, bool) {
 		k.Src = netip.AddrFrom4([4]byte(q[12:16]))
 		k.Dst = netip.AddrFrom4([4]byte(q[16:20]))
 		l4 = q[ihl:]
-	case len(q) >= 44 && q[0]>>4 == 6:
-		k.Proto = q[6] // extension headers in quotes are not followed
+	case p.Version == 6 && len(q) >= 40 && q[0]>>4 == 6:
+		var ok bool
+		k.Proto, l4, ok = walkQuotedIPv6(q)
+		if !ok {
+			return k, false
+		}
 		k.Src = netip.AddrFrom16([16]byte(q[8:24]))
 		k.Dst = netip.AddrFrom16([16]byte(q[24:40]))
-		l4 = q[40:]
 	default:
 		return k, false
 	}
 	switch k.Proto {
 	case packet.ProtoTCP, packet.ProtoUDP:
+		if len(l4) < 4 {
+			return k, false
+		}
 		k.SrcPort = uint16(l4[0])<<8 | uint16(l4[1])
 		k.DstPort = uint16(l4[2])<<8 | uint16(l4[3])
+	case packet.ProtoICMPv6:
+		if p.Version != 6 || len(l4) < 8 || (l4[0] != 128 && l4[0] != 129) {
+			return k, false
+		}
+		id := uint16(l4[4])<<8 | uint16(l4[5])
+		k.SrcPort, k.DstPort = id, id
 	default:
 		return k, false
 	}
@@ -840,6 +861,48 @@ func quotedFlowKey(p *packet.Packet) (packet.FlowKey, bool) {
 		return k, false
 	}
 	return k, true
+}
+
+// walkQuotedIPv6 walks IPv6 extension headers in a truncated quoted IPv6 packet q
+// (starting at the 40-byte IPv6 header) and returns the upper-layer protocol and
+// remaining transport header bytes.
+func walkQuotedIPv6(q []byte) (proto uint8, l4 []byte, ok bool) {
+	if len(q) < 40 {
+		return 0, nil, false
+	}
+	next := q[6]
+	off := 40
+	for range maxQuotedExtHdrs {
+		switch next {
+		case ipv6HopByHop, ipv6Routing, ipv6DestOpts:
+			if len(q) < off+8 {
+				return 0, nil, false
+			}
+			n := (int(q[off+1]) + 1) * 8
+			if len(q) < off+n {
+				return 0, nil, false
+			}
+			next = q[off]
+			off += n
+		case ipv6Fragment:
+			if len(q) < off+8 {
+				return 0, nil, false
+			}
+			fo := uint16(q[off+2])<<8 | uint16(q[off+3])
+			if fo>>3 != 0 {
+				return 0, nil, false // non-first fragment: no transport header
+			}
+			next = q[off]
+			off += 8
+		default:
+			return next, q[off:], true
+		}
+	}
+	switch next {
+	case ipv6HopByHop, ipv6Routing, ipv6DestOpts, ipv6Fragment:
+		return 0, nil, false // too many extension headers
+	}
+	return next, q[off:], true
 }
 
 // --- flow log ---

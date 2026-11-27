@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
+
+	"github.com/yuky2020/opensase/internal/wfp"
 )
 
 const defaultTUNName = "OpenSASE"
@@ -216,7 +218,34 @@ func configurePlatform(ctx context.Context, dev tun.Device, c Config, log *slog.
 		}
 	}
 
+	if c.KillSwitch {
+		var tunnelDNS []netip.Addr
+		tunnelDNS = append(tunnelDNS, dns4...)
+		tunnelDNS = append(tunnelDNS, dns6...)
+
+		opts := wfp.Options{
+			TunLUID:    uint64(tunLUID),
+			DNSServers: tunnelDNS,
+			Bypass:     bypassIPs,
+		}
+		if err := wfp.Enable(opts); err != nil {
+			for _, r := range installedBypass {
+				_ = physicalLUID.DeleteRoute(r.Destination, r.NextHop)
+			}
+			_ = tunLUID.FlushRoutes(windows.AF_INET)
+			_ = tunLUID.FlushRoutes(windows.AF_INET6)
+			_ = tunLUID.FlushDNS(windows.AF_INET)
+			_ = tunLUID.FlushDNS(windows.AF_INET6)
+			return nil, fmt.Errorf("kill switch: %w", err)
+		}
+		log.Info("kill switch on: traffic outside the tunnel is blocked", "allowed", len(bypassIPs))
+	}
+
 	undo = func() {
+		wfp.Disable()
+		if c.KillSwitch {
+			log.Info("kill switch off")
+		}
 		for _, r := range installedBypass {
 			if err := physicalLUID.DeleteRoute(r.Destination, r.NextHop); err != nil {
 				log.Warn("delete bypass route failed", "prefix", r.Destination, "gateway", r.NextHop, "interface", physicalIfIndex, "err", err)
@@ -233,4 +262,7 @@ func configurePlatform(ctx context.Context, dev tun.Device, c Config, log *slog.
 	return undo, nil
 }
 
-func cleanupKillSwitchPlatform(context.Context) error { return nil }
+func cleanupKillSwitchPlatform(context.Context) error {
+	wfp.Disable()
+	return nil
+}

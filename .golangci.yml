@@ -58,6 +58,18 @@ linters:
       - linters:
           - gosec
         text: "G115"
+      # internal/wfp is adapted from WireGuard for Windows tunnel/firewall (MIT, issue #78).
+      # It keeps upstream's names, unsafe WFP struct handling and error handling so that it
+      # can be compared with upstream; only our own additions are reviewed against these
+      # linters, by hand.
+      - path: 'internal/wfp/'
+        linters:
+          - errcheck
+          - errorlint
+          - gosec
+          - revive
+          - staticcheck
+          - unused
       # Tests: unchecked errors, fixed file paths, plain contexts and unclosed
       # bodies in throwaway test servers are not production risks.
       - path: '(.+)_test\.go'

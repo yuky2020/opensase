@@ -148,15 +148,16 @@ opensase events -f
 
 ## Kill switch
 
-By default, the Windows client operates with a **fail-closed kill switch** ([ADR-0032](../adr/0032-windows-client.md)):
+The Windows client features an integrated kill switch built on the Windows Filtering Platform (WFP), adapted as a dynamic session ([ADR-0049](../adr/0049-windows-killswitch.md)):
 
-- While connected, split default routes route all traffic into the Wintun adapter.
-- Only the specific `/32` host routes for the Control Plane and Edge endpoints remain routable over
-  the physical adapter.
-- If the tunnel drops or connection to the Edge is lost, traffic outside the tunnel is stopped.
-- On graceful disconnection (`opensase disconnect` or service shutdown), the daemon flushes the Wintun
-  routes and removes the bypass host routes from the physical interface, restoring standard connectivity.
-- The kill switch can be disabled by tenant policy using `disableKillSwitch: true`.
+- **What it blocks**: While the tunnel is connected, dynamic WFP filters block all IPv4 and IPv6 traffic leaving outside the tunnel, as well as plain DNS queries (port 53) to external public resolvers. Permitted exceptions are loopback, DHCPv4/v6, IPv6 neighbour discovery (NDP), and designated bypass IP addresses for reaching the Edge and Control Plane endpoints directly.
+- **On by default**: The kill switch is active by default on Windows clients whenever a tunnel is established.
+- **Tenant policy control**: Tenants can disable the kill switch by setting `disableKillSwitch: true` in their tenant policy snapshot if unconstrained local egress is required.
+- **Emergency path**: If network recovery is needed during an incident, stopping the service from an elevated command prompt immediately closes the dynamic session and flushes all filtering rules:
+  ```cmd
+  sc stop OpenSASE
+  ```
+  Because the kill switch uses a dynamic WFP session tied to the process, unexpected termination of `opensased.exe` automatically cleans up all filters, failing open while the service restarts.
 
 ## Unenroll and uninstall
 

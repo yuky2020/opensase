@@ -413,7 +413,37 @@ Check flows from the command line:
 ```
 Verify the flow decision records `block` for the category.
 
-#### Step 7: Disconnect
+#### Step 7: Kill Switch Verification
+Verify that the dynamic Windows Filtering Platform (WFP) kill switch enforces traffic isolation:
+
+1. **Connected browsing**:
+   Confirm that when connected, normal web browsing functions through the post-quantum tunnel.
+2. **External DNS restriction**:
+   While connected, verify that a DNS query to a public resolver on port 53 outside the tunnel is blocked:
+   ```cmd
+   nslookup example.com 9.9.9.9
+   ```
+   Confirm the request times out or is refused, whereas name resolution via the configured tunnel resolver succeeds.
+3. **Graceful disconnect**:
+   Stop the tunnel:
+   ```cmd
+   "C:\Program Files\OpenSASE\opensase-cli.exe" disconnect
+   ```
+   Confirm that standard web browsing works again outside the tunnel.
+4. **Crash recovery (fail-open window)**:
+   Reconnect the tunnel:
+   ```cmd
+   "C:\Program Files\OpenSASE\opensase-cli.exe" connect
+   ```
+   Kill `opensased.exe` in Task Manager (or run `taskkill /F /IM opensased.exe`). Verify that traffic fails open while the service restarts (expected, ADR decision #49: the operating system destroys dynamic WFP sessions when the process terminates).
+5. **Emergency recovery**:
+   Verify that stopping the service via the Service Control Manager clears the kill switch:
+   ```cmd
+   sc stop OpenSASE
+   ```
+   `sc stop OpenSASE` is the emergency path to remove all filters and restore connectivity.
+
+#### Step 8: Disconnect
 Disconnect the client:
 ```cmd
 "C:\Program Files\OpenSASE\opensase-cli.exe" disconnect
@@ -421,13 +451,13 @@ Disconnect the client:
 ```
 Confirm state indicates disconnected.
 
-#### Step 8: Uninstall
+#### Step 9: Uninstall
 Uninstall the MSI package:
 ```cmd
 msiexec /x opensase-<version>-x64.msi
 ```
 
-#### Step 9: Verify Service and Files are Removed
+#### Step 10: Verify Service and Files are Removed
 Verify that the Windows service is removed:
 ```cmd
 sc query OpenSASE

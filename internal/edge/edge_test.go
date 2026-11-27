@@ -924,40 +924,412 @@ func TestEdgeOps(t *testing.T) {
 	}
 }
 
-// TestFilterDNSRedirect covers issue #63: with dns.redirectQueries, plain IPv4 DNS to another
-// resolver passes the filter (the kernel DNATs it to the Edge resolver); DNS over TLS and
-// IPv6 DNS stay blocked.
+// TestFilterDNSRedirect covers issue #63 and issue #74: with dns.redirectQueries, plain
+// IPv4 DNS (and plain IPv6 DNS when Edge IPv6 is active) to another resolver passes the
+// filter so the kernel can DNAT it to the Edge resolver; DNS over TLS, DoH, built-in
+// denied destinations, and IPv6 DNS when Edge IPv6 is disabled stay blocked.
 func TestFilterDNSRedirect(t *testing.T) {
-	fx := newFixture(t)
-	fx.redir = true
-	fx.setPeer("d1", 1)
-	_ = fx.e.syncPeers(context.Background())
-	d := fx.e.reg.get("d1")
-	fx.e.reg.mu.Lock()
-	_ = fx.e.reg.allocateLocked(d)
-	fx.e.reg.mu.Unlock()
-	me := d.ip4.String()
-	ft := newFakeTUN()
-	f := newFilter(ft, fx.e)
-	defer f.Close()
-	rd := startReader(f)
-	write := func(pkt []byte) bool {
-		before := ft.nWrites()
-		if _, err := f.Write([][]byte{pkt}, 0); err != nil {
-			t.Fatal(err)
+	type pktCase struct {
+		name  string
+		pkt   func(v4, v6 string) []byte
+		pass  bool
+		reply bool
+		rule  string
+	}
+	modes := []struct {
+		name  string
+		ipv6  bool
+		redir bool
+		cases []pktCase
+	}{
+		{
+			name:  "redirect enabled with ipv6",
+			ipv6:  true,
+			redir: true,
+			cases: []pktCase{
+				{
+					name:  "ipv4 udp 53",
+					pkt:   func(v4, _ string) []byte { return ipv4(v4, "8.8.8.8", packet.ProtoUDP, udpDgram(42000, 53)) },
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv4 tcp 53",
+					pkt: func(v4, _ string) []byte {
+						return ipv4(v4, "8.8.4.4", packet.ProtoTCP, tcpSeg(42001, 53, packet.FlagSYN))
+					},
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv4 tcp 853 dot",
+					pkt: func(v4, _ string) []byte {
+						return ipv4(v4, "1.1.1.1", packet.ProtoTCP, tcpSeg(42002, 853, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 udp 53",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8888", packet.ProtoUDP, udpDgram(42003, 53))
+					},
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv6 tcp 53",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8844", packet.ProtoTCP, tcpSeg(42004, 53, packet.FlagSYN))
+					},
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv6 tcp 853 dot",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2606:4700:4700::1111", packet.ProtoTCP, tcpSeg(42005, 853, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 udp 853",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2606:4700:4700::1111", packet.ProtoUDP, udpDgram(42006, 853))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 tcp 443 doh",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8888", packet.ProtoTCP, tcpSeg(42007, 443, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name:  "ipv6 udp 53 builtin deny",
+					pkt:   func(_, v6 string) []byte { return ipv6(v6, "fd00::53", packet.ProtoUDP, udpDgram(42008, 53)) },
+					pass:  false,
+					reply: true,
+					rule:  RuleBuiltinDeny,
+				},
+			},
+		},
+		{
+			name:  "redirect enabled without ipv6",
+			ipv6:  false,
+			redir: true,
+			cases: []pktCase{
+				{
+					name:  "ipv4 udp 53",
+					pkt:   func(v4, _ string) []byte { return ipv4(v4, "8.8.8.8", packet.ProtoUDP, udpDgram(42100, 53)) },
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv4 tcp 53",
+					pkt: func(v4, _ string) []byte {
+						return ipv4(v4, "8.8.4.4", packet.ProtoTCP, tcpSeg(42101, 53, packet.FlagSYN))
+					},
+					pass:  true,
+					reply: false,
+					rule:  RuleDNSRedirect,
+				},
+				{
+					name: "ipv6 udp 53 blocked",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8888", packet.ProtoUDP, udpDgram(42102, 53))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 tcp 53 blocked",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8844", packet.ProtoTCP, tcpSeg(42103, 53, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 tcp 853 dot blocked",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2606:4700:4700::1111", packet.ProtoTCP, tcpSeg(42104, 853, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+			},
+		},
+		{
+			name:  "redirect disabled with ipv6",
+			ipv6:  true,
+			redir: false,
+			cases: []pktCase{
+				{
+					name:  "ipv4 udp 53 blocked",
+					pkt:   func(v4, _ string) []byte { return ipv4(v4, "8.8.8.8", packet.ProtoUDP, udpDgram(42200, 53)) },
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 udp 53 blocked",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8888", packet.ProtoUDP, udpDgram(42201, 53))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+				{
+					name: "ipv6 tcp 53 blocked",
+					pkt: func(_, v6 string) []byte {
+						return ipv6(v6, "2001:4860:4860::8844", packet.ProtoTCP, tcpSeg(42202, 53, packet.FlagSYN))
+					},
+					pass:  false,
+					reply: true,
+					rule:  RuleDNSBypass,
+				},
+			},
+		},
+	}
+
+	for _, mode := range modes {
+		t.Run(mode.name, func(t *testing.T) {
+			fx := newFixture(t)
+			fx.e.ipv6 = mode.ipv6
+			fx.redir = mode.redir
+			fx.setPeer("d1", 1)
+			if err := fx.e.syncPeers(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			d := fx.e.reg.get("d1")
+			fx.e.reg.mu.Lock()
+			if err := fx.e.reg.allocateLocked(d); err != nil {
+				fx.e.reg.mu.Unlock()
+				t.Fatal(err)
+			}
+			me4, me6 := d.ip4.String(), d.ip6.String()
+			fx.e.reg.mu.Unlock()
+
+			ft := newFakeTUN()
+			f := newFilter(ft, fx.e)
+			defer f.Close()
+			rd := startReader(f)
+			write := func(pkt []byte) bool {
+				before := ft.nWrites()
+				if _, err := f.Write([][]byte{pkt}, 0); err != nil {
+					t.Fatal(err)
+				}
+				return ft.nWrites() > before
+			}
+
+			for _, tc := range mode.cases {
+				pkt := tc.pkt(me4, me6)
+				var parsed packet.Packet
+				if err := packet.Parse(pkt, &parsed); err != nil {
+					t.Fatalf("%s: parse test packet: %v", tc.name, err)
+				}
+				fx.e.flows.mu.Lock()
+				recStart := len(fx.e.flows.recs)
+				fx.e.flows.mu.Unlock()
+
+				if got := write(pkt); got != tc.pass {
+					t.Errorf("%s: pass=%v want %v", tc.name, got, tc.pass)
+				}
+				b, ok := readOne(t, rd)
+				if ok != tc.reply {
+					t.Errorf("%s: reply=%v want %v", tc.name, ok, tc.reply)
+				}
+				if ok {
+					var rp packet.Packet
+					wantDst := me4
+					if parsed.Version == 6 {
+						wantDst = me6
+					}
+					if err := packet.Parse(b, &rp); err != nil || rp.Version != parsed.Version || rp.Dst.String() != wantDst {
+						t.Errorf("%s: bad reply version=%d dst=%v err=%v", tc.name, rp.Version, rp.Dst, err)
+					}
+					switch rp.Protocol {
+					case packet.ProtoTCP:
+						if !rp.RST() {
+							t.Errorf("%s: TCP reply is not RST", tc.name)
+						}
+					case packet.ProtoICMPv6:
+						if rp.ICMPType != 1 || rp.ICMPCode != 1 {
+							t.Errorf("%s: ICMPv6 reply type=%d code=%d, want 1/1", tc.name, rp.ICMPType, rp.ICMPCode)
+						}
+					}
+				}
+				if tc.pass {
+					cn := fx.e.ct.get(parsed.FlowKey())
+					if cn == nil {
+						t.Errorf("%s: allowed flow missing from conntrack", tc.name)
+					} else {
+						cn.mu.Lock()
+						gotRule := cn.decision.RuleID
+						cn.mu.Unlock()
+						if gotRule != tc.rule {
+							t.Errorf("%s: conntrack rule=%q want %q", tc.name, gotRule, tc.rule)
+						}
+					}
+				} else if tc.rule != "" {
+					fx.e.flows.mu.Lock()
+					var gotRule string
+					if len(fx.e.flows.recs) > recStart {
+						gotRule = fx.e.flows.recs[len(fx.e.flows.recs)-1].Decision.RuleID
+					}
+					fx.e.flows.mu.Unlock()
+					if gotRule != tc.rule {
+						t.Errorf("%s: flow rule=%q want %q", tc.name, gotRule, tc.rule)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestRedirectDNS(t *testing.T) {
+	type natCall struct {
+		bin  string
+		args []string
+	}
+	v4Rule := func(op, proto string) natCall {
+		return natCall{
+			bin: "iptables",
+			args: []string{
+				"-w", "5", "-t", "nat", op,
+				"PREROUTING", "-i", "wg0", "-p", proto, "--dport", "53",
+				"!", "-d", EdgeIPv4.String(), "-j", "DNAT", "--to-destination", "100.64.0.1:53",
+			},
 		}
-		return ft.nWrites() > before
 	}
-	if !write(ipv4(me, "8.8.8.8", packet.ProtoUDP, udpDgram(42000, 53))) {
-		t.Fatal("redirected DNS over UDP dropped")
+	v6Rule := func(op, proto string) natCall {
+		return natCall{
+			bin: "ip6tables",
+			args: []string{
+				"-w", "5", "-t", "nat", op,
+				"PREROUTING", "-i", "wg0", "-p", proto, "--dport", "53",
+				"!", "-d", EdgeIPv6.String(), "-j", "DNAT", "--to-destination", "[fd7a:5a5e::1]:53",
+			},
+		}
 	}
-	if !write(ipv4(me, "8.8.4.4", packet.ProtoTCP, tcpSeg(42001, 53, packet.FlagSYN))) {
-		t.Fatal("redirected DNS over TCP dropped")
+
+	tests := []struct {
+		name    string
+		ipv6    bool
+		present bool
+		failV6  bool
+		want    []natCall
+	}{
+		{
+			name:    "ipv4 only installs missing rules",
+			ipv6:    false,
+			present: false,
+			want: []natCall{
+				v4Rule("-C", "udp"),
+				v4Rule("-A", "udp"),
+				v4Rule("-C", "tcp"),
+				v4Rule("-A", "tcp"),
+			},
+		},
+		{
+			name:    "ipv4 only skips present rules",
+			ipv6:    false,
+			present: true,
+			want: []natCall{
+				v4Rule("-C", "udp"),
+				v4Rule("-C", "tcp"),
+			},
+		},
+		{
+			name:    "dual stack installs ipv4 and ipv6 rules",
+			ipv6:    true,
+			present: false,
+			want: []natCall{
+				v4Rule("-C", "udp"),
+				v4Rule("-A", "udp"),
+				v4Rule("-C", "tcp"),
+				v4Rule("-A", "tcp"),
+				v6Rule("-C", "udp"),
+				v6Rule("-A", "udp"),
+				v6Rule("-C", "tcp"),
+				v6Rule("-A", "tcp"),
+			},
+		},
+		{
+			name:    "dual stack skips present rules",
+			ipv6:    true,
+			present: true,
+			want: []natCall{
+				v4Rule("-C", "udp"),
+				v4Rule("-C", "tcp"),
+				v6Rule("-C", "udp"),
+				v6Rule("-C", "tcp"),
+			},
+		},
+		{
+			name:    "dual stack tolerates ip6tables error",
+			ipv6:    true,
+			present: false,
+			failV6:  true,
+			want: []natCall{
+				v4Rule("-C", "udp"),
+				v4Rule("-A", "udp"),
+				v4Rule("-C", "tcp"),
+				v4Rule("-A", "tcp"),
+				v6Rule("-C", "udp"),
+				v6Rule("-A", "udp"),
+				v6Rule("-C", "tcp"),
+				v6Rule("-A", "tcp"),
+			},
+		},
 	}
-	if write(ipv4(me, "1.1.1.1", packet.ProtoTCP, tcpSeg(42002, 853, packet.FlagSYN))) {
-		t.Fatal("DNS over TLS passed")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newFixture(t)
+			fx.e.ipv6 = tc.ipv6
+			var calls []natCall
+			fx.e.natCmd = func(_ context.Context, bin string, args ...string) error {
+				calls = append(calls, natCall{bin: bin, args: append([]string(nil), args...)})
+				if tc.failV6 && bin == "ip6tables" {
+					return errors.New("ip6tables unavailable")
+				}
+				if len(args) >= 5 && args[4] == "-C" && !tc.present {
+					return errors.New("rule missing")
+				}
+				return nil
+			}
+
+			fx.e.redirectDNS(context.Background(), "wg0")
+
+			if len(calls) != len(tc.want) {
+				t.Fatalf("got %d calls, want %d:\ngot:  %v\nwant: %v", len(calls), len(tc.want), calls, tc.want)
+			}
+			for i := range tc.want {
+				if calls[i].bin != tc.want[i].bin || !slices.Equal(calls[i].args, tc.want[i].args) {
+					t.Errorf("call[%d] = (%s, %v), want (%s, %v)", i, calls[i].bin, calls[i].args, tc.want[i].bin, tc.want[i].args)
+				}
+			}
+		})
 	}
-	readOne(t, rd)
 }
 
 // TestFilterMesh covers ADR-0034 on the Edge path: a flow allowed by the target's mesh

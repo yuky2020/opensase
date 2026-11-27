@@ -160,6 +160,8 @@ type Edge struct {
 	routesChanged bool                   // routes updated in the last peer sync (guarded by syncMu)
 	// origDst recovers the pre-REDIRECT destination of a broker connection (tests stub it).
 	origDst func(*net.TCPConn) (netip.AddrPort, error)
+	// natCmd runs iptables or ip6tables for ensureRedirect (tests stub it).
+	natCmd func(ctx context.Context, bin string, args ...string) error
 
 	syncMu   sync.Mutex
 	lastSync atomic.Int64 // unix nanoseconds of the last peer sync attempt
@@ -200,6 +202,7 @@ func newEdge(ctx context.Context, cfg Config, cp controlPlane) (*Edge, error) {
 		synth:    newSynthMap(SyntheticPrefix, maxSynthEnts, synthIdle),
 		hub:      newConnectorHub(cfg.Logger),
 		origDst:  originalDst,
+		natCmd:   runNAT,
 		kroutes:  newKernelRoutes("", cfg.Logger),
 	}
 	e.initMetrics()
@@ -443,7 +446,7 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 	if err != nil {
 		return fmt.Errorf("edge: -ztna-listen %q: %w", e.cfg.ZTNAListen, err)
 	}
-	e.ensureRedirect(ctx, "ztna", []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port})
+	e.ensureRedirect(ctx, "iptables", "ztna", []string{"PREROUTING", "-i", tunName, "-d", SyntheticPrefix.String(), "-p", "tcp", "-j", "REDIRECT", "--to-ports", port})
 	return nil
 }
 
@@ -451,8 +454,17 @@ func (e *Edge) redirectZTNA(ctx context.Context, tunName string) error {
 // #63). The filter lets such packets through only for devices whose policy sets
 // dns.redirectQueries; for the others it blocks them before they reach the kernel.
 func (e *Edge) redirectDNS(ctx context.Context, tunName string) {
-	for _, proto := range []string{"udp", "tcp"} {
-		e.ensureRedirect(ctx, "dns-"+proto, []string{"PREROUTING", "-i", tunName, "-p", proto, "--dport", "53", "!", "-d", EdgeIPv4.String(), "-j", "DNAT", "--to-destination", EdgeIPv4.String() + ":53"})
+	install := func(bin, prefix string, edgeIP netip.Addr) {
+		for _, proto := range []string{"udp", "tcp"} {
+			e.ensureRedirect(ctx, bin, prefix+proto, []string{
+				"PREROUTING", "-i", tunName, "-p", proto, "--dport", "53",
+				"!", "-d", edgeIP.String(), "-j", "DNAT", "--to-destination", net.JoinHostPort(edgeIP.String(), "53"),
+			})
+		}
+	}
+	install("iptables", "dns-", EdgeIPv4)
+	if e.ipv6 {
+		install("ip6tables", "dns6-", EdgeIPv6)
 	}
 }
 
@@ -470,30 +482,39 @@ func (e *Edge) redirectInspect(ctx context.Context, tunName string) error {
 		e.reconcileInspect(ctx)
 		return nil
 	}
-	e.ensureRedirect(ctx, "inspection", []string{"PREROUTING", "-i", tunName, "!", "-d", SyntheticPrefix.String(), "-p", "tcp", "-m", "multiport", "--dports", "80,443", "-j", "REDIRECT", "--to-ports", port})
+	e.ensureRedirect(ctx, "iptables", "inspection", []string{"PREROUTING", "-i", tunName, "!", "-d", SyntheticPrefix.String(), "-p", "tcp", "-m", "multiport", "--dports", "80,443", "-j", "REDIRECT", "--to-ports", port})
 	return nil
 }
 
-// ensureRedirect checks a nat rule and appends it if missing. Failure is logged, not fatal:
-// the entrypoint may have installed it with privileges the Edge no longer has.
-func (e *Edge) ensureRedirect(ctx context.Context, what string, rule []string) {
+// ensureRedirect checks a nat rule with bin ("iptables" or "ip6tables") and appends it if
+// missing. Failure is logged, not fatal: the entrypoint may have installed it with
+// privileges the Edge no longer has.
+func (e *Edge) ensureRedirect(ctx context.Context, bin, what string, rule []string) {
+	run := e.natCmd
+	if run == nil {
+		run = runNAT
+	}
 	ipt := func(op string) error {
 		args := append([]string{"-w", "5", "-t", "nat", op}, rule...)
-		out, err := exec.CommandContext(ctx, "iptables", args...).CombinedOutput() //nolint:gosec // G204: fixed binary; args from Edge config and constants
-		if err != nil {
-			return fmt.Errorf("iptables %v: %w: %s", args, err, bytes.TrimSpace(out))
-		}
-		return nil
+		return run(ctx, bin, args...)
 	}
 	if ipt("-C") == nil {
-		e.log.Info(what+" redirect present", "rule", strings.Join(rule, " "))
+		e.log.Info(what+" redirect present", "bin", bin, "rule", strings.Join(rule, " "))
 		return
 	}
 	if err := ipt("-A"); err != nil {
-		e.log.Warn(what+" redirect not installed; unreachable unless the entrypoint added it", "err", err)
+		e.log.Warn(what+" redirect not installed; unreachable unless the entrypoint added it", "bin", bin, "err", err)
 		return
 	}
-	e.log.Info(what+" redirect installed", "rule", strings.Join(rule, " "))
+	e.log.Info(what+" redirect installed", "bin", bin, "rule", strings.Join(rule, " "))
+}
+
+func runNAT(ctx context.Context, bin string, args ...string) error {
+	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput() //nolint:gosec // G204: bin is "iptables" or "ip6tables"; args from Edge config and constants
+	if err != nil {
+		return fmt.Errorf("%s %v: %w: %s", bin, args, err, bytes.TrimSpace(out))
+	}
+	return nil
 }
 
 // startInspect starts the TLS inspection listener (ADR-0018).

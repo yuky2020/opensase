@@ -310,6 +310,35 @@ func TestWebBlockRule(t *testing.T) {
 	}
 }
 
+func TestUpstreamOK(t *testing.T) {
+	tests := []struct {
+		name string
+		addr netip.Addr
+		want bool
+	}{
+		{"invalid", netip.Addr{}, false},
+		{"ipv4 loopback", netip.MustParseAddr("127.0.0.1"), false},
+		{"ipv6 loopback", netip.MustParseAddr("::1"), false},
+		{"ipv4 unspecified", netip.MustParseAddr("0.0.0.0"), false},
+		{"ipv6 unspecified", netip.MustParseAddr("::"), false},
+		{"ipv4 tunnel edge", EdgeIPv4, false},
+		{"ipv4 tunnel device", netip.MustParseAddr("100.64.0.2"), false},
+		{"ipv6 tunnel edge", EdgeIPv6, false},
+		{"ipv6 tunnel device", netip.MustParseAddr("fd7a:5a5e::2"), false},
+		{"synthetic ipv4", netip.MustParseAddr("100.96.0.1"), false},
+		{"v4-mapped tunnel", netip.MustParseAddr("::ffff:100.64.0.2"), false},
+		{"public ipv4", netip.MustParseAddr("198.51.100.1"), true},
+		{"public ipv6", netip.MustParseAddr("2001:db8::1"), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := upstreamOK(tc.addr); got != tc.want {
+				t.Errorf("upstreamOK(%v) = %v, want %v", tc.addr, got, tc.want)
+			}
+		})
+	}
+}
+
 // post sends one request with a body over c.
 func post(t *testing.T, c net.Conn, hdr, body string) (int, string) {
 	t.Helper()

@@ -48,12 +48,20 @@ func TestGuard(t *testing.T) {
 		{"ipv6 link-local", def, "fe80::1", tcp(80, ""), RuleBuiltinDeny},
 		{"ipv6 loopback", def, "::1", tcp(80, ""), RuleBuiltinDeny},
 		{"ipv6 multicast", def, "ff02::fb", udp(5353), RuleBuiltinDeny},
+		{"nat64 well-known", def, "64:ff9b::a9fe:a9fe", tcp(80, ""), RuleBuiltinDeny},
+		{"nat64 well-known even with -allow-private", open, "64:ff9b::a00:1", tcp(80, ""), RuleBuiltinDeny},
+		{"nat64 local-use", def, "64:ff9b:1::1", tcp(80, ""), RuleBuiltinDeny},
+		{"nat64 local-use even with -allow-private", open, "64:ff9b:1::1", tcp(80, ""), RuleBuiltinDeny},
+		{"ipv6 discard-only", def, "100::1", tcp(80, ""), RuleBuiltinDeny},
+		{"ipv6 discard-only even with -allow-private", open, "100::1", tcp(80, ""), RuleBuiltinDeny},
 		{"edge interface address", def, "203.0.113.200", tcp(8443, ""), RuleBuiltinDeny},
 		{"edge interface address with -allow-private", open, "172.18.0.3", tcp(9443, ""), RuleBuiltinDeny},
 		{"docker network (control plane)", def, "172.18.0.2", tcp(9443, ""), RuleBuiltinDeny},
 		{"rfc1918", def, "10.1.2.3", tcp(443, ""), RuleBuiltinDeny},
 		{"rfc1918 192.168", def, "192.168.1.1", tcp(80, ""), RuleBuiltinDeny},
 		{"ipv6 ula", def, "fd00::1", tcp(80, ""), RuleBuiltinDeny},
+		{"ipv6 benchmarking", def, "2001:2::1", tcp(80, ""), RuleBuiltinDeny},
+		{"ipv6 benchmarking allowed by flag", open, "2001:2::1", tcp(80, ""), ""},
 		{"private allowed by flag", open, "10.1.2.3", tcp(443, ""), ""},
 		{"extra deny cidr", def, "198.51.100.9", tcp(443, ""), RuleBuiltinDeny},
 		{"plain dns to a third party", def, "8.8.8.8", udp(53), RuleDNSBypass},
@@ -71,6 +79,7 @@ func TestGuard(t *testing.T) {
 		{"lookalike domain", def, "93.184.215.99", tcp(443, "notdns.google.example"), ""},
 		{"public https", def, "93.184.215.14", tcp(443, "example.com"), ""},
 		{"public ping", def, "93.184.215.14", policy.Flow{Protocol: "icmp"}, ""},
+		{"public ipv6 ping", def, "2001:db8::1", policy.Flow{Protocol: "icmpv6"}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

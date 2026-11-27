@@ -105,14 +105,17 @@ func (d *decider) sweep(now time.Time) {
 	}
 }
 
-// snoop maps (device tunnel IP, resolved IP) to the domain the device looked up, learned from
-// Edge DNS answers, so that domain rules can match flows.
+// snoop maps (device ID, resolved IP) to the domain the device looked up, learned from
+// Edge DNS answers, so that domain rules can match flows across IPv4 and IPv6.
 type snoop struct {
 	mu sync.RWMutex
 	m  map[snoopKey]snoopEntry
 }
 
-type snoopKey struct{ client, ip netip.Addr }
+type snoopKey struct {
+	deviceID string
+	ip       netip.Addr
+}
 
 type snoopEntry struct {
 	domain string
@@ -127,32 +130,32 @@ const (
 
 func newSnoop() *snoop { return &snoop{m: map[snoopKey]snoopEntry{}} }
 
-func (s *snoop) add(client, ip netip.Addr, domain string, ttl time.Duration, now time.Time) {
+func (s *snoop) add(deviceID string, ip netip.Addr, domain string, ttl time.Duration, now time.Time) {
 	ttl = min(max(ttl, snoopMinTTL), snoopMaxTTL)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	k := snoopKey{client.Unmap(), ip.Unmap()}
+	k := snoopKey{deviceID, ip.Unmap()}
 	if _, ok := s.m[k]; !ok && len(s.m) >= maxSnoop {
 		return
 	}
 	s.m[k] = snoopEntry{domain: domain, exp: now.Add(ttl)}
 }
 
-func (s *snoop) lookup(client, ip netip.Addr) string {
+func (s *snoop) lookup(deviceID string, ip netip.Addr) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	e, ok := s.m[snoopKey{client, ip}]
+	e, ok := s.m[snoopKey{deviceID, ip.Unmap()}]
 	if !ok || time.Now().After(e.exp) {
 		return ""
 	}
 	return e.domain
 }
 
-func (s *snoop) sweep(now time.Time, alive func(netip.Addr) bool) {
+func (s *snoop) sweep(now time.Time, alive func(string) bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, e := range s.m {
-		if now.After(e.exp) || !alive(k.client) {
+		if now.After(e.exp) || !alive(k.deviceID) {
 			delete(s.m, k)
 		}
 	}

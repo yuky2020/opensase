@@ -43,6 +43,20 @@ func remoteAddr(a net.Addr) netip.Addr {
 	return netip.Addr{}
 }
 
+// dnsLocal returns the destination IP and transport protocol of a DNS query from the
+// listener's local address, falling back to EdgeIPv4 and "udp".
+func dnsLocal(a net.Addr) (dstIP, proto string) {
+	proto = "udp"
+	if _, ok := a.(*net.TCPAddr); ok {
+		proto = "tcp"
+	}
+	dst := remoteAddr(a)
+	if !dst.IsValid() || dst.IsUnspecified() {
+		dst = EdgeIPv4
+	}
+	return dst.String(), proto
+}
+
 func normalize(name string) string {
 	return strings.ToLower(strings.TrimSuffix(name, "."))
 }
@@ -79,7 +93,7 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if target, ok := safesearch.Target(name); ok {
 			sctx, cancel := context.WithTimeout(rs.e.ctx, 5*time.Second)
 			defer cancel()
-			rs.safeAnswer(sctx, w, req, client, name, target, q)
+			rs.safeAnswer(sctx, w, req, d.id, name, target, q)
 			return
 		}
 	}
@@ -91,7 +105,7 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Private app names (ADR-0013) are answered here and never forwarded upstream.
 	if v := d.ztna.Load(); v != nil {
 		if _, ok := v.app(name); ok {
-			rs.synthesize(w, req, client, v.tenant, name, q)
+			rs.synthesize(w, req, d.id, v.tenant, name, q)
 			return
 		}
 	}
@@ -144,20 +158,22 @@ func (rs *resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			ip, _ = netip.AddrFromSlice(v.A.To4())
 		case *dns.AAAA:
 			ip, _ = netip.AddrFromSlice(v.AAAA)
+			ip = ip.Unmap()
 		default:
 			continue
 		}
 		if ip.IsValid() {
-			rs.e.snoop.add(client, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
+			rs.e.snoop.add(d.id, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
 		}
 	}
 	if c.BlockECH() {
 		stripECH(resp)
 	}
 	if c.LogQueries() {
+		dst, proto := dnsLocal(w.LocalAddr())
 		rs.e.flows.add(api.FlowRecord{
 			Start: now, End: now, Where: "edge", DeviceID: d.id,
-			Flow:     policy.Flow{Protocol: "udp", SrcIP: client.String(), DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
+			Flow:     policy.Flow{Protocol: proto, SrcIP: client.String(), DstIP: dst, DstPort: 53, Domain: name},
 			Decision: policy.Decision{Action: policy.ActionAllow, RuleID: "dns:query", Layer: "dns", Log: true},
 		})
 	}
@@ -244,7 +260,7 @@ func (rs *resolver) answerInternal(w dns.ResponseWriter, req *dns.Msg, c *policy
 
 // synthesize answers a private app name: A with the sticky synthetic address of
 // (tenant, name), TTL synthTTL; every other type (AAAA included) with an empty NOERROR.
-func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, client netip.Addr, tenant, name string, q dns.Question) {
+func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, deviceID, tenant, name string, q dns.Question) {
 	m := new(dns.Msg)
 	m.SetReply(req)
 	m.Authoritative = true
@@ -262,7 +278,7 @@ func (rs *resolver) synthesize(w dns.ResponseWriter, req *dns.Msg, client netip.
 			Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: synthTTL},
 			A:   ip.AsSlice(),
 		})
-		rs.e.snoop.add(client, ip, name, synthTTL*time.Second, now)
+		rs.e.snoop.add(deviceID, ip, name, synthTTL*time.Second, now)
 	}
 	_ = w.WriteMsg(m)
 }
@@ -285,9 +301,10 @@ func (rs *resolver) block(w dns.ResponseWriter, req *dns.Msg, c *policy.Compiled
 	}
 	// Record before answering, so the record exists once the client has its answer.
 	now := time.Now()
+	dst, proto := dnsLocal(w.LocalAddr())
 	rs.e.flows.add(api.FlowRecord{
 		Start: now, End: now, Where: "edge", DeviceID: d.id,
-		Flow:     policy.Flow{Protocol: "udp", SrcIP: client.String(), DstIP: EdgeIPv4.String(), DstPort: 53, Domain: name},
+		Flow:     policy.Flow{Protocol: proto, SrcIP: client.String(), DstIP: dst, DstPort: 53, Domain: name},
 		Decision: policy.Decision{Action: policy.ActionBlock, RuleID: rule, Layer: "dns", Log: true},
 	})
 	_ = w.WriteMsg(m)

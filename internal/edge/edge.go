@@ -659,7 +659,7 @@ func (e *Edge) sweepLoop(ctx context.Context) {
 			e.flows.add(e.ct.sweep(now, e.owner)...)
 			e.dec.sweep(now)
 			e.synth.sweep(now)
-			e.snoop.sweep(now, func(a netip.Addr) bool { return e.reg.byTunnelIP(a) != nil })
+			e.snoop.sweep(now, func(id string) bool { return e.reg.get(id) != nil })
 		}
 	}
 }

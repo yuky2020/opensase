@@ -319,7 +319,8 @@ func (e *Edge) webConn(ctx context.Context, c net.Conn, src, dst netip.AddrPort)
 // upstreamOK refuses destinations that would make the Edge talk to itself. The packet
 // filter has already applied the built-in deny list and policy to dst.
 func upstreamOK(a netip.Addr) bool {
-	return a.IsValid() && !a.IsLoopback() && !a.IsUnspecified() && !TunnelPrefix4.Contains(a) && !SyntheticPrefix.Contains(a)
+	a = a.Unmap()
+	return a.IsValid() && !a.IsLoopback() && !a.IsUnspecified() && !TunnelPrefix4.Contains(a) && !TunnelPrefix6.Contains(a) && !SyntheticPrefix.Contains(a)
 }
 
 // readHead reads until the ClientHello or request head names a host, or proves there is

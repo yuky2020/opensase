@@ -160,10 +160,16 @@ func protoName(p uint8) string {
 		return "tcp"
 	case packet.ProtoUDP:
 		return "udp"
-	case packet.ProtoICMP, packet.ProtoICMPv6:
+	case packet.ProtoICMP:
 		return "icmp"
+	case packet.ProtoICMPv6:
+		return "icmpv6"
 	}
 	return ""
+}
+
+func isICMP(proto string) bool {
+	return proto == "icmp" || proto == "icmpv6"
 }
 
 func isEchoRequest(p *packet.Packet) bool {
@@ -224,7 +230,7 @@ func (f *Filter) outbound(pkt []byte) bool {
 		return false
 	case p.Protocol == packet.ProtoTCP && (!p.SYN() || p.ACK()):
 		return false // mid-stream segment without state
-	case proto == "icmp" && !isEchoRequest(&p):
+	case isICMP(proto) && !isEchoRequest(&p):
 		return false
 	}
 	if synthetic {
@@ -232,14 +238,14 @@ func (f *Filter) outbound(pkt []byte) bool {
 	}
 	if local {
 		// The Edge only serves DNS and answers pings on its tunnel address.
-		if proto != "icmp" && p.DstPort != 53 {
+		if !isICMP(proto) && p.DstPort != 53 {
 			f.reject(&p, pkt)
 			return false
 		}
 		return f.ct.add(key, &conn{deviceID: d.id, proto: p.Protocol, local: true, start: now}, now, len(pkt), &p)
 	}
-	flow := policy.Flow{Protocol: proto, SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort, Domain: f.e.snoop.lookup(p.Src.Unmap(), dst)}
-	if proto == "icmp" {
+	flow := policy.Flow{Protocol: proto, SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort, Domain: f.e.snoop.lookup(d.id, dst)}
+	if isICMP(proto) {
 		flow.DstPort = 0
 	}
 	// Built-in Edge rules (metadata, internal networks, DNS bypass) come before any policy.
@@ -289,7 +295,7 @@ func (f *Filter) outbound(pkt []byte) bool {
 // and tenant and records the flow. Everything else is rejected here.
 func (f *Filter) ztnaOutbound(p *packet.Packet, pkt []byte, d *device, key packet.FlowKey, dst netip.Addr, now time.Time) bool {
 	flow := policy.Flow{Protocol: protoName(p.Protocol), SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort}
-	if flow.Protocol == "icmp" {
+	if isICMP(flow.Protocol) {
 		flow.DstPort = 0
 	}
 	rule := "ztna:tcp-only"
@@ -359,11 +365,11 @@ func (f *Filter) meshOutbound(p *packet.Packet, pkt []byte, d *device, key packe
 		return true
 	}
 	proto := protoName(p.Protocol)
-	if proto == "" || (p.Protocol == packet.ProtoTCP && (!p.SYN() || p.ACK())) || (proto == "icmp" && !isEchoRequest(p)) {
+	if proto == "" || (p.Protocol == packet.ProtoTCP && (!p.SYN() || p.ACK())) || (isICMP(proto) && !isEchoRequest(p)) {
 		return false
 	}
 	flow := policy.Flow{Protocol: proto, SrcIP: p.Src.Unmap().String(), DstIP: dst.String(), DstPort: p.DstPort}
-	if proto == "icmp" {
+	if isICMP(proto) {
 		flow.DstPort = 0
 	}
 	dec := policy.Decision{Action: policy.ActionBlock, RuleID: RuleMeshDenied, Layer: LayerEdge, Log: true}

@@ -25,18 +25,20 @@ const (
 
 // alwaysDenied are destinations a tunnel client never needs: link-local (cloud metadata at
 // 169.254.169.254), loopback, "this network", multicast and broadcast, and the IPv6
-// equivalents. DNS goes to the Edge resolver on its tunnel address, which is unicast and
-// handled before these rules.
+// equivalents plus NAT64 (RFC 6052, RFC 8215) and discard-only (RFC 6666). DNS goes to the
+// Edge resolver on its tunnel address, which is unicast and handled before these rules.
 var alwaysDenied = mustPrefixes(
 	"169.254.0.0/16", "127.0.0.0/8", "0.0.0.0/8", "224.0.0.0/4", "240.0.0.0/4",
 	"fe80::/10", "::1/128", "::/128", "ff00::/8",
+	"64:ff9b::/96", "64:ff9b:1::/48", "100::/64",
 )
 
 // privateRanges are denied unless Config.AllowPrivate: RFC 1918, CGNAT (the tunnel pool is
 // in it), benchmarking, and IPv6 unique-local. They cover the Docker/VPC networks of the
 // Edge host, the Control Plane and other internal services.
 var privateRanges = mustPrefixes(
-	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "198.18.0.0/15", "fc00::/7",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "198.18.0.0/15",
+	"fc00::/7", "2001:2::/48",
 )
 
 // dohIPs and dohDomains are well-known public DNS-over-HTTPS endpoints. HTTPS (tcp/udp 443)

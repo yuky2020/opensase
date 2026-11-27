@@ -66,7 +66,7 @@ func (e *Edge) safeSearchDecision(c *policy.Compiled, host string, dst netip.Add
 
 // safeAnswer answers a covered name with a CNAME to target and target's own records. HTTPS
 // and SVCB queries get only the CNAME: their address hints would point elsewhere.
-func (rs *resolver) safeAnswer(ctx context.Context, w dns.ResponseWriter, req *dns.Msg, client netip.Addr, name, target string, q dns.Question) {
+func (rs *resolver) safeAnswer(ctx context.Context, w dns.ResponseWriter, req *dns.Msg, deviceID, name, target string, q dns.Question) {
 	m := new(dns.Msg)
 	m.SetReply(req)
 	m.RecursionAvailable = true
@@ -90,6 +90,7 @@ func (rs *resolver) safeAnswer(ctx context.Context, w dns.ResponseWriter, req *d
 				ip, _ = netip.AddrFromSlice(v.A.To4())
 			case *dns.AAAA:
 				ip, _ = netip.AddrFromSlice(v.AAAA)
+				ip = ip.Unmap()
 			case *dns.CNAME:
 				m.Answer = append(m.Answer, rr)
 				continue
@@ -98,7 +99,7 @@ func (rs *resolver) safeAnswer(ctx context.Context, w dns.ResponseWriter, req *d
 			}
 			if ip.IsValid() {
 				rs.e.safe.add(ip, now)
-				rs.e.snoop.add(client, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
+				rs.e.snoop.add(deviceID, ip, name, time.Duration(rr.Header().Ttl)*time.Second, now)
 				m.Answer = append(m.Answer, rr)
 			}
 		}
@@ -130,7 +131,7 @@ func (e *Edge) safeSearchLoop(ctx context.Context) {
 							}
 						case *dns.AAAA:
 							if ip, ok := netip.AddrFromSlice(v.AAAA); ok {
-								e.safe.add(ip, now)
+								e.safe.add(ip.Unmap(), now)
 							}
 						}
 					}

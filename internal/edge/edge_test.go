@@ -18,6 +18,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -29,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/yuky2020/opensase/pkg/api"
@@ -560,6 +562,26 @@ func ipv4(src, dst string, proto uint8, l4 []byte) []byte {
 	return b
 }
 
+func ipv6(src, dst string, next uint8, l4 []byte) []byte {
+	b := make([]byte, 40+len(l4))
+	b[0] = 0x60
+	binary.BigEndian.PutUint16(b[4:6], uint16(len(l4)))
+	b[6] = next
+	b[7] = 64
+	s, d := netip.MustParseAddr(src).As16(), netip.MustParseAddr(dst).As16()
+	copy(b[8:24], s[:])
+	copy(b[24:40], d[:])
+	copy(b[40:], l4)
+	return b
+}
+
+func icmpMsg(typ, code uint8, id uint16) []byte {
+	b := make([]byte, 8)
+	b[0], b[1] = typ, code
+	binary.BigEndian.PutUint16(b[4:6], id)
+	return b
+}
+
 func tcpSeg(sport, dport uint16, flags uint8) []byte {
 	t := make([]byte, 20)
 	binary.BigEndian.PutUint16(t[0:], sport)
@@ -684,7 +706,7 @@ func TestFilter(t *testing.T) {
 	}
 
 	// Domain rule via DNS snooping.
-	fx.e.snoop.add(d.ip4, netip.MustParseAddr("192.0.2.10"), "x.tracker.test", time.Minute, time.Now())
+	fx.e.snoop.add(d.id, netip.MustParseAddr("192.0.2.10"), "x.tracker.test", time.Minute, time.Now())
 	if write(ipv4(me, "192.0.2.10", packet.ProtoTCP, tcpSeg(40010, 443, packet.FlagSYN))) {
 		t.Fatal("snooped tracker domain not blocked")
 	}
@@ -1009,4 +1031,399 @@ func TestFilterMesh(t *testing.T) {
 		t.Fatal("flow toward a device without grants passed")
 	}
 	readOne(t, rd)
+
+	t.Run("ipv6", func(t *testing.T) {
+		fx6 := newFixture(t)
+		fx6.setPeer("d1", 1)
+		fx6.setPeer("d2", 1)
+		setMesh := func(id string, grants []policy.MeshGrant) {
+			fx6.cp.mu.Lock()
+			defer fx6.cp.mu.Unlock()
+			for i := range fx6.cp.peers.Devices {
+				if fx6.cp.peers.Devices[i].DeviceID != id {
+					continue
+				}
+				env := fx6.cp.peers.Devices[i].Snapshot
+				snap, err := policy.Verify(&env, map[string]ed25519.PublicKey{fx6.kid: fx6.sk.Public().(ed25519.PublicKey)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				snap.Version++
+				snap.MeshInbound = grants
+				signed, err := policy.Sign(snap, fx6.kid, fx6.sk)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fx6.cp.peers.Devices[i].Snapshot = *signed
+			}
+		}
+		// d2 grants TCP 22 and ICMPv6 only; d1 grants "icmp" (which matches ICMPv6 too).
+		setMesh("d2", []policy.MeshGrant{
+			{RuleID: "ssh", FromUsers: []string{"u1"}, Protocol: "tcp", Ports: []policy.PortRange{{From: 22}}},
+			{RuleID: "ping6", FromUsers: []string{"u1"}, Protocol: "icmpv6"},
+		})
+		setMesh("d1", []policy.MeshGrant{
+			{RuleID: "ping-any", FromUsers: []string{"u1"}, Protocol: "icmp"},
+		})
+		if err := fx6.e.syncPeers(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		r6 := fx6.e.reg
+		r6.mu.Lock()
+		dev1, dev2 := r6.devices["d1"], r6.devices["d2"]
+		_ = r6.allocateLocked(dev1)
+		_ = r6.allocateLocked(dev2)
+		dev1.hasPeer, dev2.hasPeer = true, true
+		a4, b4 := dev1.ip4.String(), dev2.ip4.String()
+		a6, b6 := dev1.ip6.String(), dev2.ip6.String()
+		r6.mu.Unlock()
+
+		ft6 := newFakeTUN()
+		f6 := newFilter(ft6, fx6.e)
+		defer f6.Close()
+		rd6 := startReader(f6)
+		write6 := func(pkt []byte) bool {
+			before := ft6.nWrites()
+			if _, err := f6.Write([][]byte{pkt}, 0); err != nil {
+				t.Fatal(err)
+			}
+			return ft6.nWrites() > before
+		}
+
+		// Allowed IPv6 TCP 22 passes both ways.
+		if !write6(ipv6(a6, b6, packet.ProtoTCP, tcpSeg(43100, 22, packet.FlagSYN))) {
+			t.Fatal("allowed ipv6 mesh SYN dropped")
+		}
+		ft6.in <- ipv6(a6, b6, packet.ProtoTCP, tcpSeg(43100, 22, packet.FlagSYN))
+		if _, ok := readOne(t, rd6); !ok {
+			t.Fatal("ipv6 mesh SYN toward target dropped")
+		}
+		if !write6(ipv6(b6, a6, packet.ProtoTCP, tcpSeg(22, 43100, packet.FlagSYN|packet.FlagACK))) {
+			t.Fatal("ipv6 mesh TCP reply dropped")
+		}
+		ft6.in <- ipv6(b6, a6, packet.ProtoTCP, tcpSeg(22, 43100, packet.FlagSYN|packet.FlagACK))
+		if _, ok := readOne(t, rd6); !ok {
+			t.Fatal("ipv6 mesh TCP reply toward source dropped")
+		}
+
+		// Allowed IPv6 ICMPv6 echo (matched by Protocol: "icmpv6") passes both ways.
+		if !write6(ipv6(a6, b6, packet.ProtoICMPv6, icmpMsg(128, 0, 42))) {
+			t.Fatal("allowed ipv6 mesh echo request dropped")
+		}
+		ft6.in <- ipv6(a6, b6, packet.ProtoICMPv6, icmpMsg(128, 0, 42))
+		if _, ok := readOne(t, rd6); !ok {
+			t.Fatal("ipv6 mesh echo request toward target dropped")
+		}
+		if !write6(ipv6(b6, a6, packet.ProtoICMPv6, icmpMsg(129, 0, 42))) {
+			t.Fatal("ipv6 mesh echo reply dropped")
+		}
+		ft6.in <- ipv6(b6, a6, packet.ProtoICMPv6, icmpMsg(129, 0, 42))
+		if _, ok := readOne(t, rd6); !ok {
+			t.Fatal("ipv6 mesh echo reply toward source dropped")
+		}
+
+		// Table-driven mesh checks: icmp grant allows ICMPv6; icmpv6 grant rejects ICMPv4;
+		// ungranted ports and non-echo ICMPv6 are rejected or dropped.
+		meshTests := []struct {
+			name  string
+			pkt   []byte
+			pass  bool
+			reply bool
+		}{
+			{"icmp grant allows ipv6 echo", ipv6(b6, a6, packet.ProtoICMPv6, icmpMsg(128, 0, 43)), true, false},
+			{"icmpv6 grant denies ipv4 echo", ipv4(a4, b4, packet.ProtoICMP, icmpMsg(8, 0, 44)), false, true},
+			{"ungranted ipv6 tcp port", ipv6(a6, b6, packet.ProtoTCP, tcpSeg(43101, 80, packet.FlagSYN)), false, true},
+			{"ungranted ipv6 tcp toward d1", ipv6(b6, a6, packet.ProtoTCP, tcpSeg(43102, 22, packet.FlagSYN)), false, true},
+			{"non-echo ipv6 icmpv6 dropped silently", ipv6(a6, b6, packet.ProtoICMPv6, icmpMsg(135, 0, 45)), false, false},
+		}
+		for _, tc := range meshTests {
+			if got := write6(tc.pkt); got != tc.pass {
+				t.Errorf("%s: pass=%v want %v", tc.name, got, tc.pass)
+			}
+			_, ok := readOne(t, rd6)
+			if ok != tc.reply {
+				t.Errorf("%s: reply=%v want %v", tc.name, ok, tc.reply)
+			}
+		}
+	})
+}
+
+func TestFilterIPv6(t *testing.T) {
+	fx := newFixture(t)
+	fx.setPeer("d1", 1)
+	// Add UDP and ICMPv6 rules alongside the default fixture rules.
+	fx.cp.mu.Lock()
+	env := fx.cp.peers.Devices[0].Snapshot
+	snap, err := policy.Verify(&env, map[string]ed25519.PublicKey{fx.kid: fx.sk.Public().(ed25519.PublicKey)})
+	if err != nil {
+		fx.cp.mu.Unlock()
+		t.Fatal(err)
+	}
+	snap.Version++
+	snap.Firewall.Rules = append(snap.Firewall.Rules,
+		policy.Rule{ID: "no-udp-9999", Source: policy.SourceTenant, Priority: 5, Action: policy.ActionBlock, Match: policy.Match{Protocols: []string{"udp"}, Ports: []policy.PortRange{{From: 9999}}}},
+		policy.Rule{ID: "no-icmpv6-net", Source: policy.SourceTenant, Priority: 6, Action: policy.ActionBlock, Match: policy.Match{Protocols: []string{"icmpv6"}, CIDRs: []string{"2001:db8:dead::/48"}}},
+	)
+	signed, err := policy.Sign(snap, fx.kid, fx.sk)
+	if err != nil {
+		fx.cp.mu.Unlock()
+		t.Fatal(err)
+	}
+	fx.cp.peers.Devices[0].Snapshot = *signed
+	fx.cp.mu.Unlock()
+
+	if err := fx.e.syncPeers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	d := fx.e.reg.get("d1")
+	fx.e.reg.mu.Lock()
+	_ = fx.e.reg.allocateLocked(d)
+	me6 := d.ip6.String() // fd7a:5a5e::2
+	fx.e.reg.mu.Unlock()
+
+	ft := newFakeTUN()
+	f := newFilter(ft, fx.e)
+	defer f.Close()
+	rd := startReader(f)
+	write := func(pkt []byte) bool {
+		before := ft.nWrites()
+		if _, err := f.Write([][]byte{pkt}, 0); err != nil {
+			t.Fatal(err)
+		}
+		return ft.nWrites() > before
+	}
+
+	// Stateful IPv6 TCP: outbound SYN passes, matching SYN-ACK passes, unsolicited inbound drops.
+	if !write(ipv6(me6, "2001:db8::10", packet.ProtoTCP, tcpSeg(40000, 443, packet.FlagSYN))) {
+		t.Fatal("IPv6 SYN to 443 dropped")
+	}
+	ft.in <- ipv6("2001:db8::10", me6, packet.ProtoTCP, tcpSeg(443, 40000, packet.FlagSYN|packet.FlagACK))
+	if _, ok := readOne(t, rd); !ok {
+		t.Fatal("IPv6 SYN-ACK reply dropped")
+	}
+	ft.in <- ipv6("2001:db8::99", me6, packet.ProtoTCP, tcpSeg(443, 40001, packet.FlagSYN))
+	if _, ok := readOne(t, rd); ok {
+		t.Fatal("unsolicited IPv6 inbound passed")
+	}
+
+	tests := []struct {
+		name  string
+		pkt   []byte
+		pass  bool
+		reply bool
+		rule  string
+	}{
+		{"tcp allowed", ipv6(me6, "2001:db8::1", packet.ProtoTCP, tcpSeg(40002, 443, packet.FlagSYN)), true, false, ""},
+		{"tcp port 25 blocked", ipv6(me6, "2001:db8::1", packet.ProtoTCP, tcpSeg(40003, 25, packet.FlagSYN)), false, true, "no-smtp"},
+		{"udp allowed", ipv6(me6, "2001:db8::2", packet.ProtoUDP, udpDgram(5001, 443)), true, false, ""},
+		{"udp port 9999 blocked", ipv6(me6, "2001:db8::2", packet.ProtoUDP, udpDgram(5002, 9999)), false, true, "no-udp-9999"},
+		{"icmpv6 echo allowed", ipv6(me6, "2001:db8::3", packet.ProtoICMPv6, icmpMsg(128, 0, 7)), true, false, ""},
+		{"icmpv6 echo blocked by icmpv6 rule", ipv6(me6, "2001:db8:dead::1", packet.ProtoICMPv6, icmpMsg(128, 0, 8)), false, true, "no-icmpv6-net"},
+		{"icmpv6 non-echo dropped silently", ipv6(me6, "2001:db8::3", packet.ProtoICMPv6, icmpMsg(135, 0, 9)), false, false, ""},
+		{"edge ipv6 dns allowed", ipv6(me6, EdgeIPv6.String(), packet.ProtoUDP, udpDgram(5003, 53)), true, false, ""},
+		{"edge ipv6 ping allowed", ipv6(me6, EdgeIPv6.String(), packet.ProtoICMPv6, icmpMsg(128, 0, 10)), true, false, ""},
+		{"edge ipv6 other port blocked", ipv6(me6, EdgeIPv6.String(), packet.ProtoUDP, udpDgram(5004, 22)), false, true, ""},
+		{"nat64 well-known denied", ipv6(me6, "64:ff9b::a9fe:a9fe", packet.ProtoTCP, tcpSeg(40010, 80, packet.FlagSYN)), false, true, RuleBuiltinDeny},
+		{"nat64 local-use denied", ipv6(me6, "64:ff9b:1::1", packet.ProtoTCP, tcpSeg(40011, 80, packet.FlagSYN)), false, true, RuleBuiltinDeny},
+		{"discard-only denied", ipv6(me6, "100::1", packet.ProtoTCP, tcpSeg(40012, 80, packet.FlagSYN)), false, true, RuleBuiltinDeny},
+		{"ipv6 benchmarking denied", ipv6(me6, "2001:2::1", packet.ProtoTCP, tcpSeg(40013, 80, packet.FlagSYN)), false, true, RuleBuiltinDeny},
+		{"device to device ipv6 without mesh rule", ipv6(me6, "fd7a:5a5e::3", packet.ProtoUDP, udpDgram(5005, 5005)), false, true, RuleMeshDenied},
+	}
+	for _, tc := range tests {
+		fx.e.flows.mu.Lock()
+		recStart := len(fx.e.flows.recs)
+		fx.e.flows.mu.Unlock()
+		if got := write(tc.pkt); got != tc.pass {
+			t.Errorf("%s: pass=%v want %v", tc.name, got, tc.pass)
+		}
+		b, ok := readOne(t, rd)
+		if ok != tc.reply {
+			t.Errorf("%s: reply=%v want %v", tc.name, ok, tc.reply)
+		}
+		if ok {
+			var p packet.Packet
+			if err := packet.Parse(b, &p); err != nil || p.Version != 6 || p.Dst.String() != me6 {
+				t.Errorf("%s: bad reply version=%d dst=%v err=%v", tc.name, p.Version, p.Dst, err)
+			}
+			switch p.Protocol {
+			case packet.ProtoTCP:
+				if !p.RST() {
+					t.Errorf("%s: TCP reply is not RST", tc.name)
+				}
+			case packet.ProtoICMPv6:
+				if p.ICMPType != 1 || p.ICMPCode != 1 {
+					t.Errorf("%s: ICMPv6 reply type=%d code=%d, want 1/1", tc.name, p.ICMPType, p.ICMPCode)
+				}
+			}
+		}
+		if tc.rule != "" {
+			fx.e.flows.mu.Lock()
+			var gotRule string
+			if len(fx.e.flows.recs) > recStart {
+				gotRule = fx.e.flows.recs[len(fx.e.flows.recs)-1].Decision.RuleID
+			}
+			fx.e.flows.mu.Unlock()
+			if gotRule != tc.rule {
+				t.Errorf("%s: rule=%q want %q", tc.name, gotRule, tc.rule)
+			}
+		}
+	}
+
+	// Stateful inbound ICMPv6 echo reply passes for the allowed echo request.
+	ft.in <- ipv6("2001:db8::3", me6, packet.ProtoICMPv6, icmpMsg(129, 0, 7))
+	if _, ok := readOne(t, rd); !ok {
+		t.Fatal("ICMPv6 echo reply dropped")
+	}
+
+	// Verify flow records include Protocol "icmpv6" (DstPort 0) and the expected block rules.
+	fx.e.flows.mu.Lock()
+	recs := append([]api.FlowRecord(nil), fx.e.flows.recs...)
+	fx.e.flows.mu.Unlock()
+	var sawICMPv6, sawNAT64 bool
+	for _, r := range recs {
+		if r.Decision.RuleID == "no-icmpv6-net" {
+			sawICMPv6 = true
+			if r.Flow.Protocol != "icmpv6" || r.Flow.DstPort != 0 || r.Flow.SrcIP != me6 {
+				t.Errorf("icmpv6 block record = %+v", r.Flow)
+			}
+		}
+		if r.Decision.RuleID == RuleBuiltinDeny && r.Flow.DstIP == "64:ff9b::a9fe:a9fe" {
+			sawNAT64 = true
+		}
+	}
+	if !sawICMPv6 || !sawNAT64 {
+		t.Fatalf("missing expected flow records: sawICMPv6=%v sawNAT64=%v recs=%+v", sawICMPv6, sawNAT64, recs)
+	}
+
+	t.Run("protocols icmpv6 excludes icmpv4", func(t *testing.T) {
+		fx2 := newFixture(t)
+		fx2.setPeer("d1", 1)
+		fx2.cp.mu.Lock()
+		env := fx2.cp.peers.Devices[0].Snapshot
+		s2, err := policy.Verify(&env, map[string]ed25519.PublicKey{fx2.kid: fx2.sk.Public().(ed25519.PublicKey)})
+		if err != nil {
+			fx2.cp.mu.Unlock()
+			t.Fatal(err)
+		}
+		s2.Version++
+		s2.Firewall.Rules = []policy.Rule{
+			{ID: "no-icmpv6", Source: policy.SourceTenant, Priority: 1, Action: policy.ActionBlock, Match: policy.Match{Protocols: []string{"icmpv6"}}},
+		}
+		signed2, err := policy.Sign(s2, fx2.kid, fx2.sk)
+		if err != nil {
+			fx2.cp.mu.Unlock()
+			t.Fatal(err)
+		}
+		fx2.cp.peers.Devices[0].Snapshot = *signed2
+		fx2.cp.mu.Unlock()
+		if err := fx2.e.syncPeers(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		dev := fx2.e.reg.get("d1")
+		fx2.e.reg.mu.Lock()
+		_ = fx2.e.reg.allocateLocked(dev)
+		v4, v6 := dev.ip4.String(), dev.ip6.String()
+		fx2.e.reg.mu.Unlock()
+
+		ft2 := newFakeTUN()
+		f2 := newFilter(ft2, fx2.e)
+		defer f2.Close()
+		rd2 := startReader(f2)
+		write2 := func(pkt []byte) bool {
+			before := ft2.nWrites()
+			if _, err := f2.Write([][]byte{pkt}, 0); err != nil {
+				t.Fatal(err)
+			}
+			return ft2.nWrites() > before
+		}
+
+		if write2(ipv6(v6, "2001:db8::5", packet.ProtoICMPv6, icmpMsg(128, 0, 11))) {
+			t.Fatal("ICMPv6 echo passed despite protocols:[icmpv6] block rule")
+		}
+		if _, ok := readOne(t, rd2); !ok {
+			t.Fatal("no ICMPv6 unreachable for blocked ICMPv6 echo")
+		}
+		if !write2(ipv4(v4, "198.51.100.5", packet.ProtoICMP, icmpMsg(8, 0, 12))) {
+			t.Fatal("ICMPv4 echo wrongly blocked by protocols:[icmpv6] rule")
+		}
+	})
+
+	t.Run("cross-family snoop AAAA over ipv4 blocks tcp over ipv6", func(t *testing.T) {
+		fx3 := newFixture(t)
+		fx3.setPeer("d1", 1)
+		if err := fx3.e.syncPeers(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		r3 := fx3.e.reg
+		r3.mu.Lock()
+		dev := r3.devices["d1"]
+		dev.offset, dev.ip4, dev.ip6 = 2, netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("fd7a:5a5e::2")
+		r3.reindexLocked()
+		r3.mu.Unlock()
+
+		upstream := startDNS(t, dns.HandlerFunc(func(w dns.ResponseWriter, req *dns.Msg) {
+			m := new(dns.Msg)
+			m.SetReply(req)
+			q := req.Question[0]
+			if q.Qtype == dns.TypeAAAA {
+				m.Answer = append(m.Answer, &dns.AAAA{
+					Hdr:  dns.RR_Header{Name: q.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 300},
+					AAAA: net.ParseIP("2001:db8::cafe"),
+				})
+			}
+			_ = w.WriteMsg(m)
+		}))
+		edgeDNS := startDNS(t, newResolver(fx3.e, upstream))
+
+		// Resolve AAAA over IPv4 (127.0.0.1).
+		q := new(dns.Msg)
+		q.SetQuestion("x.tracker.test.", dns.TypeAAAA)
+		resp, _, err := new(dns.Client).Exchange(q, edgeDNS)
+		if err != nil || resp.Rcode != dns.RcodeSuccess || len(resp.Answer) != 1 {
+			t.Fatalf("AAAA over IPv4: resp=%v err=%v", resp, err)
+		}
+
+		// Connect over IPv6 from fd7a:5a5e::2 to the resolved AAAA address.
+		ft3 := newFakeTUN()
+		f3 := newFilter(ft3, fx3.e)
+		defer f3.Close()
+		rd3 := startReader(f3)
+		before := ft3.nWrites()
+		if _, err := f3.Write([][]byte{ipv6("fd7a:5a5e::2", "2001:db8::cafe", packet.ProtoTCP, tcpSeg(41000, 443, packet.FlagSYN))}, 0); err != nil {
+			t.Fatal(err)
+		}
+		if ft3.nWrites() > before {
+			t.Fatal("cross-family snooped tracker domain passed over IPv6")
+		}
+		b, ok := readOne(t, rd3)
+		if !ok {
+			t.Fatal("no IPv6 TCP RST for cross-family blocked flow")
+		}
+		var rp packet.Packet
+		if err := packet.Parse(b, &rp); err != nil || rp.Version != 6 || rp.Protocol != packet.ProtoTCP || !rp.RST() || rp.Dst.String() != "fd7a:5a5e::2" {
+			t.Fatalf("unexpected reply %+v err=%v", rp, err)
+		}
+		fx3.e.flows.mu.Lock()
+		var matched bool
+		for _, rec := range fx3.e.flows.recs {
+			if rec.DeviceID == "d1" && rec.Decision.RuleID == "no-tracker" && rec.Flow.Domain == "x.tracker.test" && rec.Flow.DstIP == "2001:db8::cafe" {
+				matched = true
+				break
+			}
+		}
+		fx3.e.flows.mu.Unlock()
+		if !matched {
+			t.Fatal("cross-family domain block not recorded with domain")
+		}
+
+		// Snoop sweep retains live device IDs and drops removed device IDs.
+		fx3.e.snoop.add("d-gone", netip.MustParseAddr("2001:db8::beef"), "gone.test", time.Minute, time.Now())
+		fx3.e.snoop.sweep(time.Now(), func(id string) bool { return fx3.e.reg.get(id) != nil })
+		if got := fx3.e.snoop.lookup("d1", netip.MustParseAddr("2001:db8::cafe")); got != "x.tracker.test" {
+			t.Errorf("live device snoop entry evicted: got %q", got)
+		}
+		if got := fx3.e.snoop.lookup("d-gone", netip.MustParseAddr("2001:db8::beef")); got != "" {
+			t.Errorf("removed device snoop entry kept: got %q", got)
+		}
+	})
 }

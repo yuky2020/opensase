@@ -539,7 +539,7 @@ jobs:
           echo "IMAGE_PREFIX=ghcr.io/${OWNER_LOWER}" >> "$GITHUB_ENV"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: dist
           # Only the packages: build-push-action also uploads .dockerbuild records.

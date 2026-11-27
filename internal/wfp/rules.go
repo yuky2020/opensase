@@ -27,13 +27,21 @@ var (
 	linkLocalRouterMulticast = wtFwpByteArray16{[16]uint8{0xFF, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2}}
 )
 
+type filterAdder func(session uintptr, filter *wtFwpmFilter0, sd uintptr, id *uint64) error
+
 func permitTunInterface(session uintptr, baseObjects *baseObjects, weight uint8, ifLUID uint64) error {
+	return permitTunInterfaceWith(session, baseObjects, weight, ifLUID, fwpmFilterAdd0)
+}
+
+func permitTunInterfaceWith(session uintptr, baseObjects *baseObjects, weight uint8, ifLUID uint64, add filterAdder) error {
+	luid := new(uint64)
+	*luid = ifLUID
 	ifaceCondition := wtFwpmFilterCondition0{
 		fieldKey:  cFWPM_CONDITION_IP_LOCAL_INTERFACE,
 		matchType: cFWP_MATCH_EQUAL,
 		conditionValue: wtFwpConditionValue0{
 			_type: cFWP_UINT64,
-			value: (uintptr)(unsafe.Pointer(&ifLUID)),
+			value: uintptr(unsafe.Pointer(luid)),
 		},
 	}
 
@@ -62,7 +70,7 @@ func permitTunInterface(session uintptr, baseObjects *baseObjects, weight uint8,
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -80,7 +88,7 @@ func permitTunInterface(session uintptr, baseObjects *baseObjects, weight uint8,
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -98,7 +106,7 @@ func permitTunInterface(session uintptr, baseObjects *baseObjects, weight uint8,
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -116,13 +124,13 @@ func permitTunInterface(session uintptr, baseObjects *baseObjects, weight uint8,
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
 	}
 
-	runtime.KeepAlive(ifLUID)
+	runtime.KeepAlive(luid)
 	return nil
 }
 
@@ -270,11 +278,15 @@ func permitOpenSASEService(session uintptr, baseObjects *baseObjects, weight uin
 
 // permitBypass permits traffic to Edge and Control Plane addresses outside the tunnel.
 func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObjects, weight uint8) error {
+	return permitBypassWith(addresses, session, baseObjects, weight, fwpmFilterAdd0)
+}
+
+func permitBypassWith(addresses []netip.Addr, session uintptr, baseObjects *baseObjects, weight uint8, add filterAdder) error {
 	seen := make(map[netip.Addr]bool)
 	var v6Addrs []*wtFwpByteArray16
 
 	for _, addr := range addresses {
-		addr = addr.Unmap()
+		addr = addr.Unmap().WithZone("")
 		if !addr.IsValid() || seen[addr] {
 			continue
 		}
@@ -316,7 +328,7 @@ func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObje
 				filter.displayData = *displayData
 				filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-				err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+				err = add(session, &filter, 0, &filterID)
 				if err != nil {
 					return wrapErr(err)
 				}
@@ -334,7 +346,7 @@ func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObje
 				filter.displayData = *displayData
 				filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-				err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+				err = add(session, &filter, 0, &filterID)
 				if err != nil {
 					return wrapErr(err)
 				}
@@ -377,7 +389,7 @@ func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObje
 				filter.displayData = *displayData
 				filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-				err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+				err = add(session, &filter, 0, &filterID)
 				if err != nil {
 					return wrapErr(err)
 				}
@@ -395,7 +407,7 @@ func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObje
 				filter.displayData = *displayData
 				filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-				err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+				err = add(session, &filter, 0, &filterID)
 				if err != nil {
 					return wrapErr(err)
 				}
@@ -408,6 +420,10 @@ func permitBypass(addresses []netip.Addr, session uintptr, baseObjects *baseObje
 }
 
 func permitLoopback(session uintptr, baseObjects *baseObjects, weight uint8) error {
+	return permitLoopbackWith(session, baseObjects, weight, fwpmFilterAdd0)
+}
+
+func permitLoopbackWith(session uintptr, baseObjects *baseObjects, weight uint8, add filterAdder) error {
 	condition := wtFwpmFilterCondition0{
 		fieldKey:  cFWPM_CONDITION_FLAGS,
 		matchType: cFWP_MATCH_FLAGS_ALL_SET,
@@ -442,7 +458,7 @@ func permitLoopback(session uintptr, baseObjects *baseObjects, weight uint8) err
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -460,7 +476,7 @@ func permitLoopback(session uintptr, baseObjects *baseObjects, weight uint8) err
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -478,7 +494,7 @@ func permitLoopback(session uintptr, baseObjects *baseObjects, weight uint8) err
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -496,7 +512,7 @@ func permitLoopback(session uintptr, baseObjects *baseObjects, weight uint8) err
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -609,6 +625,10 @@ func permitDHCPIPv4(session uintptr, baseObjects *baseObjects, weight uint8) err
 }
 
 func permitDHCPIPv6(session uintptr, baseObjects *baseObjects, weight uint8) error {
+	return permitDHCPIPv6With(session, baseObjects, weight, fwpmFilterAdd0)
+}
+
+func permitDHCPIPv6With(session uintptr, baseObjects *baseObjects, weight uint8, add filterAdder) error {
 	//
 	// #1 Outbound DHCP request on IPv6.
 	//
@@ -666,7 +686,7 @@ func permitDHCPIPv6(session uintptr, baseObjects *baseObjects, weight uint8) err
 
 		filterID := uint64(0)
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -723,7 +743,7 @@ func permitDHCPIPv6(session uintptr, baseObjects *baseObjects, weight uint8) err
 
 		filterID := uint64(0)
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -733,6 +753,10 @@ func permitDHCPIPv6(session uintptr, baseObjects *baseObjects, weight uint8) err
 }
 
 func permitNdp(session uintptr, baseObjects *baseObjects, weight uint8) error {
+	return permitNdpWith(session, baseObjects, weight, fwpmFilterAdd0)
+}
+
+func permitNdpWith(session uintptr, baseObjects *baseObjects, weight uint8, add filterAdder) error {
 	/* TODO: actually handle the hop limit somehow! The rules should vaguely be:
 	 *  - icmpv6 133: must be outgoing, dst must be FF02::2/128, hop limit must be 255
 	 *  - icmpv6 134: must be incoming, src must be FE80::/10, hop limit must be 255
@@ -963,7 +987,7 @@ func permitNdp(session uintptr, baseObjects *baseObjects, weight uint8) error {
 		filter.numFilterConditions = uint32(len(definition.conditions))
 		filter.filterCondition = (*wtFwpmFilterCondition0)(unsafe.Pointer(&definition.conditions[0]))
 
-		err := fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err := add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1036,6 +1060,10 @@ func permitHyperV(session uintptr, baseObjects *baseObjects, weight uint8) error
 
 // Block all traffic except what is explicitly permitted by other rules.
 func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
+	return blockAllWith(session, baseObjects, weight, fwpmFilterAdd0)
+}
+
+func blockAllWith(session uintptr, baseObjects *baseObjects, weight uint8, add filterAdder) error {
 	filter := wtFwpmFilter0{
 		providerKey: &baseObjects.provider,
 		subLayerKey: baseObjects.filters,
@@ -1059,7 +1087,7 @@ func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1077,7 +1105,7 @@ func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1095,7 +1123,7 @@ func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1113,7 +1141,7 @@ func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1122,13 +1150,28 @@ func blockAll(session uintptr, baseObjects *baseObjects, weight uint8) error {
 	return nil
 }
 
-// Block all DNS traffic except towards specified DNS servers.
-func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, weightAllow, weightDeny uint8) error {
+// Block all plain DNS traffic (UDP/TCP port 53) on non-tunnel interfaces while
+// permitting queries to the specified tunnel DNS servers on the tunnel interface.
+// When tunLUID is non-zero, deny filters match only interfaces other than
+// tunLUID so physical-interface port 53 stays blocked while third-party
+// port-53 queries routed into the tunnel can reach the Edge (where
+// dns.redirectQueries or builtin-dns-bypass handles them).
+func blockDNS(except []netip.Addr, tunLUID uint64, session uintptr, baseObjects *baseObjects, weightAllow, weightDeny uint8) error {
+	return blockDNSWith(except, tunLUID, session, baseObjects, weightAllow, weightDeny, fwpmFilterAdd0)
+}
+
+func blockDNSWith(except []netip.Addr, tunLUID uint64, session uintptr, baseObjects *baseObjects, weightAllow, weightDeny uint8, add filterAdder) error {
 	if weightDeny >= weightAllow {
 		return errors.New("The allow weight must be greater than the deny weight")
 	}
 
-	denyConditions := []wtFwpmFilterCondition0{
+	var tunLUIDPtr *uint64
+	if tunLUID != 0 {
+		tunLUIDPtr = new(uint64)
+		*tunLUIDPtr = tunLUID
+	}
+
+	dnsBaseConditions := []wtFwpmFilterCondition0{
 		{
 			fieldKey:  cFWPM_CONDITION_IP_REMOTE_PORT,
 			matchType: cFWP_MATCH_EQUAL,
@@ -1156,6 +1199,19 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		},
 	}
 
+	denyConditions := make([]wtFwpmFilterCondition0, 0, len(dnsBaseConditions)+1)
+	denyConditions = append(denyConditions, dnsBaseConditions...)
+	if tunLUIDPtr != nil {
+		denyConditions = append(denyConditions, wtFwpmFilterCondition0{
+			fieldKey:  cFWPM_CONDITION_IP_LOCAL_INTERFACE,
+			matchType: cFWP_MATCH_NOT_EQUAL,
+			conditionValue: wtFwpConditionValue0{
+				_type: cFWP_UINT64,
+				value: uintptr(unsafe.Pointer(tunLUIDPtr)),
+			},
+		})
+	}
+
 	filter := wtFwpmFilter0{
 		providerKey:         &baseObjects.provider,
 		subLayerKey:         baseObjects.filters,
@@ -1181,7 +1237,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1199,7 +1255,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1217,7 +1273,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1235,45 +1291,62 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
 	}
 
-	allowConditionsV4 := make([]wtFwpmFilterCondition0, 0, len(denyConditions)+len(except))
-	allowConditionsV4 = append(allowConditionsV4, denyConditions...)
-	for _, ip := range except {
-		if !ip.Is4() {
-			continue
-		}
-		allowConditionsV4 = append(allowConditionsV4, wtFwpmFilterCondition0{
-			fieldKey:  cFWPM_CONDITION_IP_REMOTE_ADDRESS,
+	allowBaseCap := len(dnsBaseConditions) + 1
+	allowConditionsV4 := make([]wtFwpmFilterCondition0, 0, allowBaseCap+len(except))
+	allowConditionsV4 = append(allowConditionsV4, dnsBaseConditions...)
+	allowConditionsV6 := make([]wtFwpmFilterCondition0, 0, allowBaseCap+len(except))
+	allowConditionsV6 = append(allowConditionsV6, dnsBaseConditions...)
+	if tunLUIDPtr != nil {
+		tunCond := wtFwpmFilterCondition0{
+			fieldKey:  cFWPM_CONDITION_IP_LOCAL_INTERFACE,
 			matchType: cFWP_MATCH_EQUAL,
 			conditionValue: wtFwpConditionValue0{
-				_type: cFWP_UINT32,
-				value: uintptr(binary.BigEndian.Uint32(ip.AsSlice())),
+				_type: cFWP_UINT64,
+				value: uintptr(unsafe.Pointer(tunLUIDPtr)),
 			},
-		})
+		}
+		allowConditionsV4 = append(allowConditionsV4, tunCond)
+		allowConditionsV6 = append(allowConditionsV6, tunCond)
 	}
 
+	seen := make(map[netip.Addr]bool, len(except))
 	storedPointers := make([]*wtFwpByteArray16, 0, len(except))
-	allowConditionsV6 := make([]wtFwpmFilterCondition0, 0, len(denyConditions)+len(except))
-	allowConditionsV6 = append(allowConditionsV6, denyConditions...)
+	var v4Count, v6Count int
 	for _, ip := range except {
-		if !ip.Is6() {
+		ip = ip.Unmap().WithZone("")
+		if !ip.IsValid() || seen[ip] {
 			continue
 		}
-		address := wtFwpByteArray16{byteArray16: ip.As16()}
-		allowConditionsV6 = append(allowConditionsV6, wtFwpmFilterCondition0{
-			fieldKey:  cFWPM_CONDITION_IP_REMOTE_ADDRESS,
-			matchType: cFWP_MATCH_EQUAL,
-			conditionValue: wtFwpConditionValue0{
-				_type: cFWP_BYTE_ARRAY16_TYPE,
-				value: uintptr(unsafe.Pointer(&address)),
-			},
-		})
-		storedPointers = append(storedPointers, &address)
+		seen[ip] = true
+		if ip.Is4() {
+			allowConditionsV4 = append(allowConditionsV4, wtFwpmFilterCondition0{
+				fieldKey:  cFWPM_CONDITION_IP_REMOTE_ADDRESS,
+				matchType: cFWP_MATCH_EQUAL,
+				conditionValue: wtFwpConditionValue0{
+					_type: cFWP_UINT32,
+					value: uintptr(binary.BigEndian.Uint32(ip.AsSlice())),
+				},
+			})
+			v4Count++
+		} else if ip.Is6() {
+			address := &wtFwpByteArray16{byteArray16: ip.As16()}
+			allowConditionsV6 = append(allowConditionsV6, wtFwpmFilterCondition0{
+				fieldKey:  cFWPM_CONDITION_IP_REMOTE_ADDRESS,
+				matchType: cFWP_MATCH_EQUAL,
+				conditionValue: wtFwpConditionValue0{
+					_type: cFWP_BYTE_ARRAY16_TYPE,
+					value: uintptr(unsafe.Pointer(address)),
+				},
+			})
+			storedPointers = append(storedPointers, address)
+			v6Count++
+		}
 	}
 
 	filter = wtFwpmFilter0{
@@ -1292,7 +1365,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 	//
 	// #5 Allow IPv4 outbound DNS.
 	//
-	if len(allowConditionsV4) > len(denyConditions) {
+	if v4Count > 0 {
 		displayData, err := createWtFwpmDisplayData0("Allow DNS outbound (IPv4)", "")
 		if err != nil {
 			return wrapErr(err)
@@ -1301,7 +1374,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1310,7 +1383,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 	//
 	// #6 Allow IPv4 inbound DNS.
 	//
-	if len(allowConditionsV4) > len(denyConditions) {
+	if v4Count > 0 {
 		displayData, err := createWtFwpmDisplayData0("Allow DNS inbound (IPv4)", "")
 		if err != nil {
 			return wrapErr(err)
@@ -1319,7 +1392,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1331,7 +1404,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 	//
 	// #7 Allow IPv6 outbound DNS.
 	//
-	if len(allowConditionsV6) > len(denyConditions) {
+	if v6Count > 0 {
 		displayData, err := createWtFwpmDisplayData0("Allow DNS outbound (IPv6)", "")
 		if err != nil {
 			return wrapErr(err)
@@ -1340,7 +1413,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_CONNECT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
@@ -1349,7 +1422,7 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 	//
 	// #8 Allow IPv6 inbound DNS.
 	//
-	if len(allowConditionsV6) > len(denyConditions) {
+	if v6Count > 0 {
 		displayData, err := createWtFwpmDisplayData0("Allow DNS inbound (IPv6)", "")
 		if err != nil {
 			return wrapErr(err)
@@ -1358,12 +1431,13 @@ func blockDNS(except []netip.Addr, session uintptr, baseObjects *baseObjects, we
 		filter.displayData = *displayData
 		filter.layerKey = cFWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
 
-		err = fwpmFilterAdd0(session, &filter, 0, &filterID)
+		err = add(session, &filter, 0, &filterID)
 		if err != nil {
 			return wrapErr(err)
 		}
 	}
 
+	runtime.KeepAlive(tunLUIDPtr)
 	runtime.KeepAlive(storedPointers)
 
 	return nil

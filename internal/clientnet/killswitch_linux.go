@@ -14,17 +14,25 @@ import (
 )
 
 // Linux kill switch (issue #79): while the tunnel is up, an nftables table of its own drops
-// every packet that leaves outside the tunnel, except to the Edge and Control Plane
-// addresses (bypass hosts), loopback, DHCP and IPv6 neighbour discovery. Removing the table
-// on disconnect restores normal traffic. If the daemon dies, the table stays and the machine
-// stays offline until `opensase disconnect` or a reboot (the table is not persistent).
+// every packet that leaves outside the tunnel (both locally originated and forwarded), except
+// to the Edge and Control Plane addresses (bypass hosts), loopback, DHCP and IPv6 neighbour
+// discovery. Gateway mode manages forwarding separately and does not enable this kill switch.
+// Removing the table on disconnect restores normal traffic. If the daemon dies, the table stays
+// and the machine stays offline until `opensase disconnect` or a reboot (the table is not
+// persistent).
 
 const ksTable = "opensase_killswitch"
 
 // killSwitchScript returns the nft script installing the kill switch.
 func killSwitchScript(tunDev string, allow []netip.Addr) string {
 	var v4, v6 []string
+	seen := make(map[netip.Addr]bool, len(allow))
 	for _, a := range allow {
+		a = a.Unmap().WithZone("")
+		if !a.IsValid() || seen[a] {
+			continue
+		}
+		seen[a] = true
 		if a.Is4() {
 			v4 = append(v4, a.String())
 		} else {
@@ -48,7 +56,11 @@ func killSwitchScript(tunDev string, allow []netip.Addr) string {
 	b.WriteString("\t\tudp sport 68 udp dport 67 accept\n")
 	b.WriteString("\t\tudp sport 546 udp dport 547 accept\n")
 	b.WriteString("\t\ticmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept\n")
-	b.WriteString("\t\treject\n\t}\n}\n")
+	b.WriteString("\t\treject\n\t}\n")
+	b.WriteString("\tchain forward {\n\t\ttype filter hook forward priority 0; policy drop;\n")
+	fmt.Fprintf(&b, "\t\toifname %q accept\n", tunDev)
+	fmt.Fprintf(&b, "\t\tiifname %q accept\n", tunDev)
+	b.WriteString("\t}\n}\n")
 	return b.String()
 }
 

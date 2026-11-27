@@ -35,23 +35,81 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Deterministic ULA sink address assigned to the TUN when the session has no IPv6
+ * address (e.g. an IPv4-only Edge). Pairing it with the ::/0 route ensures Android
+ * always captures IPv6 traffic into the TUN instead of throwing on an address-less
+ * IPv6 route or leaking IPv6 on the physical network. Offset 0xffffffff lies outside
+ * tunneladdr.MinOffset..MaxOffset.
+ */
+const val IPV6_SINK_ADDRESS = "fd7a:5a5e::ffff:ffff"
+const val IPV6_SINK_PREFIX = 128
+const val DEFAULT_MTU = 1280
+
 /** Interface parameters from Engine.tunnelConfig(). */
 data class TunnelConfig(val ipv4: String, val ipv6: String, val dns: List<String>, val mtu: Int) {
     companion object {
         fun parse(json: String): TunnelConfig {
             val o = JSONObject(json)
+            val ipv4 = if (o.isNull("ipv4")) "" else o.optString("ipv4")
+            val ipv6 = if (o.isNull("ipv6")) "" else o.optString("ipv6")
             val dns = o.optJSONArray("dns")?.let { a -> List(a.length()) { a.getString(it) } }.orEmpty()
-            return TunnelConfig(o.optString("ipv4"), o.optString("ipv6"), dns, o.optInt("mtu", 1280))
+            return TunnelConfig(ipv4, ipv6, dns, o.optInt("mtu", DEFAULT_MTU))
         }
     }
 }
 
 /** Splits "100.64.0.7/32" into ("100.64.0.7", 32). */
 fun parseCidr(cidr: String): Pair<String, Int>? {
-    val slash = cidr.indexOf('/')
+    val trimmed = cidr.trim()
+    val slash = trimmed.indexOf('/')
     if (slash <= 0) return null
-    val prefix = cidr.substring(slash + 1).toIntOrNull() ?: return null
-    return cidr.substring(0, slash) to prefix
+    val addr = trimmed.substring(0, slash).trim()
+    if (addr.isEmpty()) return null
+    val prefix = trimmed.substring(slash + 1).trim().toIntOrNull() ?: return null
+    val maxPrefix = if (addr.contains(':')) 128 else 32
+    if (prefix < 0 || prefix > maxPrefix) return null
+    return addr to prefix
+}
+
+/** Resolved interface parameters to apply to [VpnService.Builder]. */
+data class VpnInterfaceSpec(
+    val addresses: List<Pair<String, Int>>,
+    val routes: List<Pair<String, Int>>,
+    val dnsServers: List<String>,
+    val mtu: Int,
+)
+
+/**
+ * Computes the addresses, routes, DNS servers, and MTU to install on [VpnService.Builder].
+ *
+ * When [cfg.ipv6] is empty or invalid, [IPV6_SINK_ADDRESS]/[IPV6_SINK_PREFIX] is added
+ * alongside the `::/0` default route so Android never throws on an address-less IPv6 route
+ * and never leaks IPv6 traffic around the tunnel, and IPv6 DNS servers are omitted because
+ * they would be unreachable.
+ */
+fun buildVpnInterfaceSpec(cfg: TunnelConfig): VpnInterfaceSpec {
+    val parsedIpv4 = parseCidr(cfg.ipv4)?.takeIf { (a, _) -> !a.contains(':') }
+    val parsedIpv6 = parseCidr(cfg.ipv6)?.takeIf { (a, _) -> a.contains(':') }
+    val hasTunnelIpv6 = parsedIpv6 != null
+    val addresses = buildList {
+        parsedIpv4?.let { add(it) }
+        add(parsedIpv6 ?: (IPV6_SINK_ADDRESS to IPV6_SINK_PREFIX))
+    }
+    val routes = listOf(
+        "0.0.0.0" to 0,
+        "::" to 0,
+    )
+    val dnsServers = cfg.dns
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && (hasTunnelIpv6 || !it.contains(':')) }
+    val mtu = if (cfg.mtu > 0) cfg.mtu else DEFAULT_MTU
+    return VpnInterfaceSpec(
+        addresses = addresses,
+        routes = routes,
+        dnsServers = dnsServers,
+        mtu = mtu,
+    )
 }
 
 /**
@@ -152,13 +210,12 @@ class OpenSaseVpnService : VpnService() {
     }
 
     private fun buildInterface(cfg: TunnelConfig): Builder {
+        val spec = buildVpnInterfaceSpec(cfg)
         val b = Builder().setSession(getString(R.string.app_name))
-        parseCidr(cfg.ipv4)?.let { (a, p) -> b.addAddress(a, p) }
-        parseCidr(cfg.ipv6)?.let { (a, p) -> b.addAddress(a, p) }
-        b.addRoute("0.0.0.0", 0)
-        b.addRoute("::", 0)
-        cfg.dns.forEach { b.addDnsServer(it) }
-        b.setMtu(if (cfg.mtu > 0) cfg.mtu else 1280)
+        spec.addresses.forEach { (a, p) -> b.addAddress(a, p) }
+        spec.routes.forEach { (a, p) -> b.addRoute(a, p) }
+        spec.dnsServers.forEach { b.addDnsServer(it) }
+        b.setMtu(spec.mtu)
         b.addDisallowedApplication(packageName)
         b.setBlocking(false)
         b.setUnderlyingNetworks(monitor.current.value.network?.let { arrayOf(it) })

@@ -40,6 +40,7 @@ type options struct {
 	geneveListen, geneveCIDRs, healthListen                  string
 	enroll, routes, verbose, renewNow                        bool
 	gatewayRouted                                            bool
+	killSwitch                                               bool
 	statusEvery                                              time.Duration
 }
 
@@ -56,6 +57,7 @@ func main() {
 	flag.StringVar(&o.network, "network", "ethernet", "network type: wifi, cellular, roaming, ethernet, unknown")
 	flag.StringVar(&o.tunName, "tun", clientnet.DefaultTUNName(), "TUN interface name")
 	flag.BoolVar(&o.routes, "routes", false, "configure the TUN address and default routes with ip(8) (needs NET_ADMIN)")
+	flag.BoolVar(&o.killSwitch, "kill-switch", true, "enable the OS kill switch when permitted by tenant policy (set -kill-switch=false in container environments without nftables)")
 	flag.StringVar(&o.gateway, "gateway", "", "Workload Gateway mode (ADR-0015): comma-separated IPv4 subnets whose traffic is forwarded into the tunnel (implies -routes; needs iptables and the net.ipv4.ip_forward sysctl)")
 	flag.BoolVar(&o.gatewayRouted, "gateway-routed", false, "routed mode (per-workload identity): do not masquerade gateway subnets; requires -gateway")
 	flag.StringVar(&o.geneveListen, "geneve-listen", "", "GENEVE ingress listen address, e.g. :6081 (requires -gateway)")
@@ -227,13 +229,19 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 
+	killSwitch := shouldEnableKillSwitch(o, eng.KillSwitch())
+	if o.routes && !o.killSwitch && o.gateway == "" && eng.KillSwitch() {
+		log.Warn("kill switch disabled by -kill-switch=false; traffic may leak outside the tunnel")
+	}
+
 	netCfg := clientnet.Config{
-		Dev:    name,
-		IPv4:   tc.IPv4,
-		IPv6:   tc.IPv6,
-		MTU:    tc.MTU,
-		Bypass: eng.BypassHosts(),
-		DNS:    tc.DNS,
+		Dev:        name,
+		IPv4:       tc.IPv4,
+		IPv6:       tc.IPv6,
+		MTU:        tc.MTU,
+		Bypass:     eng.BypassHosts(),
+		DNS:        tc.DNS,
+		KillSwitch: killSwitch,
 	}
 
 	if o.routes {
@@ -343,4 +351,15 @@ func provisioningKey(o options, getenv func(string) string, readFile func(string
 		return o.key, "-key", nil
 	}
 	return "", "", nil
+}
+
+// shouldEnableKillSwitch reports whether the OS kill switch should be installed for this
+// run: enabled when allowed by both -kill-switch and tenant policy, and disabled in
+// Workload Gateway mode (which manages forwarding via OSASE_GW_FWD and serves local
+// health and GENEVE endpoints outside the tunnel).
+func shouldEnableKillSwitch(o options, policyKillSwitch bool) bool {
+	if !o.killSwitch || o.gateway != "" {
+		return false
+	}
+	return policyKillSwitch
 }

@@ -148,7 +148,7 @@ func Enable(o Options) error {
 		}
 
 		if len(o.DNSServers) > 0 {
-			err = blockDNS(o.DNSServers, session, baseObjects, 15, 14)
+			err = blockDNS(o.DNSServers, o.TunLUID, session, baseObjects, 15, 14)
 			if err != nil {
 				return wrapErr(err)
 			}

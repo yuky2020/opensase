@@ -71,3 +71,88 @@ func TestCheckIPForwardFile(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckIPv6ForwardFile(t *testing.T) {
+	dir := t.TempDir()
+
+	pEnabled := filepath.Join(dir, "enabled")
+	if err := os.WriteFile(pEnabled, []byte("1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pEnabledNoNL := filepath.Join(dir, "enabled_nonl")
+	if err := os.WriteFile(pEnabledNoNL, []byte("1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pDisabled := filepath.Join(dir, "disabled")
+	if err := os.WriteFile(pDisabled, []byte("0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pEmpty := filepath.Join(dir, "empty")
+	if err := os.WriteFile(pEmpty, []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pOther := filepath.Join(dir, "other")
+	if err := os.WriteFile(pOther, []byte("2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pMissing := filepath.Join(dir, "missing")
+
+	tests := []struct {
+		name        string
+		path        string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:    "enabled",
+			path:    pEnabled,
+			wantErr: false,
+		},
+		{
+			name:    "enabled without newline",
+			path:    pEnabledNoNL,
+			wantErr: false,
+		},
+		{
+			name:        "disabled",
+			path:        pDisabled,
+			wantErr:     true,
+			errContains: "IPv6 forwarding is disabled in the Edge network namespace",
+		},
+		{
+			name:        "empty",
+			path:        pEmpty,
+			wantErr:     true,
+			errContains: "IPv6 forwarding is disabled in the Edge network namespace",
+		},
+		{
+			name:        "unexpected value",
+			path:        pOther,
+			wantErr:     true,
+			errContains: "IPv6 forwarding is disabled in the Edge network namespace",
+		},
+		{
+			name:        "missing",
+			path:        pMissing,
+			wantErr:     true,
+			errContains: "read ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkIPv6ForwardFile(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("checkIPv6ForwardFile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errContains != "" && (err == nil || !strings.Contains(err.Error(), tt.errContains)) {
+				t.Fatalf("checkIPv6ForwardFile() error = %v, want substring %q", err, tt.errContains)
+			}
+		})
+	}
+}

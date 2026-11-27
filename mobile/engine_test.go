@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/tuntest"
 
 	"github.com/yuky2020/opensase/pkg/api"
@@ -919,5 +920,126 @@ func TestEdgeListRefresh(t *testing.T) {
 	got := e.orderEdges(context.Background(), []api.EdgeInfo{{ID: "dead", SessionURL: "https://127.0.0.1:1"}, {ID: "live", SessionURL: fc.edge.URL}})
 	if got[0].ID != "live" {
 		t.Fatalf("unreachable first: %+v", got)
+	}
+}
+
+func TestInstallLogsTunnelAddressChange(t *testing.T) {
+	tests := []struct {
+		name     string
+		oldV4    string
+		oldV6    string
+		newV4    string
+		newV6    string
+		wantWarn bool
+	}{
+		{
+			name:     "unchanged",
+			oldV4:    "100.64.0.7/32",
+			oldV6:    "fd7a:5a5e::7/128",
+			newV4:    "100.64.0.7/32",
+			newV6:    "fd7a:5a5e::7/128",
+			wantWarn: false,
+		},
+		{
+			name:     "ipv4 changed",
+			oldV4:    "100.64.0.7/32",
+			oldV6:    "fd7a:5a5e::7/128",
+			newV4:    "100.64.0.8/32",
+			newV6:    "fd7a:5a5e::7/128",
+			wantWarn: true,
+		},
+		{
+			name:     "ipv6 changed",
+			oldV4:    "100.64.0.7/32",
+			oldV6:    "fd7a:5a5e::7/128",
+			newV4:    "100.64.0.7/32",
+			newV6:    "fd7a:5a5e::8/128",
+			wantWarn: true,
+		},
+		{
+			name:     "ipv6 dropped on ipv4-only edge",
+			oldV4:    "100.64.0.7/32",
+			oldV6:    "fd7a:5a5e::7/128",
+			newV4:    "100.64.0.7/32",
+			newV6:    "",
+			wantWarn: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pl := &recPlatform{}
+			e, err := NewEngine(t.TempDir(), pl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ct := tuntest.NewChannelTUN()
+			dev := device.NewDevice(ct.TUN(), newProtectedBind(nil, e.log), &device.Logger{
+				Verbosef: device.DiscardLogf,
+				Errorf:   device.DiscardLogf,
+			})
+			defer dev.Close()
+
+			k1, err := newWGKey()
+			if err != nil {
+				t.Fatal(err)
+			}
+			k2, err := newWGKey()
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldSess := &session{
+				edge:     api.EdgeInfo{ID: "edge-1"},
+				key:      k1,
+				edgePub:  edgeWGPub(t),
+				endpoint: "127.0.0.1:1",
+				resp:     api.SessionResponse{TunnelIPv4: tt.oldV4, TunnelIPv6: tt.oldV6},
+			}
+			rs := &runState{dev: dev, sess: oldSess}
+			next := &session{
+				edge:     api.EdgeInfo{ID: "edge-2"},
+				key:      k2,
+				edgePub:  edgeWGPub(t),
+				endpoint: "127.0.0.1:1",
+				resp:     api.SessionResponse{TunnelIPv4: tt.newV4, TunnelIPv6: tt.newV6},
+			}
+			if err := e.install(rs, next); err != nil {
+				t.Fatalf("install: %v", err)
+			}
+
+			type logEvent struct {
+				Level string         `json:"level"`
+				Msg   string         `json:"msg"`
+				Attrs map[string]any `json:"attrs"`
+			}
+			var found *logEvent
+			pl.mu.Lock()
+			for _, ev := range pl.events {
+				payload, ok := strings.CutPrefix(ev, "log ")
+				if !ok {
+					continue
+				}
+				var le logEvent
+				if err := json.Unmarshal([]byte(payload), &le); err == nil && strings.Contains(le.Msg, "tunnel address changed") {
+					found = &le
+					break
+				}
+			}
+			pl.mu.Unlock()
+
+			if tt.wantWarn && found == nil {
+				t.Fatal("expected tunnel address changed warning log, got none")
+			}
+			if !tt.wantWarn && found != nil {
+				t.Fatalf("unexpected tunnel address changed warning log: %+v", found)
+			}
+			if found != nil {
+				if found.Attrs["oldIPv4"] != tt.oldV4 || found.Attrs["newIPv4"] != tt.newV4 ||
+					found.Attrs["oldIPv6"] != tt.oldV6 || found.Attrs["newIPv6"] != tt.newV6 {
+					t.Fatalf("attrs = %+v, want oldIPv4=%q newIPv4=%q oldIPv6=%q newIPv6=%q",
+						found.Attrs, tt.oldV4, tt.newV4, tt.oldV6, tt.newV6)
+				}
+			}
+		})
 	}
 }

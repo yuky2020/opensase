@@ -127,7 +127,7 @@ func (s *sessionServer) handleSession(w http.ResponseWriter, r *http.Request) {
 	// The device's first connection must already take the right path (issue #22).
 	e.reconcileInspect(r.Context())
 	e.log.InfoContext(r.Context(), "session established", "tenant", id.TenantID, "device", id.DeviceID,
-		"session", resp.SessionID, "epoch", resp.Epoch, "ipv4", resp.TunnelIPv4, "kex", "X25519MLKEM768")
+		"session", resp.SessionID, "epoch", resp.Epoch, "ipv4", resp.TunnelIPv4, "ipv6", resp.TunnelIPv6, "kex", "X25519MLKEM768")
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -206,7 +206,7 @@ func (e *Edge) setupSession(_ context.Context, d *device, cs tls.ConnectionState
 	if d.hasPeer && d.wgPub != clientPub {
 		writePeerRemove(&buf, d.wgPub)
 	}
-	writePeerConfig(&buf, clientPub, psk, d)
+	writePeerConfig(&buf, clientPub, psk, d, e.ipv6)
 	err = e.wg.IpcSetOperation(bytes.NewReader(buf.Bytes()))
 	clear(buf.Bytes())
 	if err != nil {
@@ -216,14 +216,16 @@ func (e *Edge) setupSession(_ context.Context, d *device, cs tls.ConnectionState
 	d.sessionSerial, d.staleSince = cs.VerifiedChains[0][0].SerialNumber.String(), time.Time{}
 
 	dns := []string{EdgeIPv4.String()}
+	var tunnelIPv6 string
 	if e.ipv6 {
 		dns = append(dns, EdgeIPv6.String())
+		tunnelIPv6 = d.ip6.String() + "/128"
 	}
 	return api.SessionResponse{
 		SessionID:      sessionID,
 		Epoch:          epoch,
 		TunnelIPv4:     d.ip4.String() + "/32",
-		TunnelIPv6:     d.ip6.String() + "/128",
+		TunnelIPv6:     tunnelIPv6,
 		DNSServers:     dns,
 		EdgeWGKey:      base64.StdEncoding.EncodeToString(e.wgPub[:]),
 		WGEndpoint:     e.cfg.WGEndpoint,
@@ -254,32 +256,33 @@ func writePeerRemove(b *bytes.Buffer, pub [32]byte) {
 	b.WriteString("\nremove=true\n")
 }
 
-func writePeerConfig(b *bytes.Buffer, pub [32]byte, psk [32]byte, d *device) {
+func writePeerConfig(b *bytes.Buffer, pub [32]byte, psk [32]byte, d *device, ipv6 bool) {
 	b.WriteString("public_key=")
 	writeHex(b, pub[:])
 	b.WriteString("\npreshared_key=")
 	writeHex(b, psk[:])
-	b.WriteString("\nreplace_allowed_ips=true\nallowed_ip=")
-	b.WriteString(d.ip4.String())
-	b.WriteString("/32\nallowed_ip=")
-	b.WriteString(d.ip6.String())
-	b.WriteString("/128\n")
-	for _, r := range d.routes {
-		b.WriteString("allowed_ip=")
-		b.WriteString(r.String())
-		b.WriteString("\n")
-	}
+	writeAllowedIPs(b, d, ipv6)
 }
 
-func writePeerAllowedIPs(b *bytes.Buffer, pub [32]byte, d *device) {
+func writePeerAllowedIPs(b *bytes.Buffer, pub [32]byte, d *device, ipv6 bool) {
 	b.WriteString("public_key=")
 	writeHex(b, pub[:])
+	writeAllowedIPs(b, d, ipv6)
+}
+
+func writeAllowedIPs(b *bytes.Buffer, d *device, ipv6 bool) {
 	b.WriteString("\nreplace_allowed_ips=true\nallowed_ip=")
 	b.WriteString(d.ip4.String())
-	b.WriteString("/32\nallowed_ip=")
-	b.WriteString(d.ip6.String())
-	b.WriteString("/128\n")
+	b.WriteString("/32\n")
+	if ipv6 {
+		b.WriteString("allowed_ip=")
+		b.WriteString(d.ip6.String())
+		b.WriteString("/128\n")
+	}
 	for _, r := range d.routes {
+		if !ipv6 && r.Addr().Is6() {
+			continue
+		}
 		b.WriteString("allowed_ip=")
 		b.WriteString(r.String())
 		b.WriteString("\n")

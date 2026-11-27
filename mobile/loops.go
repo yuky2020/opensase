@@ -607,7 +607,8 @@ func (e *Engine) install(rs *runState, next *session) error {
 		// The TUN interface keeps the old addresses; the app must rebuild it. With a
 		// Control Plane that assigns tunnel offsets (issue #70) this does not happen.
 		e.log.Warn("tunnel address changed on the new session; reconnect required",
-			"old", old.resp.TunnelIPv4, "new", next.resp.TunnelIPv4)
+			"oldIPv4", old.resp.TunnelIPv4, "newIPv4", next.resp.TunnelIPv4,
+			"oldIPv6", old.resp.TunnelIPv6, "newIPv6", next.resp.TunnelIPv6)
 	}
 	old.wipe()
 	e.log.Info("new session established", "edge", next.edge.ID, "epoch", next.resp.Epoch)

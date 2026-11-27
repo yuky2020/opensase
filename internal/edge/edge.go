@@ -80,7 +80,8 @@ type Config struct {
 	// OCRURL is the ocrd service that reads the text of images for DLP (ADR-0024), for
 	// example http://ocr:8090. Empty: images carry no text.
 	OCRURL string
-	// SkipIPForwardCheck skips the Linux net.ipv4.ip_forward check (e.g. for testing).
+	// SkipIPForwardCheck skips the Linux IP forwarding sysctl checks (net.ipv4.ip_forward
+	// and net.ipv6.conf.all.forwarding), e.g. for testing.
 	SkipIPForwardCheck bool
 	Logger             *slog.Logger
 }
@@ -367,7 +368,7 @@ func (e *Edge) run(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServeTLS("", "") }()
 	e.log.Info("built-in deny active", "prefixes", len(e.guard.deny), "allowPrivate", e.cfg.AllowPrivate, "dohBlock", e.guard.blockDoH)
-	e.log.Info("edge ready", "tenant", e.cfg.TenantID, "stateDir", e.cfg.StateDir, "session", e.cfg.ListenAddr, "wg", e.cfg.WGPort, "tun", name, "mtu", e.cfg.MTU, "kex", "X25519MLKEM768")
+	e.log.Info("edge ready", "tenant", e.cfg.TenantID, "stateDir", e.cfg.StateDir, "session", e.cfg.ListenAddr, "wg", e.cfg.WGPort, "tun", name, "mtu", e.cfg.MTU, "ipv6", e.ipv6, "kex", "X25519MLKEM768")
 	select {
 	case <-ctx.Done():
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -398,12 +399,7 @@ func (e *Edge) configureInterface(ctx context.Context, name string) error {
 	if err := run("link", "set", name, "mtu", strconv.Itoa(e.cfg.MTU), "up"); err != nil {
 		return err
 	}
-	p6 := netip.PrefixFrom(EdgeIPv6, TunnelPrefix6.Bits())
-	if err := run("-6", "addr", "replace", p6.String(), "dev", name, "nodad"); err != nil {
-		e.log.Warn("ipv6 tunnel address not configured; continuing IPv4-only", "err", err)
-	} else {
-		e.ipv6 = true
-	}
+	e.ipv6 = e.configureIPv6(run, checkIPv6Forward, name)
 	if err := e.redirectZTNA(ctx, name); err != nil {
 		return err
 	}
@@ -416,6 +412,24 @@ func (e *Edge) configureInterface(ctx context.Context, name string) error {
 		e.syncKernelRoutes(ctx)
 	}
 	return nil
+}
+
+// configureIPv6 assigns the Edge's IPv6 tunnel address and reports whether IPv6 is active.
+// IPv6 is enabled only when IPv6 forwarding is active (unless SkipIPForwardCheck is set)
+// and the interface address assignment succeeds.
+func (e *Edge) configureIPv6(run func(...string) error, checkFwd func() error, name string) bool {
+	if !e.cfg.SkipIPForwardCheck {
+		if err := checkFwd(); err != nil {
+			e.log.Warn("ipv6 forwarding disabled; continuing IPv4-only", "err", err)
+			return false
+		}
+	}
+	p6 := netip.PrefixFrom(EdgeIPv6, TunnelPrefix6.Bits())
+	if err := run("-6", "addr", "replace", p6.String(), "dev", name, "nodad"); err != nil {
+		e.log.Warn("ipv6 tunnel address not configured; continuing IPv4-only", "err", err)
+		return false
+	}
+	return true
 }
 
 // redirectZTNA installs the REDIRECT of tunnel TCP to SyntheticPrefix to the broker
@@ -581,7 +595,7 @@ func (e *Edge) applyState(b api.PKIBundle, peers api.EdgePeers) error {
 	for _, d := range res.routesUpdated {
 		if d.hasPeer && e.wg != nil {
 			var buf bytes.Buffer
-			writePeerAllowedIPs(&buf, d.wgPub, d)
+			writePeerAllowedIPs(&buf, d.wgPub, d, e.ipv6)
 			if err := e.wg.IpcSetOperation(bytes.NewReader(buf.Bytes())); err != nil {
 				e.log.Error("update wireguard allowed ips", "device", d.id, "err", err)
 			}

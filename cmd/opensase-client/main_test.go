@@ -74,3 +74,24 @@ func TestProvisioningKey(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldEnableKillSwitch(t *testing.T) {
+	tests := []struct {
+		name             string
+		o                options
+		policyKillSwitch bool
+		want             bool
+	}{
+		{name: "enabled by flag and policy", o: options{killSwitch: true}, policyKillSwitch: true, want: true},
+		{name: "disabled by tenant policy", o: options{killSwitch: true}, policyKillSwitch: false, want: false},
+		{name: "disabled by CLI flag", o: options{killSwitch: false}, policyKillSwitch: true, want: false},
+		{name: "disabled in workload gateway mode", o: options{killSwitch: true, gateway: "10.30.0.0/24"}, policyKillSwitch: true, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldEnableKillSwitch(tt.o, tt.policyKillSwitch); got != tt.want {
+				t.Fatalf("shouldEnableKillSwitch(%+v, %v) = %v, want %v", tt.o, tt.policyKillSwitch, got, tt.want)
+			}
+		})
+	}
+}

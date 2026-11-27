@@ -378,6 +378,7 @@ func postSession(t *testing.T, c *http.Client, url string, req api.SessionReques
 
 func TestSessionSetupAndRotation(t *testing.T) {
 	fx := newFixture(t)
+	fx.e.ipv6 = true
 	fx.setPeer("d1", 1)
 	if err := fx.e.syncPeers(context.Background()); err != nil {
 		t.Fatal(err)
@@ -392,7 +393,7 @@ func TestSessionSetupAndRotation(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("session: %d", code)
 	}
-	if sr.TunnelIPv4 != "100.64.0.2/32" || sr.TunnelIPv6 != "fd7a:5a5e::2/128" || sr.DNSServers[0] != "100.64.0.1" || sr.MTU != 1280 || sr.Epoch != 0 {
+	if sr.TunnelIPv4 != "100.64.0.2/32" || sr.TunnelIPv6 != "fd7a:5a5e::2/128" || !slices.Equal(sr.DNSServers, []string{"100.64.0.1", "fd7a:5a5e::1"}) || sr.MTU != 1280 || sr.Epoch != 0 {
 		t.Fatalf("response %+v", sr)
 	}
 	if len(cs.PeerCertificates) != 2 || !cs.PeerCertificates[1].IsCA {
@@ -852,6 +853,7 @@ func TestSessionProbe(t *testing.T) {
 // allocation never takes an offset reserved for another device.
 func TestControlPlaneTunnelOffset(t *testing.T) {
 	fx := newFixture(t)
+	fx.e.ipv6 = true
 	fx.setPeer("d1", 1)
 	fx.setPeer("d2", 1)
 	fx.cp.mu.Lock()
@@ -1426,4 +1428,243 @@ func TestFilterIPv6(t *testing.T) {
 			t.Errorf("removed device snoop entry kept: got %q", got)
 		}
 	})
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestSessionIPv6Disabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		ipv6          bool
+		wantIPv6      string
+		wantDNS       []string
+		wantIPv6Route bool
+	}{
+		{
+			name:          "ipv6 disabled",
+			ipv6:          false,
+			wantIPv6:      "",
+			wantDNS:       []string{EdgeIPv4.String()},
+			wantIPv6Route: false,
+		},
+		{
+			name:          "ipv6 enabled",
+			ipv6:          true,
+			wantIPv6:      "fd7a:5a5e::2/128",
+			wantDNS:       []string{EdgeIPv4.String(), EdgeIPv6.String()},
+			wantIPv6Route: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuf syncBuffer
+			fx := newFixtureCfg(t, func(c *Config) {
+				c.Logger = slog.New(slog.NewJSONHandler(&logBuf, nil))
+			})
+			fx.e.ipv6 = tc.ipv6
+			fx.setPeer("d1", 1)
+			fx.cp.mu.Lock()
+			fx.cp.peers.Devices[0].Routes = []string{"10.30.0.0/24", "fd00:30::/64"}
+			fx.cp.mu.Unlock()
+			if err := fx.e.syncPeers(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			srv := fx.sessionServer()
+			cert := fx.deviceCert("acme", "d1")
+			c := fx.client(&cert)
+			wgKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pub := wgKey.PublicKey().Bytes()
+
+			code, sr, _ := postSession(t, c, srv.URL, api.SessionRequest{WGPublicKey: base64.StdEncoding.EncodeToString(pub)})
+			if code != 200 {
+				t.Fatalf("session status = %d, want 200", code)
+			}
+			if sr.TunnelIPv4 != "100.64.0.2/32" {
+				t.Errorf("TunnelIPv4 = %q, want 100.64.0.2/32", sr.TunnelIPv4)
+			}
+			if sr.TunnelIPv6 != tc.wantIPv6 {
+				t.Errorf("TunnelIPv6 = %q, want %q", sr.TunnelIPv6, tc.wantIPv6)
+			}
+			if !slices.Equal(sr.DNSServers, tc.wantDNS) {
+				t.Errorf("DNSServers = %v, want %v", sr.DNSServers, tc.wantDNS)
+			}
+
+			fx.wg.mu.Lock()
+			if len(fx.wg.ops) == 0 {
+				fx.wg.mu.Unlock()
+				t.Fatal("no WireGuard UAPI ops recorded")
+			}
+			initOp := fx.wg.ops[len(fx.wg.ops)-1]
+			fx.wg.mu.Unlock()
+
+			if !strings.Contains(initOp, "allowed_ip=100.64.0.2/32\n") {
+				t.Errorf("initial uapi missing IPv4 tunnel allowed_ip: %q", initOp)
+			}
+			if !strings.Contains(initOp, "allowed_ip=10.30.0.0/24\n") {
+				t.Errorf("initial uapi missing IPv4 route allowed_ip: %q", initOp)
+			}
+			if got := strings.Contains(initOp, "allowed_ip=fd7a:5a5e::2/128\n"); got != tc.ipv6 {
+				t.Errorf("initial uapi IPv6 tunnel allowed_ip = %v, want %v: %q", got, tc.ipv6, initOp)
+			}
+			if got := strings.Contains(initOp, "allowed_ip=fd00:30::/64\n"); got != tc.wantIPv6Route {
+				t.Errorf("initial uapi IPv6 route allowed_ip = %v, want %v: %q", got, tc.wantIPv6Route, initOp)
+			}
+
+			// Route updates via applyState/writePeerAllowedIPs must also honor e.ipv6.
+			fx.cp.mu.Lock()
+			fx.cp.peers.Devices[0].Routes = []string{"10.40.0.0/24", "fd00:40::/64"}
+			fx.cp.mu.Unlock()
+			if err := fx.e.syncPeers(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			fx.wg.mu.Lock()
+			updOp := fx.wg.ops[len(fx.wg.ops)-1]
+			fx.wg.mu.Unlock()
+
+			if !strings.Contains(updOp, "allowed_ip=100.64.0.2/32\n") || !strings.Contains(updOp, "allowed_ip=10.40.0.0/24\n") {
+				t.Errorf("updated uapi missing IPv4 allowed_ip: %q", updOp)
+			}
+			if got := strings.Contains(updOp, "allowed_ip=fd7a:5a5e::2/128\n"); got != tc.ipv6 {
+				t.Errorf("updated uapi IPv6 tunnel allowed_ip = %v, want %v: %q", got, tc.ipv6, updOp)
+			}
+			if got := strings.Contains(updOp, "allowed_ip=fd00:40::/64\n"); got != tc.wantIPv6Route {
+				t.Errorf("updated uapi IPv6 route allowed_ip = %v, want %v: %q", got, tc.wantIPv6Route, updOp)
+			}
+
+			// Session establishment log must include the ipv6 field.
+			var sawSessionLog bool
+			for line := range strings.Lines(logBuf.String()) {
+				var rec map[string]any
+				if err := json.Unmarshal([]byte(line), &rec); err != nil {
+					continue
+				}
+				if rec["msg"] != "session established" {
+					continue
+				}
+				sawSessionLog = true
+				if rec["ipv4"] != "100.64.0.2/32" {
+					t.Errorf("log ipv4 = %v, want 100.64.0.2/32", rec["ipv4"])
+				}
+				if rec["ipv6"] != tc.wantIPv6 {
+					t.Errorf("log ipv6 = %v, want %q", rec["ipv6"], tc.wantIPv6)
+				}
+			}
+			if !sawSessionLog {
+				t.Fatalf("missing session established log in %q", logBuf.String())
+			}
+		})
+	}
+}
+
+func TestConfigureIPv6(t *testing.T) {
+	wantArgs := []string{"-6", "addr", "replace", "fd7a:5a5e::1/64", "dev", "wg0", "nodad"}
+	tests := []struct {
+		name           string
+		skipCheck      bool
+		fwdErr         error
+		ipErr          error
+		wantIPv6       bool
+		wantFwdChecked bool
+		wantIPCalls    int
+	}{
+		{
+			name:           "forwarding enabled and address succeeds",
+			skipCheck:      false,
+			fwdErr:         nil,
+			ipErr:          nil,
+			wantIPv6:       true,
+			wantFwdChecked: true,
+			wantIPCalls:    1,
+		},
+		{
+			name:           "forwarding disabled",
+			skipCheck:      false,
+			fwdErr:         errors.New("forwarding off"),
+			ipErr:          nil,
+			wantIPv6:       false,
+			wantFwdChecked: true,
+			wantIPCalls:    0,
+		},
+		{
+			name:           "forwarding enabled but address fails",
+			skipCheck:      false,
+			fwdErr:         nil,
+			ipErr:          errors.New("ip failed"),
+			wantIPv6:       false,
+			wantFwdChecked: true,
+			wantIPCalls:    1,
+		},
+		{
+			name:           "skip check bypasses forwarding check",
+			skipCheck:      true,
+			fwdErr:         errors.New("forwarding off"),
+			ipErr:          nil,
+			wantIPv6:       true,
+			wantFwdChecked: false,
+			wantIPCalls:    1,
+		},
+		{
+			name:           "skip check still requires address assignment",
+			skipCheck:      true,
+			fwdErr:         errors.New("forwarding off"),
+			ipErr:          errors.New("ip failed"),
+			wantIPv6:       false,
+			wantFwdChecked: false,
+			wantIPCalls:    1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newFixtureCfg(t, func(c *Config) {
+				c.SkipIPForwardCheck = tc.skipCheck
+			})
+			var fwdChecked bool
+			var ipCalls [][]string
+			got := fx.e.configureIPv6(
+				func(args ...string) error {
+					ipCalls = append(ipCalls, append([]string(nil), args...))
+					return tc.ipErr
+				},
+				func() error {
+					fwdChecked = true
+					return tc.fwdErr
+				},
+				"wg0",
+			)
+			if got != tc.wantIPv6 {
+				t.Errorf("configureIPv6() = %v, want %v", got, tc.wantIPv6)
+			}
+			if fwdChecked != tc.wantFwdChecked {
+				t.Errorf("fwdChecked = %v, want %v", fwdChecked, tc.wantFwdChecked)
+			}
+			if len(ipCalls) != tc.wantIPCalls {
+				t.Fatalf("ip calls = %d, want %d (%v)", len(ipCalls), tc.wantIPCalls, ipCalls)
+			}
+			if tc.wantIPCalls == 1 && !slices.Equal(ipCalls[0], wantArgs) {
+				t.Errorf("ip args = %v, want %v", ipCalls[0], wantArgs)
+			}
+		})
+	}
 }

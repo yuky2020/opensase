@@ -21,6 +21,9 @@ func TestKillSwitchScript(t *testing.T) {
 		"udp sport 68 udp dport 67 accept",
 		"nd-neighbor-solicit",
 		"reject",
+		"chain forward {",
+		"type filter hook forward priority 0; policy drop;",
+		`iifname "osase0" accept`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("script lacks %q:\n%s", want, s)
@@ -28,6 +31,79 @@ func TestKillSwitchScript(t *testing.T) {
 	}
 	if strings.Contains(killSwitchScript("osase0", nil), "daddr") {
 		t.Error("empty allow list must not produce an empty set")
+	}
+}
+
+func TestKillSwitchForwardChain(t *testing.T) {
+	tests := []struct {
+		name      string
+		tunDev    string
+		allow     []netip.Addr
+		wantFwd   []string
+		wantOut   []string
+		forbidFwd []string
+	}{
+		{
+			name:   "default tun includes forward drop chain for tunnel only",
+			tunDev: "osase0",
+			allow:  []netip.Addr{netip.MustParseAddr("198.51.100.1"), netip.MustParseAddr("2001:db8::1")},
+			wantFwd: []string{
+				"type filter hook forward priority 0; policy drop;",
+				`oifname "osase0" accept`,
+				`iifname "osase0" accept`,
+			},
+			wantOut: []string{
+				"ip daddr { 198.51.100.1 } accept",
+				"ip6 daddr { 2001:db8::1 } accept",
+			},
+			forbidFwd: []string{"daddr", `oifname "lo"`},
+		},
+		{
+			name:   "custom tun and duplicate/mapped/zoned allow entries normalized",
+			tunDev: "tun1",
+			allow: []netip.Addr{
+				netip.MustParseAddr("198.51.100.1"),
+				netip.MustParseAddr("::ffff:198.51.100.1"),
+				netip.MustParseAddr("2001:db8::1"),
+				netip.MustParseAddr("2001:db8::1"),
+				netip.MustParseAddr("fe80::1%eth0"),
+			},
+			wantFwd: []string{
+				"type filter hook forward priority 0; policy drop;",
+				`oifname "tun1" accept`,
+				`iifname "tun1" accept`,
+			},
+			wantOut: []string{
+				"ip daddr { 198.51.100.1 } accept",
+				"ip6 daddr { 2001:db8::1, fe80::1 } accept",
+			},
+			forbidFwd: []string{"daddr", "%eth0"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := killSwitchScript(tc.tunDev, tc.allow)
+			outPart, fwdPart, ok := strings.Cut(s, "\tchain forward {\n")
+			if !ok {
+				t.Fatalf("script missing forward chain:\n%s", s)
+			}
+			for _, want := range tc.wantOut {
+				if !strings.Contains(outPart, want) {
+					t.Errorf("output chain lacks %q:\n%s", want, outPart)
+				}
+			}
+			for _, want := range tc.wantFwd {
+				if !strings.Contains(fwdPart, want) {
+					t.Errorf("forward chain lacks %q:\n%s", want, fwdPart)
+				}
+			}
+			for _, forbid := range tc.forbidFwd {
+				if strings.Contains(fwdPart, forbid) {
+					t.Errorf("forward chain unexpectedly contains %q:\n%s", forbid, fwdPart)
+				}
+			}
+		})
 	}
 }
 

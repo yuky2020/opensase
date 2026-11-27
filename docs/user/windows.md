@@ -148,7 +148,7 @@ opensase events -f
 
 ## Kill switch
 
-The Windows client features an integrated kill switch built on the Windows Filtering Platform (WFP), adapted as a dynamic session ([ADR-0049](../adr/0049-windows-killswitch.md)):
+The Windows client features an integrated kill switch built on the Windows Filtering Platform (WFP), adapted as a dynamic session (decided in [issue #49](https://github.com/yuky2020/opensase/issues/49)):
 
 - **What it blocks**: While the tunnel is connected, dynamic WFP filters block all IPv4 and IPv6 traffic leaving outside the tunnel, as well as plain DNS queries (port 53) to external public resolvers. Permitted exceptions are loopback, DHCPv4/v6, IPv6 neighbour discovery (NDP), and designated bypass IP addresses for reaching the Edge and Control Plane endpoints directly.
 - **On by default**: The kill switch is active by default on Windows clients whenever a tunnel is established.

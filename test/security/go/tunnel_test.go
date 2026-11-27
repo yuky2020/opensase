@@ -7,10 +7,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/miekg/dns"
@@ -38,7 +40,10 @@ type tunnel struct {
 	done chan struct{}
 }
 
-const edgeTunIP = "100.64.0.1"
+const (
+	edgeTunIP  = "100.64.0.1"
+	edgeTunIP6 = "fd7a:5a5e::1"
+)
 
 func (f *fixture) openTunnel(d *ident) (*tunnel, error) {
 	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
@@ -106,6 +111,22 @@ func (tn *tunnel) ping() bool {
 	tn.send(icmpEcho(tn.ip4, netip.MustParseAddr(edgeTunIP), id))
 	return tn.wait(1500*time.Millisecond, func(p *packet.Packet) bool {
 		return p.Protocol == packet.ProtoICMP && p.Src == netip.MustParseAddr(edgeTunIP) && p.SrcPort == id
+	}) != nil
+}
+
+// ping6 reports whether the Edge answers an ICMPv6 echo request on its IPv6 tunnel address.
+func (tn *tunnel) ping6() bool {
+	if !tn.ip6.IsValid() {
+		return false
+	}
+	pingID.Lock()
+	pingID.n++
+	id := 0x6000 + pingID.n
+	pingID.Unlock()
+	edge6 := netip.MustParseAddr(edgeTunIP6)
+	tn.send(icmpv6Echo(tn.ip6, edge6, id))
+	return tn.wait(1500*time.Millisecond, func(p *packet.Packet) bool {
+		return p.Protocol == packet.ProtoICMPv6 && p.ICMPType == 129 && p.Src == edge6 && p.SrcPort == id
 	}) != nil
 }
 
@@ -232,6 +253,17 @@ func icmpEcho(src, dst netip.Addr, id uint16) []byte {
 	return append(h, m...)
 }
 
+// icmpv6Echo is an ICMPv6 echo request (type 128) with identifier id and a valid
+// pseudo-header checksum.
+func icmpv6Echo(src, dst netip.Addr, id uint16) []byte {
+	m := make([]byte, 16)
+	m[0] = 128
+	binary.BigEndian.PutUint16(m[4:], id)
+	binary.BigEndian.PutUint16(m[6:], 1)
+	copy(m[8:], "sectest!")
+	return ipPacket(src, dst, packet.ProtoICMPv6, m, 2)
+}
+
 func tcpSeg(src, dst netip.AddrPort, flags uint8, seq, ack uint32) []byte {
 	l4 := make([]byte, 20)
 	binary.BigEndian.PutUint16(l4[0:], src.Port())
@@ -353,6 +385,38 @@ func (tn *tunnel) resolve4(name string) []netip.Addr {
 	return out
 }
 
+// resolve6 returns the AAAA records of name from the Edge resolver, retrying up to 3 times.
+func (tn *tunnel) resolve6(name string) []netip.Addr {
+	server := netip.MustParseAddr(edgeTunIP)
+	if tn.ip6.IsValid() {
+		server = netip.MustParseAddr(edgeTunIP6)
+	}
+	for range 3 {
+		if addrs := extractAAAA(tn.dnsQuery(server, name, dns.TypeAAAA)); len(addrs) > 0 {
+			return addrs
+		}
+	}
+	return nil
+}
+
+func extractAAAA(r *dns.Msg) []netip.Addr {
+	if r == nil {
+		return nil
+	}
+	var out []netip.Addr
+	for _, rr := range r.Answer {
+		if a, ok := rr.(*dns.AAAA); ok {
+			if ip, ok := netip.AddrFromSlice(a.AAAA); ok {
+				ip = ip.Unmap()
+				if ip.Is6() {
+					out = append(out, ip)
+				}
+			}
+		}
+	}
+	return out
+}
+
 func addrsString(as []netip.Addr) string {
 	s := make([]string, len(as))
 	for i, a := range as {
@@ -367,4 +431,122 @@ func wgLogLevel() int {
 		return device.LogLevelVerbose
 	}
 	return device.LogLevelSilent
+}
+
+func TestICMPv6Echo(t *testing.T) {
+	tests := []struct {
+		name string
+		src  netip.Addr
+		dst  netip.Addr
+		id   uint16
+	}{
+		{
+			name: "tunnel to edge",
+			src:  netip.MustParseAddr("fd7a:5a5e::2"),
+			dst:  netip.MustParseAddr(edgeTunIP6),
+			id:   0x6001,
+		},
+		{
+			name: "tunnel to peer",
+			src:  netip.MustParseAddr("fd7a:5a5e::2"),
+			dst:  netip.MustParseAddr("fd7a:5a5e::3"),
+			id:   0x5ed,
+		},
+		{
+			name: "tunnel to global",
+			src:  netip.MustParseAddr("fd7a:5a5e::2"),
+			dst:  netip.MustParseAddr("2001:db8::1"),
+			id:   0xabcd,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pkt := icmpv6Echo(tc.src, tc.dst, tc.id)
+			if len(pkt) != 56 {
+				t.Fatalf("len(pkt) = %d, want 56", len(pkt))
+			}
+			var p packet.Packet
+			if err := packet.Parse(pkt, &p); err != nil {
+				t.Fatalf("packet.Parse: %v", err)
+			}
+			if p.Version != 6 || p.Protocol != packet.ProtoICMPv6 {
+				t.Fatalf("version=%d proto=%d, want 6/%d", p.Version, p.Protocol, packet.ProtoICMPv6)
+			}
+			if p.Src != tc.src || p.Dst != tc.dst {
+				t.Fatalf("src=%s dst=%s, want %s/%s", p.Src, p.Dst, tc.src, tc.dst)
+			}
+			if p.ICMPType != 128 || p.ICMPCode != 0 {
+				t.Fatalf("icmpv6 type=%d code=%d, want 128/0", p.ICMPType, p.ICMPCode)
+			}
+			if p.SrcPort != tc.id || p.DstPort != tc.id {
+				t.Fatalf("echo id src=%#x dst=%#x, want %#x", p.SrcPort, p.DstPort, tc.id)
+			}
+			if string(p.Payload) != "sectest!" {
+				t.Fatalf("payload=%q, want %q", string(p.Payload), "sectest!")
+			}
+			if got := csum(pkt[40:], pseudo(tc.src, tc.dst, packet.ProtoICMPv6, len(pkt)-40)); got != 0 {
+				t.Fatalf("icmpv6 checksum verify = %#x, want 0", got)
+			}
+		})
+	}
+}
+
+func TestExtractAAAA(t *testing.T) {
+	hdr := func(rrtype uint16) dns.RR_Header {
+		return dns.RR_Header{Name: "example.com.", Rrtype: rrtype, Class: dns.ClassINET, Ttl: 60}
+	}
+	tests := []struct {
+		name string
+		msg  *dns.Msg
+		want []netip.Addr
+	}{
+		{
+			name: "nil message",
+			msg:  nil,
+			want: nil,
+		},
+		{
+			name: "empty answers",
+			msg:  &dns.Msg{},
+			want: nil,
+		},
+		{
+			name: "single AAAA",
+			msg: &dns.Msg{
+				Answer: []dns.RR{
+					&dns.AAAA{Hdr: hdr(dns.TypeAAAA), AAAA: net.ParseIP("2001:db8::1")},
+				},
+			},
+			want: []netip.Addr{netip.MustParseAddr("2001:db8::1")},
+		},
+		{
+			name: "mixed CNAME, A, AAAA and IPv4-mapped AAAA",
+			msg: &dns.Msg{
+				Answer: []dns.RR{
+					&dns.CNAME{Hdr: hdr(dns.TypeCNAME), Target: "alias.example.com."},
+					&dns.A{Hdr: hdr(dns.TypeA), A: net.ParseIP("192.0.2.1").To4()},
+					&dns.AAAA{Hdr: hdr(dns.TypeAAAA), AAAA: net.ParseIP("2001:db8::1")},
+					&dns.AAAA{Hdr: hdr(dns.TypeAAAA), AAAA: net.ParseIP("::ffff:192.0.2.1")},
+					&dns.AAAA{Hdr: hdr(dns.TypeAAAA), AAAA: net.ParseIP("2001:db8::2")},
+				},
+			},
+			want: []netip.Addr{
+				netip.MustParseAddr("2001:db8::1"),
+				netip.MustParseAddr("2001:db8::2"),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractAAAA(tc.msg)
+			if len(got) != len(tc.want) {
+				t.Fatalf("extractAAAA() = %v, want %v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("extractAAAA()[%d] = %s, want %s", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
 }

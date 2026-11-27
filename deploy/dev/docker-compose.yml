@@ -21,6 +21,7 @@ services:
     networks:
       default:
         ipv4_address: 172.31.250.3
+        ipv6_address: fd7a:5a5e:ff::3
     environment:
       OPENSASE_ADMIN_TOKEN: ${OPENSASE_ADMIN_TOKEN:?run bootstrap.sh first}
     # Only what the Control Plane needs (security review #2): never pki/edge (Edge keys).
@@ -60,6 +61,7 @@ services:
     networks:
       default:
         ipv4_address: 172.31.250.2
+        ipv6_address: fd7a:5a5e:ff::2
     # Least privilege (security review #2): the entrypoint installs iptables rules as root
     # with these capabilities only, then setpriv drops to EDGE_UID keeping NET_ADMIN (TUN,
     # addresses) and NET_BIND_SERVICE (DNS on :53) as ambient capabilities.
@@ -266,9 +268,10 @@ secrets:
     file: ./connector.key # written by bootstrap.sh (mode 0600)
 
 networks:
-  # Fixed addresses for the Control Plane and the Edge (issue #29): a recreated container keeps
-  # its address, as a real server would, so a connected client's cached addresses and bypass
-  # routes stay valid. Other containers get addresses from the upper half.
+  # Fixed IPv4 and IPv6 addresses for the Control Plane and the Edge (issue #29): a recreated
+  # container keeps its addresses, as a real server would, so a connected client's cached
+  # addresses and bypass routes stay valid. Other containers get addresses from the upper half
+  # of both the IPv4 and IPv6 subnets.
   default:
     enable_ipv6: true
     ipam:
@@ -276,6 +279,7 @@ networks:
         - subnet: 172.31.250.0/24
           ip_range: 172.31.250.128/25
         - subnet: fd7a:5a5e:ff::/64
+          ip_range: fd7a:5a5e:ff:0:8000::/65
   # The customer LAN: no route to the internet, and neither the Edge nor the Control Plane
   # is attached. Only the Connector bridges it, outbound.
   corp:

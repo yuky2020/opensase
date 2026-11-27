@@ -10,6 +10,7 @@ services:
     networks:
       default:
         ipv4_address: 172.31.250.4
+        ipv6_address: fd7a:5a5e:ff::4
     cap_drop:
       - ALL
     cap_add:

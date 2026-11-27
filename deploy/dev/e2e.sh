@@ -30,6 +30,9 @@
 #      the Edge and is reset by SNI; the block is recorded. SafeSearch (ADR-0025): Google
 #      resolves to its safe hostname and cannot be reached over another address. Then the
 #      policy is restored.
+#  14. End-to-end IPv6 (issue #74): fd7a:5a5e:: tunnel address, ip -6 route via $TUN, Edge
+#      IPv6 DNS (allowed + blocked AAAA), IPv6 HTTPS egress (when Edge has IPv6 WAN), IPv6
+#      TCP/25 policy block, third-party IPv6 DNS/DoT block, and IPv6 device mesh (icmpv6).
 #   9. Private Edge offline operation (ADR-0014): with the Control Plane stopped, the Edge
 #      restarts from its state cache, the client reconnects, policy is still enforced, and
 #      flows land in the Edge's local flow log.
@@ -127,6 +130,74 @@ else
   ok "DoT to 1.1.1.1:853 blocked"
 fi
 
+# 14. End-to-end IPv6 (issue #74): tunnel address, routes, Edge IPv6 DNS, egress, policy
+# and built-in rules.
+ip6="$(cexec ip -6 -o addr show "$TUN" 2>/dev/null | awk '{print $4}' | grep '^fd7a:5a5e::' | head -1 || true)"
+if [ -n "$ip6" ]; then
+  ok "IPv6 tunnel address: $ip6"
+else
+  ko "no fd7a:5a5e:: IPv6 address on $TUN"
+fi
+r6_bad=""
+for dst6 in 2001:4860:4860::8888 fd00::1; do
+  r6="$(cexec ip -6 route get "$dst6" 2>&1 || true)"
+  case "$r6" in
+    *"dev $TUN"*) ;;
+    *) r6_bad="$r6_bad $dst6=($r6)" ;;
+  esac
+done
+if [ -z "$r6_bad" ]; then
+  ok "IPv6 routes via $TUN"
+else
+  ko "IPv6 not routed via $TUN:$r6_bad"
+fi
+if cexec sh -c 'ping -6 -c 1 -W 3 fd7a:5a5e::1 >/dev/null 2>&1 || ping6 -c 1 -W 3 fd7a:5a5e::1 >/dev/null 2>&1'; then
+  ok "IPv6 ping to Edge fd7a:5a5e::1"
+else
+  ko "IPv6 ping to Edge fd7a:5a5e::1 failed"
+fi
+ex6="$(cexec dig +short +time=5 +tries=1 @fd7a:5a5e::1 example.com AAAA 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1 || true)"
+if [ -n "$ex6" ]; then
+  ok "Edge IPv6 resolver: example.com AAAA -> $ex6"
+else
+  ko "Edge IPv6 resolver failed for example.com AAAA"
+fi
+if cexec dig +time=5 +tries=1 @fd7a:5a5e::1 blocked.opensase.test AAAA 2>/dev/null | grep -q 'status: NXDOMAIN'; then
+  ok "Edge IPv6 resolver: blocked.opensase.test AAAA -> NXDOMAIN"
+else
+  ko "Edge IPv6 resolver did not block blocked.opensase.test AAAA: $(cexec dig +time=5 +tries=1 @fd7a:5a5e::1 blocked.opensase.test AAAA 2>&1 | grep -E 'status|ANSWER' | head -2 || true)"
+fi
+code6=""
+for _ in 1 2 3; do
+  code6="$(cexec curl -6 -sS -m 15 -o /dev/null -w '%{http_code}' https://example.com 2>&1)" && break
+  sleep 2
+done
+case "$code6" in
+  2??|3??) ok "curl -6 https://example.com -> HTTP $code6" ;;
+  *)
+    if [ -n "$ex6" ] && docker compose exec -T edge nc -z -w 4 "$ex6" 443 >/dev/null 2>&1; then
+      ko "curl -6 https://example.com failed despite Edge IPv6 WAN: $code6"
+    else
+      echo "info: skipping curl -6 HTTPS assertion (Edge host has no IPv6 WAN to ${ex6:-example.com})"
+    fi ;;
+esac
+smtp6="${ex6:-2001:db8::1}"
+if out="$(cexec nc -6 -z -w 5 "$smtp6" 25 2>&1)"; then
+  ko "IPv6 TCP 25 to $smtp6 connected: $out"
+else
+  ok "IPv6 TCP 25 blocked ($smtp6)"
+fi
+if [ -n "$(cexec dig +short +time=3 +tries=1 @2001:4860:4860::8888 example.com AAAA 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' || true)" ]; then
+  ko "IPv6 third-party DNS (dig @2001:4860:4860::8888) answered"
+else
+  ok "IPv6 third-party DNS (dig @2001:4860:4860::8888) blocked"
+fi
+if out="$(cexec nc -6 -z -w 5 2606:4700:4700::1111 853 2>&1)"; then
+  ko "IPv6 DoT to [2606:4700:4700::1111]:853 connected: $out"
+else
+  ok "IPv6 DoT to [2606:4700:4700::1111]:853 blocked"
+fi
+
 # 10. Workload Gateway (ADR-0015).
 wexec() { docker compose --profile e2e exec -T workload "$@"; }
 log "workload gateway: starting the gateway and a workload on the vpc subnet"
@@ -204,6 +275,37 @@ if [ "$i" -lt 15 ]; then
   ok "routed mode: flow records show the workload source 10.30.0.10 (no NAT)"
 else
   ko "routed mode: flow records show the workload source 10.30.0.10 (no NAT)"
+fi
+
+# IPv6 device mesh (ADR-0034, issue #74): client and gateway are two enrolled devices of
+# $TENANT on the same Edge. Denied without a rule; allowed with protocol "icmpv6".
+gw_ip6="$(docker compose --profile e2e exec -T gateway ip -6 -o addr show "$TUN" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | grep '^fd7a:5a5e::' | head -1 || true)"
+if [ -z "$gw_ip6" ]; then
+  ko "IPv6 mesh: gateway has no fd7a:5a5e:: address on $TUN"
+else
+  if cexec sh -c 'ping -6 -c 1 -W 3 "$1" >/dev/null 2>&1 || ping6 -c 1 -W 3 "$1" >/dev/null 2>&1' _ "$gw_ip6"; then
+    ko "IPv6 mesh: client reached gateway ($gw_ip6) without a mesh rule"
+  else
+    ok "IPv6 mesh: client -> gateway ($gw_ip6) blocked without a mesh rule"
+  fi
+  jq '.mesh = {rules: [{id: "e2e-mesh-v6", from: {all: true}, to: {all: true}, protocol: "icmpv6"}]}' \
+    policy.example.json >.e2e-policy-mesh.json
+  ctl policy set -tenant "$TENANT" -f /work/.e2e-policy-mesh.json
+  i=0
+  until cexec sh -c 'ping -6 -c 1 -W 2 "$1" >/dev/null 2>&1 || ping6 -c 1 -W 2 "$1" >/dev/null 2>&1' _ "$gw_ip6"; do
+    i=$((i + 1))
+    [ "$i" -ge 20 ] && break
+    sleep 2
+  done
+  if [ "$i" -lt 20 ]; then
+    ok "IPv6 mesh: ICMPv6 ping client -> gateway ($gw_ip6) allowed by icmpv6 rule"
+  else
+    ko "IPv6 mesh: ICMPv6 ping client -> gateway ($gw_ip6) failed with icmpv6 rule"
+  fi
+  ctl policy set -tenant "$TENANT" -f /work/policy.example.json
+  # policy.example.json has "apps": {}, so restore the private apps for the ZTNA section.
+  ctl app set -tenant "$TENANT" -file /work/apps.example.json
+  rm -f .e2e-policy-mesh.json
 fi
 
 ctl device-routes set -tenant "$TENANT" -device "$gw_dev"

@@ -54,17 +54,51 @@ cexec curl -sS -m 6 -o /dev/null -H 'accept: application/dns-json' 'https://clou
 [ -z "$bad" ] && pass SEC-DP-102 "client: third-party DNS, DoT and DoH blocked" ||
   fail SEC-DP-102 "client: third-party DNS, DoT and DoH blocked" "reachable:$bad"
 
-# IPv6 leak: v6 must go into the tunnel (or nowhere), never out of the physical interface.
-r6="$(cexec ip -6 route get 2001:4860:4860::8888 2>&1 || true)"
-case "$r6" in
-  *"dev $TUN"* | *unreachable* | *"Network is unreachable"* | *prohibit*)
-    if cexec curl -6 -sS -m 6 -o /dev/null https://example.com 2>/dev/null; then
-      fail SEC-DP-103 "client: no IPv6 leak outside the tunnel" "curl -6 https://example.com succeeded (route: $r6)"
-    else
-      pass SEC-DP-103 "client: no IPv6 leak outside the tunnel"
-    fi ;;
-  *) fail SEC-DP-103 "client: no IPv6 leak outside the tunnel" "v6 route bypasses $TUN: $r6" ;;
-esac
+# IPv6 through the tunnel (issue #74): v6 routes strictly via $TUN, denied/bypass/policy
+# destinations fail, allowed v6 DNS and (when Edge has IPv6 WAN) HTTPS succeed through $TUN,
+# and the inet kill switch prevents any IPv6 leak out of the physical interface.
+bad=""
+for dst6 in 2001:4860:4860::8888 fd00::1; do
+  r6="$(cexec ip -6 route get "$dst6" 2>&1 || true)"
+  case "$r6" in
+    *"dev $TUN"*) ;;
+    *) bad="$bad route($dst6)=$r6" ;;
+  esac
+done
+# Positive controls over $TUN: Edge ICMPv6 echo and Edge IPv6 DNS (allowed + blocked).
+cexec sh -c 'ping -6 -c 1 -W 3 fd7a:5a5e::1 >/dev/null 2>&1 || ping6 -c 1 -W 3 fd7a:5a5e::1 >/dev/null 2>&1' || bad="$bad ping6@fd7a:5a5e::1"
+ex6="$(cexec dig +short +time=4 +tries=1 @fd7a:5a5e::1 example.com AAAA 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1)"
+[ -n "$ex6" ] || bad="$bad dns6@fd7a:5a5e::1"
+cexec dig +time=4 +tries=1 @fd7a:5a5e::1 blocked.opensase.test AAAA 2>/dev/null | grep -q 'status: NXDOMAIN' || bad="$bad dns6-block"
+# Blocked IPv6 destinations: ULA, link-local, NAT64, Edge non-DNS port, third-party DNS/DoT/DoH, tcp/25.
+cexec nc -6 -z -w 3 fd00::1 80 >/dev/null 2>&1 && bad="$bad ula:fd00::1"
+cexec curl -6 -sS -m 4 -o /dev/null "http://[fe80::1%25$TUN]/" 2>/dev/null && bad="$bad link-local"
+cexec nc -6 -z -w 3 64:ff9b::a9fe:a9fe 80 >/dev/null 2>&1 && bad="$bad nat64"
+cexec nc -6 -z -w 3 fd7a:5a5e::1 8443 >/dev/null 2>&1 && bad="$bad edge6:8443"
+[ -n "$(cexec dig +short +time=3 +tries=1 @2001:4860:4860::8888 example.com AAAA 2>/dev/null | grep -E '^[0-9a-fA-F:]+$')" ] && bad="$bad udp6-dns"
+[ -n "$(cexec dig +tcp +short +time=3 +tries=1 @2606:4700:4700::1111 example.com AAAA 2>/dev/null | grep -E '^[0-9a-fA-F:]+$')" ] && bad="$bad tcp6-dns"
+cexec nc -6 -z -w 4 2606:4700:4700::1111 853 >/dev/null 2>&1 && bad="$bad dot6"
+cexec curl -6 -sS -m 5 -o /dev/null -H 'accept: application/dns-json' 'https://[2606:4700:4700::1111]/dns-query?name=example.com' 2>/dev/null && bad="$bad doh6@2606"
+cexec curl -6 -sS -m 5 -o /dev/null -H 'accept: application/dns-json' 'https://[2001:4860:4860::8888]/resolve?name=example.com' 2>/dev/null && bad="$bad doh6@2001"
+smtp6="${ex6:-2001:db8::1}"
+cexec nc -6 -z -w 4 "$smtp6" 25 >/dev/null 2>&1 && bad="$bad tcp6/25"
+# Allowed IPv6 HTTPS through $TUN when the Edge host has IPv6 WAN.
+if [ -n "$ex6" ]; then
+  if ! cexec curl -6 -sS -m 8 -o /dev/null https://example.com 2>/dev/null; then
+    if dc exec -T edge nc -z -w 4 "$ex6" 443 >/dev/null 2>&1; then
+      bad="$bad curl6-https"
+    fi
+  fi
+fi
+# Zero leak outside $TUN: inet kill switch drops non-$TUN IPv6 (including direct eth0 binds).
+ks6="$(cexec nft list table inet opensase_killswitch 2>/dev/null || true)"
+if ! printf '%s\n' "$ks6" | grep -q 'policy drop' || ! printf '%s\n' "$ks6" | grep -q "oifname \"$TUN\" accept"; then
+  bad="$bad no-killswitch"
+fi
+cexec curl -6 --interface eth0 -sS -m 4 -o /dev/null 'https://[2001:4860:4860::8888]/' 2>/dev/null && bad="$bad eth0-leak"
+[ -n "$ex6" ] && cexec curl -6 --interface eth0 -sS -m 4 -o /dev/null "https://[$ex6]/" 2>/dev/null && bad="$bad eth0-leak-https"
+[ -z "$bad" ] && pass SEC-DP-103 "client: IPv6 routed via $TUN, policy/bypass enforced, no leak outside $TUN" ||
+  fail SEC-DP-103 "client: IPv6 routed via $TUN, policy/bypass enforced, no leak outside $TUN" "$bad"
 
 # Port policy: tcp/25 blocked, 587 control.
 if ! cexec nc -z -w 5 smtp.gmail.com 587 >/dev/null 2>&1; then

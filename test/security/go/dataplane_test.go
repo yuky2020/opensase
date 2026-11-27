@@ -31,6 +31,12 @@ func containerAddrs(name string) []netip.Addr {
 	return as
 }
 
+// edgeCanReachIPv6 reports whether the dev Edge container itself has IPv6 WAN connectivity
+// to target, distinguishing missing host IPv6 WAN from broken Edge IPv6 forwarding.
+func edgeCanReachIPv6(target netip.AddrPort) bool {
+	return exec.Command("docker", "exec", "opensase-edge-1", "nc", "-z", "-w", "4", target.Addr().String(), fmt.Sprint(target.Port())).Run() == nil //nolint:gosec // G204: fixed docker CLI, parsed AddrPort
+}
+
 // refusedByEdge requires an explicit RST (the Edge filter's rejection). A SYN-ACK means
 // the attack got through; silence is inconclusive (could be a dead target).
 func refusedByEdge(res tcpResult, what string) error {
@@ -254,26 +260,85 @@ func TestDataPlane(t *testing.T) {
 		return errors.Join(errs...)
 	})
 
-	// IPv6 through the tunnel: denied ranges are refused; nothing leaves the Edge over v6.
-	check(t, "SEC-DP-009", "IPv6: loopback/link-local/ULA refused, global v6 not forwarded", "", func(t *testing.T) error {
+	// IPv6 through the tunnel (issue #74): denied ranges, NAT64, DNS/DoT/DoH bypass and
+	// tenant policy are refused with RST; allowed global IPv6 is forwarded when the Edge
+	// host has IPv6 WAN.
+	check(t, "SEC-DP-009", "IPv6: denied ranges, NAT64, DNS/DoT/DoH bypass and tcp/25 refused; global v6 forwarded", "", func(t *testing.T) error {
 		if !a1.ip6.IsValid() {
 			return skipf("no tunnel IPv6 address")
 		}
+		pingOK := false
+		for i := 0; i < 2 && !pingOK; i++ {
+			pingOK = a1.ping6()
+		}
+		if !pingOK {
+			return fmt.Errorf("control: ICMPv6 echo to Edge %s failed", edgeTunIP6)
+		}
 		var errs []error
-		for _, d := range []string{"[::1]:8443", "[fe80::1]:80", "[fd00::1]:80", "[fd7a:5a5e::1]:8443"} {
+		// Loopback, link-local, ULA, NAT64 (RFC 6052 / RFC 8215), discard-only (RFC 6666),
+		// benchmarking (RFC 5180), and Edge non-DNS ports must all be refused with RST.
+		denied := []string{
+			"[::1]:8443",
+			"[fe80::1]:80",
+			"[fd00::1]:80",
+			"[fd7a:5a5e::1]:8443",
+			"[fd7a:5a5e::1]:8444",
+			"[fd7a:5a5e::1]:15001",
+			"[64:ff9b::a9fe:a9fe]:80",
+			"[64:ff9b:1::a9fe:a9fe]:80",
+			"[100::1]:80",
+			"[2001:2::1]:80",
+		}
+		for _, d := range denied {
 			if err := refusedByEdge(a1.probe(netip.MustParseAddrPort(d), netip.Addr{}, nil, 3*time.Second), d); err != nil {
 				errs = append(errs, err)
 			}
 		}
-		// example.com's v6 address: must not get a SYN-ACK.
-		if r := a1.dnsQuery(edgeIP, "example.com", dns.TypeAAAA); r != nil {
-			for _, rr := range r.Answer {
-				if a, ok := rr.(*dns.AAAA); ok {
-					ip, _ := netip.AddrFromSlice(a.AAAA)
-					if res := a1.probe(netip.AddrPortFrom(ip, 443), netip.Addr{}, nil, 4*time.Second); res == synAck {
-						errs = append(errs, fmt.Errorf("IPv6 %s:443 reachable through the Edge", ip))
-					}
-					break
+		// Third-party IPv6 DNS (UDP/TCP), DoT (853) and built-in IPv6 DoH endpoints (443).
+		for _, s := range []string{"2001:4860:4860::8888", "2606:4700:4700::1111", "2620:fe::fe"} {
+			if r := a1.dnsQuery(netip.MustParseAddr(s), "example.com", dns.TypeAAAA); r != nil {
+				errs = append(errs, fmt.Errorf("IPv6 udp DNS to %s answered", s))
+			}
+		}
+		dnsBypass := []string{
+			"[2001:4860:4860::8888]:53",
+			"[2001:4860:4860::8888]:853",
+			"[2001:4860:4860::8888]:443",
+			"[2606:4700:4700::1111]:53",
+			"[2606:4700:4700::1111]:853",
+			"[2606:4700:4700::1111]:443",
+			"[2620:fe::fe]:443",
+		}
+		for _, d := range dnsBypass {
+			if err := refusedByEdge(a1.probe(netip.MustParseAddrPort(d), netip.Addr{}, nil, 3*time.Second), d); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		// Resolve example.com AAAA via the Edge IPv6 resolver and check tenant policy
+		// (block tcp/25) plus global IPv6 HTTPS egress.
+		ips := a1.resolve6("example.com")
+		smtpDst := netip.MustParseAddrPort("[2001:db8::1]:25")
+		if len(ips) > 0 {
+			smtpDst = netip.AddrPortFrom(ips[0], 25)
+		}
+		if err := refusedByEdge(a1.probe(smtpDst, netip.Addr{}, nil, 4*time.Second), "IPv6 tcp/25 "+smtpDst.String()); err != nil {
+			errs = append(errs, err)
+		}
+		if len(ips) == 0 {
+			if web.IsValid() {
+				errs = append(errs, errors.New("Edge IPv6 resolver gave no AAAA record for example.com"))
+			}
+		} else {
+			target := netip.AddrPortFrom(ips[0], 443)
+			switch res := a1.probe(target, netip.Addr{}, nil, 5*time.Second); res {
+			case synAck:
+			case rst:
+				errs = append(errs, fmt.Errorf("allowed global IPv6 %s refused with RST by Edge", target))
+			default:
+				if edgeCanReachIPv6(target) {
+					errs = append(errs, fmt.Errorf("allowed global IPv6 %s: %s (Edge has IPv6 WAN)", target, res))
+				} else {
+					t.Logf("global IPv6 %s: %s and Edge container has no IPv6 WAN; skipping SYN-ACK check", target, res)
 				}
 			}
 		}

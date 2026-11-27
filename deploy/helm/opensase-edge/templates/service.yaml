@@ -9,6 +9,12 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- with .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with .Values.service.ipFamilies }}
+  ipFamilies: {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector: {{- include "edge.selector" . | nindent 4 }}
   ports:
     - {name: wireguard, port: {{ .Values.service.wgPort }}, targetPort: wireguard, protocol: UDP}

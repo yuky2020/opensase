@@ -11,6 +11,7 @@ set -eu
 TUN="${EDGE_TUN:-wg0}"
 WAN="${EDGE_WAN:-eth0}"
 POOL="100.64.0.0/10"
+POOL6="fd7a:5a5e::/64"
 EDGE_IP="100.64.0.1"
 EDGE_IP6="fd7a:5a5e::1"
 SYNTH="100.96.0.0/12"                  # synthetic PrivateApp addresses (ADR-0013)
@@ -115,9 +116,52 @@ if [ -n "$INSPECT_PORT" ]; then
 fi
 iptables -A OSASE_IN -j DROP
 
-# --- IPv6 (no IPv6 NAT in dev: nothing is forwarded) ---
+# --- IPv6 ---
+IP6_NAT=0
 if ip6tables -L -n >/dev/null 2>&1; then
+  if ip6tables -t nat -L -n >/dev/null 2>&1; then
+    if ip6tables -t nat -C POSTROUTING -s "$POOL6" -o "$WAN" -j MASQUERADE 2>/dev/null ||
+      ip6tables -t nat -A POSTROUTING -s "$POOL6" -o "$WAN" -j MASQUERADE 2>/dev/null; then
+      IP6_NAT=1
+    else
+      log "ip6tables MASQUERADE unavailable; IPv6 NAT66 and egress skipped"
+    fi
+  else
+    log "ip6tables nat table unavailable; IPv6 NAT66 and egress skipped"
+  fi
+  if ip6tables -t mangle -L -n >/dev/null 2>&1; then
+    ip6tables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null ||
+      ip6tables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null ||
+      log "ip6tables TCPMSS unavailable; IPv6 TCP MSS clamping skipped"
+  else
+    log "ip6tables mangle table unavailable; IPv6 TCP MSS clamping skipped"
+  fi
+
+  # FORWARD: default drop, explicit accepts (mirrors OSASE_FWD).
   ip6tables -P FORWARD DROP
+  chain ip6tables OSASE_FWD6
+  hook ip6tables FORWARD -j OSASE_FWD6
+  ip6tables -A OSASE_FWD6 -i "$WAN" -o "$TUN" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  for net in fe80::/10 ::1/128 ::/128 ff00::/8 64:ff9b::/96 64:ff9b:1::/48 100::/64; do
+    ip6tables -A OSASE_FWD6 -i "$TUN" -d "$net" -j DROP
+  done
+  # Device mesh (ADR-0034): must come before fc00::/7 because POOL6 is a ULA prefix.
+  ip6tables -A OSASE_FWD6 -i "$TUN" -o "$TUN" -s "$POOL6" -d "$POOL6" -j ACCEPT
+  if [ "$ALLOW_PRIVATE" != 1 ]; then
+    for net in fc00::/7 2001:2::/48; do
+      ip6tables -A OSASE_FWD6 -i "$TUN" -d "$net" -j DROP
+    done
+  fi
+  # DNS only through the Edge resolver (INPUT): no third-party DNS or DoT.
+  for p in udp tcp; do
+    ip6tables -A OSASE_FWD6 -i "$TUN" -p "$p" --dport 53 -j DROP
+    ip6tables -A OSASE_FWD6 -i "$TUN" -p "$p" --dport 853 -j DROP
+  done
+  if [ "$IP6_NAT" = 1 ]; then
+    ip6tables -A OSASE_FWD6 -i "$TUN" -o "$WAN" -s "$POOL6" -j ACCEPT
+  fi
+
+  # INPUT from the tunnel: only DNS and ICMPv6 to the Edge tunnel address.
   chain ip6tables OSASE_IN6
   hook ip6tables INPUT -i "$TUN" -j OSASE_IN6
   ip6tables -A OSASE_IN6 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
@@ -129,7 +173,7 @@ else
   log "ip6tables unavailable; IPv6 kernel rules skipped"
 fi
 
-log "NAT $POOL -> $WAN, FORWARD default DROP, tunnel INPUT limited to DNS/ICMP and ZTNA $SYNTH -> :$ZTNA_PORT, inspection :${INSPECT_PORT:-off} (allow-private=$ALLOW_PRIVATE)"
+log "NAT $POOL -> $WAN (ipv6-nat=$IP6_NAT $POOL6), FORWARD default DROP, tunnel INPUT limited to DNS/ICMP and ZTNA $SYNTH -> :$ZTNA_PORT, inspection :${INSPECT_PORT:-off} (allow-private=$ALLOW_PRIVATE)"
 
 set -- /usr/local/bin/edge "$@"
 if [ "$ALLOW_PRIVATE" = 1 ]; then

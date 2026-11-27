@@ -77,6 +77,7 @@ services:
     sysctls:
       net.ipv4.ip_forward: 1
       net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv6.conf.all.forwarding: 1
     environment:
       EDGE_UID: ${OPENSASE_UID:-1000}
       EDGE_GID: ${OPENSASE_GID:-1000}
@@ -269,10 +270,12 @@ networks:
   # its address, as a real server would, so a connected client's cached addresses and bypass
   # routes stay valid. Other containers get addresses from the upper half.
   default:
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.31.250.0/24
           ip_range: 172.31.250.128/25
+        - subnet: fd7a:5a5e:ff::/64
   # The customer LAN: no route to the internet, and neither the Edge nor the Control Plane
   # is attached. Only the Connector bridges it, outbound.
   corp:

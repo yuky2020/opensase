@@ -30,13 +30,14 @@ docker run -d --name opensase --restart unless-stopped \
   --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
   --device /dev/net/tun \
   --sysctl net.ipv4.ip_forward=1 \
+  --sysctl net.ipv6.conf.all.forwarding=1 \
   -p 9443:9443 -p 8443:8443 -p 8444:8444 -p 51820:51820/udp \
   -e OPENSASE_PUBLIC_HOST=<host-or-ip> \
   -v opensase-data:/data \
   ghcr.io/yuky2020/opensase-quickstart:<version>
 ```
 
-Replace `<host-or-ip>` with the DNS name or IP address that clients and Connectors use to reach this host.
+Replace `<host-or-ip>` with the DNS name or IP address that clients and Connectors use to reach this host. Omit `--sysctl net.ipv6.conf.all.forwarding=1` on IPv4-only hosts where IPv6 is disabled.
 
 ### Read secrets and configuration
 
@@ -167,7 +168,7 @@ The Edge terminates post-quantum WireGuard tunnels from clients and enforces sec
 ### Requirements
 - Linux capabilities: `NET_ADMIN` (for TUN device manipulation), `NET_BIND_SERVICE` (for DNS resolver on port 53), `SETUID`, `SETGID`.
 - Device `/dev/net/tun` passed to the container.
-- Kernel IPv4 forwarding enabled: `--sysctl net.ipv4.ip_forward=1`.
+- Kernel IP forwarding enabled: `--sysctl net.ipv4.ip_forward=1` (and `--sysctl net.ipv6.conf.all.forwarding=1` for IPv6 tunnel egress; omit the IPv6 sysctl on IPv4-only hosts where IPv6 is disabled).
 - Ports:
   - `8443/tcp`: Session setup listener.
   - `8444/tcp`: Connector broker listener.
@@ -193,6 +194,7 @@ docker run -d \
   --cap-add SETGID \
   --device /dev/net/tun:/dev/net/tun \
   --sysctl net.ipv4.ip_forward=1 \
+  --sysctl net.ipv6.conf.all.forwarding=1 \
   -p 8443:8443/tcp \
   -p 8444:8444/tcp \
   -p 51820:51820/udp \
@@ -215,6 +217,8 @@ docker run -d \
   -state-dir /var/lib/opensase-edge \
   -flow-log /var/lib/opensase-edge/flows.jsonl
 ```
+
+On IPv6-only hosts, configure an IPv6 upstream resolver using bracketed notation, for example `-upstream-dns [2001:db8::53]:53`.
 
 ---
 

@@ -20,12 +20,19 @@ spec:
         {{- if eq .Values.ipForward "sysctl" }}
         sysctls:
           - {name: net.ipv4.ip_forward, value: "1"}
+          {{- if and .Values.ipv6 .Values.ipv6.enabled }}
+          - {name: net.ipv6.conf.all.forwarding, value: "1"}
+          {{- end }}
         {{- end }}
       {{- if eq .Values.ipForward "initContainer" }}
       initContainers:
         - name: ip-forward
           image: {{ .Values.initImage }}
-          command: ["sh", "-c", "sysctl -w net.ipv4.ip_forward=1 && sysctl -w net.ipv6.conf.all.forwarding=1 || true"]
+          {{- if and .Values.ipv6 .Values.ipv6.enabled }}
+          command: ["sh", "-c", "sysctl -w net.ipv4.ip_forward=1 && (sysctl -w net.ipv6.conf.all.forwarding=1 || echo 'ip-forward: failed to set net.ipv6.conf.all.forwarding=1; continuing IPv4-only' >&2)"]
+          {{- else }}
+          command: ["sh", "-c", "sysctl -w net.ipv4.ip_forward=1"]
+          {{- end }}
           securityContext:
             privileged: true
       {{- end }}

@@ -18,18 +18,26 @@ pki:
 # Private Edge: serve only this tenant (must match `opensasectl edge add -tenant`).
 tenant: ""
 
-# Extra flags for the edge binary.
+# Extra flags for the edge binary (e.g. ["-upstream-dns=[2001:db8::53]:53"] on IPv6-only clusters).
 extraArgs: []
 
-# The Edge forwards tunnel traffic: net.ipv4.ip_forward must be 1 in the pod network
-# namespace. initContainer: a privileged init container sets it. sysctl: the pod sets it
-# (the kubelet must allow the unsafe sysctl). none: you set it yourself.
+# The Edge forwards tunnel traffic: net.ipv4.ip_forward (and net.ipv6.conf.all.forwarding
+# when ipv6.enabled is true) must be 1 in the pod network namespace.
+# initContainer: a privileged init container sets them. sysctl: the pod sets them
+# (the kubelet must allow those unsafe sysctls). none: you set them yourself.
 ipForward: initContainer   # initContainer | sysctl | none
 initImage: busybox:1.37
+
+# Enable IPv6 forwarding sysctl (net.ipv6.conf.all.forwarding=1). Set to false on
+# IPv4-only clusters where IPv6 is disabled or the sysctl is not allowed by the kubelet.
+ipv6:
+  enabled: true
 
 service:
   type: LoadBalancer        # LoadBalancer | NodePort
   externalTrafficPolicy: Local
+  ipFamilyPolicy: ""        # SingleStack | PreferDualStack | RequireDualStack
+  ipFamilies: []            # e.g. [IPv4, IPv6]
   annotations: {}
   wgPort: 51820
   sessionPort: 8443

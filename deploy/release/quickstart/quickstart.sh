@@ -8,6 +8,18 @@ if [ -z "${OPENSASE_PUBLIC_HOST:-}" ]; then
 fi
 
 HOST="$OPENSASE_PUBLIC_HOST"
+# Normalize IPv6 literals: unbracketed for certificate SANs, bracketed for URLs and host:port.
+HOST_SAN="$HOST"
+case "$HOST_SAN" in
+  \[*\])
+    HOST_SAN="${HOST_SAN#\[}"
+    HOST_SAN="${HOST_SAN%\]}"
+    ;;
+esac
+case "$HOST_SAN" in
+  *:*) HOST_ADDR="[$HOST_SAN]" ;;
+  *)   HOST_ADDR="$HOST_SAN" ;;
+esac
 TENANT="${OPENSASE_TENANT:-demo}"
 USER_ID="${OPENSASE_USER_ID:-demo-user}"
 USER_EMAIL="${OPENSASE_USER_EMAIL:-demo@example.invalid}"
@@ -28,21 +40,21 @@ if [ ! -f /data/pki/root.crt ]; then
   chmod 0600 /data/admin-token
 
   echo "quickstart: initializing PKI" >&2
-  SANS="localhost,127.0.0.1,::1,$HOST"
+  SANS="localhost,127.0.0.1,::1,$HOST_SAN"
   if [ -n "${OPENSASE_EXTRA_SANS:-}" ]; then
     SANS="$SANS,$OPENSASE_EXTRA_SANS"
   fi
 
   /usr/local/bin/opensasectl pki init \
     -dir /data/pki \
-    -session-url "https://$HOST:8443" \
-    -wg-endpoint "$HOST:51820" \
-    -broker-addr "$HOST:8444" \
+    -session-url "https://$HOST_ADDR:8443" \
+    -wg-endpoint "$HOST_ADDR:51820" \
+    -broker-addr "$HOST_ADDR:8444" \
     -cp-san "$SANS" \
     -edge-san "$SANS"
 
   if [ -f /data/pki/edges.json ] && ! grep -q '"brokerAddr"' /data/pki/edges.json; then
-    sed 's|^\(\( *\)"id": "edge-1",\)$|\1\n\2"brokerAddr": "'"$HOST"':8444",|' /data/pki/edges.json > /data/pki/edges.json.tmp
+    sed 's|^\(\( *\)"id": "edge-1",\)$|\1\n\2"brokerAddr": "'"$HOST_ADDR"':8444",|' /data/pki/edges.json > /data/pki/edges.json.tmp
     grep -q '"brokerAddr"' /data/pki/edges.json.tmp || { echo "quickstart: could not add brokerAddr to edges.json" >&2; exit 1; }
     mv /data/pki/edges.json.tmp /data/pki/edges.json
   fi
@@ -87,7 +99,7 @@ OPENSASE_ADMIN_TOKEN="$ADMIN_TOKEN" setpriv --reuid=65532 --regid=65532 --clear-
   -listen :9443 \
   -db /data/cp/controlplane.db \
   -pki /data/pki \
-  -control-url "https://$HOST:9443" \
+  -control-url "https://$HOST_ADDR:9443" \
   -portal-dir /usr/share/opensase/portal \
   -categories-file /data/cp/categories.tar.gz \
   -categories-url "$CATEGORIES_URL" \
@@ -116,7 +128,7 @@ if [ ! -f /data/quickstart.env ]; then
       -user-id "$USER_ID" \
       -email "$USER_EMAIL" \
       -max-uses 10 \
-      -control-url "https://$HOST:9443")"
+      -control-url "https://$HOST_ADDR:9443")"
 
   BOOT_CONTROL_URL="$(printf '%s\n' "$BOOTSTRAP_OUT" | sed -n 's/^CONTROL_URL=//p')"
   BOOT_PROVISIONING_KEY="$(printf '%s\n' "$BOOTSTRAP_OUT" | sed -n 's/^PROVISIONING_KEY=//p')"
@@ -150,7 +162,7 @@ echo "quickstart: starting Edge" >&2
   -pki /data/pki/edge \
   -listen :8443 \
   -wg-port 51820 \
-  -wg-endpoint "$HOST:51820" \
+  -wg-endpoint "$HOST_ADDR:51820" \
   -upstream-dns "$UPSTREAM_DNS" \
   -ztna-listen 0.0.0.0:15001 \
   -broker-listen :8444 \
@@ -166,7 +178,7 @@ OpenSASE Quick Start (Trials and Demos Only)
 
 OpenSASE is ready.
 
-Admin Portal:  https://$HOST:9443/admin/
+Admin Portal:  https://$HOST_ADDR:9443/admin/
 Tenant:        $TENANT
 
 To retrieve secrets and configuration:

@@ -154,7 +154,7 @@ jobs:
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}/opensase-${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -225,7 +225,7 @@ jobs:
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}/opensase-quickstart
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -559,7 +559,7 @@ jobs:
           cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
 
       - name: Attest build provenance of the release files
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-checksums: dist/SHA256SUMS
 

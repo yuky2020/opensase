@@ -33,6 +33,8 @@ All VM images and instance state files are kept outside the source repository un
 
 ```
 ${XDG_DATA_HOME:-$HOME/.local/share}/opensase-vms/
+├── id_ed25519                   # Dedicated VM SSH private key (created on first use)
+├── id_ed25519.pub               # Dedicated VM SSH public key
 ├── base/
 │   ├── debian-base.qcow2        # Verified Debian generic cloud image
 │   ├── fedora-base.qcow2        # Verified Fedora Cloud Base image
@@ -59,7 +61,8 @@ You can customize the base directory by exporting `VM_DIR=/path/to/directory`.
 
 ### `common.sh`
 Common POSIX sh library sourced by the other scripts.
-- Defines `VM_DIR`, `BASE_DIR`, and `INSTANCES_DIR`.
+- Defines `VM_DIR`, `BASE_DIR`, `INSTANCES_DIR`, and `VM_KEY` (`$VM_DIR/id_ed25519`).
+- Provides `ensure_vm_key` to create the dedicated VM SSH keypair at `$VM_DIR/id_ed25519` on first use.
 - Provides `create_overlay` to instantiate a qcow2 overlay backed by a base image:
   ```bash
   qemu-img create -f qcow2 -F qcow2 -b "$base" "$overlay"
@@ -83,14 +86,25 @@ Spawns a headless Linux virtual machine.
 - Reuses or creates a copy-on-write qcow2 overlay over the base image.
 - Builds a cloud-init seed ISO (`seed.iso`) containing:
   - User `tester` with passwordless `sudo`.
-  - Authorized SSH keys imported from your host `~/.ssh/*.pub` (or generates a dedicated test keypair).
+  - Authorized SSH key from the dedicated keypair at `$VM_DIR/id_ed25519` (created on first use and kept in `$VM_DIR` so resetting or stopping instances preserves it).
 - Boots QEMU with:
   - Headless execution (`-display none -daemonize -pidfile ...`).
   - 4 GB RAM, 2 vCPUs, `-enable-kvm`.
   - User-mode networking (`slirp`) forwarding host port (e.g. 2222) to guest SSH port 22.
   - Full guest kernel running with `/dev/net/tun` available inside the VM.
-- Prints the exact `ssh` and `scp` commands to connect and copy files.
+- Prints both the short helper commands (`scripts/vm/ssh.sh`, `scripts/vm/copy.sh`) and the full `ssh`/`scp` commands to connect and copy files.
 - Packages are transferred into the VM using `scp` (eliminating dependencies on 9p or virtiofs).
+- **Note**: A VM instance created before the dedicated key was introduced keeps its existing `seed.iso` and overlay. Run `scripts/vm/reset.sh <name>` first so the next `up.sh <name>` generates a fresh seed authorizing `$VM_DIR/id_ed25519.pub`.
+
+### `ssh.sh <debian|fedora> [command...]`
+Opens an SSH session (or runs an optional command) on a running Linux test VM.
+- Reads the allocated host port from `instances/<name>/port.txt`.
+- Connects as `tester@127.0.0.1` using the dedicated key at `$VM_DIR/id_ed25519`.
+
+### `copy.sh <debian|fedora> <file>...`
+Copies one or more local files to `/tmp/` inside a running Linux test VM.
+- Reads the allocated host port from `instances/<name>/port.txt`.
+- Transfers files via `scp` using the dedicated key at `$VM_DIR/id_ed25519`.
 
 ### `down.sh <name>`
 Stops a running virtual machine instance (`debian`, `fedora`, `windows`) using its PID file.
@@ -140,12 +154,11 @@ scripts/vm/fetch-images.sh --yes
    ```
 2. Copy the `.deb` release package into the VM:
    ```bash
-   scp -P 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-     opensase_<version>_amd64.deb tester@127.0.0.1:/tmp/
+   scripts/vm/copy.sh debian opensase_<version>_amd64.deb
    ```
 3. SSH into the VM:
    ```bash
-   ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tester@127.0.0.1
+   scripts/vm/ssh.sh debian
    ```
 4. Perform testing as outlined in [manual-checklist.md](../../docs/testing/manual-checklist.md).
 5. When finished, exit SSH and reset the VM:
@@ -161,12 +174,11 @@ scripts/vm/fetch-images.sh --yes
    ```
 2. Copy the `.rpm` release package into the VM:
    ```bash
-   scp -P 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-     opensase-<version>-1.x86_64.rpm tester@127.0.0.1:/tmp/
+   scripts/vm/copy.sh fedora opensase-<version>-1.x86_64.rpm
    ```
 3. SSH into the VM:
    ```bash
-   ssh -p 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tester@127.0.0.1
+   scripts/vm/ssh.sh fedora
    ```
 4. Perform testing and reset when finished:
    ```bash

@@ -6,10 +6,21 @@ set -eu
 VM_DIR="${VM_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/opensase-vms}"
 BASE_DIR="${VM_DIR}/base"
 INSTANCES_DIR="${VM_DIR}/instances"
+VM_KEY="${VM_DIR}/id_ed25519"
 
 # Ensure required directory tree exists
 init_vm_dirs() {
     mkdir -p "${BASE_DIR}" "${INSTANCES_DIR}"
+}
+
+# Ensure dedicated SSH keypair for VM access exists
+ensure_vm_key() {
+    if [ ! -f "$VM_KEY" ] || [ ! -f "${VM_KEY}.pub" ]; then
+        mkdir -p "$VM_DIR"
+        rm -f "$VM_KEY" "${VM_KEY}.pub"
+        echo "Generating dedicated VM SSH keypair at ${VM_KEY}..."
+        ssh-keygen -q -t ed25519 -N "" -f "$VM_KEY" -C "tester@opensase-vm"
+    fi
 }
 
 # Create a qcow2 overlay backed by a base image
@@ -73,20 +84,27 @@ print(port)
 }
 
 # Print instructions for SSH and SCP access
-# Usage: print_ssh_info <user> <port>
+# Usage: print_ssh_info <user> <port> <name>
 print_ssh_info() {
     ssh_user="$1"
     ssh_port="$2"
+    vm_name="$3"
 
     echo ""
     echo "======================================================================"
     echo "SSH and SCP Connection Information:"
     echo "======================================================================"
+    echo "  SSH (helper):"
+    echo "    scripts/vm/ssh.sh ${vm_name}"
+    echo ""
+    echo "  Copy files into guest (helper):"
+    echo "    scripts/vm/copy.sh ${vm_name} <file>..."
+    echo ""
     echo "  SSH command:"
-    echo "    ssh -p ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${ssh_user}@127.0.0.1"
+    echo "    ssh -i \"${VM_KEY}\" -p ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${ssh_user}@127.0.0.1"
     echo ""
     echo "  SCP command (copy files into guest):"
-    echo "    scp -P ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <file> ${ssh_user}@127.0.0.1:/tmp/"
+    echo "    scp -i \"${VM_KEY}\" -P ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null <file> ${ssh_user}@127.0.0.1:/tmp/"
     echo "======================================================================"
     echo ""
 }

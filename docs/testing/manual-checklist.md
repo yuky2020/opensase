@@ -71,18 +71,16 @@ Start the Debian test VM:
 ```bash
 scripts/vm/up.sh debian
 ```
-Note the allocated SSH port (default: 2222).
 
 #### Step 2: Copy Package and Install
 Copy the release package and provisioning key into the VM:
 ```bash
-scp -P 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  opensase_<version>_amd64.deb provisioning.key tester@127.0.0.1:/tmp/
+scripts/vm/copy.sh debian opensase_<version>_amd64.deb provisioning.key
 ```
 
 SSH into the VM:
 ```bash
-ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tester@127.0.0.1
+scripts/vm/ssh.sh debian
 ```
 
 Install the Debian package:
@@ -180,18 +178,16 @@ Start the Fedora test VM:
 ```bash
 scripts/vm/up.sh fedora
 ```
-Note the allocated SSH port (default: 2223).
 
 #### Step 2: Copy Package and Install
 Copy the release package and provisioning key into the VM:
 ```bash
-scp -P 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  opensase-<version>-1.x86_64.rpm provisioning.key tester@127.0.0.1:/tmp/
+scripts/vm/copy.sh fedora opensase-<version>-1.x86_64.rpm provisioning.key
 ```
 
 SSH into the VM:
 ```bash
-ssh -p 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tester@127.0.0.1
+scripts/vm/ssh.sh fedora
 ```
 
 Install the RPM package:

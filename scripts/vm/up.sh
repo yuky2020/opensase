@@ -51,7 +51,7 @@ if is_vm_running "$target"; then
     echo "VM '${target}' is already running (PID: ${pid})."
     if [ -f "$port_file" ]; then
         ssh_port="$(cat "$port_file")"
-        print_ssh_info "tester" "$ssh_port"
+        print_ssh_info "tester" "$ssh_port" "$target"
     fi
     exit 0
 fi
@@ -67,28 +67,8 @@ fi
 if [ ! -f "$seed_iso" ]; then
     echo "Configuring cloud-init credentials..."
 
-    # Gather maintainer SSH public keys
-    ssh_keys=""
-    for key_file in "$HOME"/.ssh/*.pub; do
-        if [ -f "$key_file" ]; then
-            key_content="$(cat "$key_file")"
-            ssh_keys="${ssh_keys}      - ${key_content}
-"
-        fi
-    done
-
-    # Generate an ephemeral keypair if no existing public keys were discovered
-    if [ -z "$ssh_keys" ]; then
-        test_key="${instance_dir}/id_ed25519"
-        if [ ! -f "$test_key" ]; then
-            echo "No SSH keys found in ~/.ssh/*.pub; generating dedicated test keypair..."
-            ssh-keygen -t ed25519 -N "" -f "$test_key" -C "tester@opensase-vm"
-        fi
-        key_content="$(cat "${test_key}.pub")"
-        ssh_keys="      - ${key_content}
-"
-        echo "Created test key at ${test_key}"
-    fi
+    ensure_vm_key
+    vm_pub_key="$(cat "${VM_KEY}.pub")"
 
     # Write cloud-init user-data and meta-data
     cat > "$user_data" <<EOF
@@ -100,7 +80,8 @@ users:
     shell: /bin/bash
     lock_passwd: false
     ssh_authorized_keys:
-${ssh_keys}ssh_pwauth: false
+      - ${vm_pub_key}
+ssh_pwauth: false
 package_update: false
 EOF
 
@@ -166,4 +147,4 @@ qemu-system-x86_64 \
     -pidfile "${pid_file}"
 
 echo "VM '${target}' started successfully (PID: $(cat "${pid_file}"))."
-print_ssh_info "tester" "${ssh_port}"
+print_ssh_info "tester" "${ssh_port}" "${target}"

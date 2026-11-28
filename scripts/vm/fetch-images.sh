@@ -117,10 +117,10 @@ curl -fL --progress-bar -o "${fedora_tmp_img}" "${FEDORA_IMAGE_URL}"
 echo "Verifying Fedora image checksum..."
 # Check whether CHECKSUM uses SHA512 or SHA256
 if grep -i 'SHA512' "${fedora_checksum_file}" >/dev/null 2>&1; then
-    fedora_expected="$(grep 'Fedora-Cloud-Base-Generic-45-1.4\.x86_64\.qcow2' "${fedora_checksum_file}" | sed 's/.*= *//' | awk '{print $1}')"
+    fedora_expected="$(grep -v '^#' "${fedora_checksum_file}" | grep 'Fedora-Cloud-Base-Generic-45-1.4\.x86_64\.qcow2' | sed 's/.*= *//' | awk '{print $1}')"
     fedora_actual="$(sha512sum "${fedora_tmp_img}" | awk '{print $1}')"
 else
-    fedora_expected="$(grep 'Fedora-Cloud-Base-Generic-45-1.4\.x86_64\.qcow2' "${fedora_checksum_file}" | sed 's/.*= *//' | awk '{print $1}')"
+    fedora_expected="$(grep -v '^#' "${fedora_checksum_file}" | grep 'Fedora-Cloud-Base-Generic-45-1.4\.x86_64\.qcow2' | sed 's/.*= *//' | awk '{print $1}')"
     fedora_actual="$(sha256sum "${fedora_tmp_img}" | awk '{print $1}')"
 fi
 
